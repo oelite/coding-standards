@@ -2,23 +2,17 @@
 
 ## Overview
 
-This document defines the **mandatory** standardized application lifecycle for all OElite applications. All new applications MUST use the phase-based lifecycle architecture (`OeWebApp`, `OeHybridApp`, `OeConsoleApp`). Legacy patterns are deprecated and must not be used.
+This document defines the standardized application lifecycle for all OElite applications using the phase-based lifecycle architecture (`OeWebApp`, `OeHybridApp`, `OeConsoleApp`).
 
-## Major Updates (December 2024)
+## Current Architecture (December 2024)
 
-### Phase-Based Lifecycle Architecture
-- **OeWebApp**: Web applications with ASP.NET Core
-- **OeHybridApp**: Background services + Web API (e.g., Kortex, Obelisk)
-- **OeConsoleApp**: Console applications and background workers
+### Phase-Based Lifecycle Components
+- **OeWebApp.RunAsync**: Web applications with ASP.NET Core
+- **OeHybridApp.RunAsync**: Background services + Web API (e.g., Kortex, Obelisk)
+- **OeConsoleApp.RunAsync**: Console applications and background workers
 - **OeAppPipelineBuilder**: Ordered middleware/lifecycle hook configuration
-- **WebLifecycleOptions**: Unified configuration for web applications
-- **Complete Lifecycle Management**: Automatic bootstrap, graceful shutdown, cancellation coordination
-
-### Breaking Changes
-- **DEPRECATED**: `OeApp.RunWebAppAsync()`, `OeApp.RunConsoleAppAsync()`, `OeApp.RunHybridAppAsync()`
-- **REQUIRED**: `OeWebApp.RunAsync()`, `OeHybridApp.RunAsync()`, `OeConsoleApp.RunAsync()`
-- **REMOVED**: `UnifiedPipelineBuilder` → **USE**: `OeAppPipelineBuilder`
-- **REMOVED**: `configurePipeline` parameter → **USE**: `options.ConfigurePipeline`
+- **WebLifecycleOptions**: Unified configuration for all settings
+- **Automatic Features**: Bootstrap discovery, graceful shutdown, cancellation coordination
 
 ## Hosting Package Architecture
 
@@ -480,38 +474,9 @@ public class ApiVersioningConfiguration
 }
 ```
 
-## Migration Checklist
+## Implementation Examples
 
-### Migrating from Legacy Lifecycle
-
-- [ ] Remove `using OElite.Common.Hosting.AspNetCore.Extensions;`
-- [ ] Add `using OElite.Common.Hosting.AspNetCore;`
-- [ ] Add `using OElite.Common.Hosting.AspNetCore.Configuration;`
-- [ ] Replace `OeApp.RunWebAppAsync<T>()` with `OeWebApp.RunAsync<T>()`
-- [ ] Replace `OeApp.RunHybridAppAsync<T>()` with `OeHybridApp.RunAsync<T>()`
-- [ ] Replace `OeApp.RunConsoleAppAsync<T>()` with `OeConsoleApp.RunAsync<T>()`
-- [ ] Move `configurePipeline` parameter to `options.ConfigurePipeline`
-- [ ] Update middleware registration to use `OeAppPipelineBuilder`
-- [ ] Verify build and test application
-
-### Example Migration
-
-**BEFORE (Legacy - DO NOT USE)**:
-```csharp
-using OElite.Common.Hosting.AspNetCore.Extensions;
-
-await OeApp.RunWebAppAsync<MyAppConfig>(
-    args,
-    "My App",
-    configureServices: builder => { },
-    configureApp: async app =>
-    {
-        app.UsePermissionEnrichment();
-        app.MapHub<MyHub>("/hubs/my");
-    });
-```
-
-**AFTER (Correct - REQUIRED)**:
+### Correct Implementation Pattern
 ```csharp
 using OElite.Common.Hosting.AspNetCore;
 using OElite.Common.Hosting.AspNetCore.Configuration;
@@ -607,23 +572,21 @@ options.ConfigurePipeline = pipeline =>
 };
 ```
 
-## Enforcement
+## Code Standards
 
-### Code Review Requirements
+### Required Patterns
 
-All new applications and PRs MUST:
+All applications MUST:
 1. Use `OeWebApp.RunAsync()`, `OeHybridApp.RunAsync()`, or `OeConsoleApp.RunAsync()`
 2. Use `options.ConfigurePipeline` with `OeAppPipelineBuilder` for middleware ordering
-3. NOT use deprecated `OeApp.RunXxxAsync()` methods
-4. NOT use `configurePipeline` parameter (removed)
-5. NOT reference `UnifiedPipelineBuilder` (renamed to `OeAppPipelineBuilder`)
+3. Configure `WebLifecycleOptions` properly (EnableSwagger, EnableAuthentication, etc.)
+4. Use proper using statements (`OElite.Common.Hosting.AspNetCore`, `OElite.Common.Hosting.AspNetCore.Configuration`)
 
 ### Build Requirements
 
-All applications MUST:
-- Build without errors using latest `OElite.Common.Hosting` and `OElite.Common.Hosting.AspNetCore` packages
-- Include proper using statements
-- Follow the patterns documented in this standard
+- Build successfully with latest `OElite.Common.Hosting` and `OElite.Common.Hosting.AspNetCore` packages
+- Follow documented patterns for application type (Web, Hybrid, Console)
+- Use `OeAppPipelineBuilder` for any middleware requiring specific ordering
 
 ## Reference Implementations
 
@@ -651,4 +614,3 @@ All applications MUST:
 
 **Last Updated**: December 8, 2024
 **Version**: 2.0 (Phase-Based Lifecycle Architecture)
-**Status**: **MANDATORY** for all new and migrated applications
