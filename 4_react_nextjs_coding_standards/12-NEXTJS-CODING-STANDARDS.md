@@ -6,6 +6,324 @@ This document establishes coding standards for Next.js applications in the OElit
 
 **Technology Stack**: Next.js 14+, React 18+, TypeScript, Tailwind CSS, SWR, Framer Motion
 
+## 🚨 **MANDATORY: No-Mock-Data Policy**
+
+### **Strict Prohibition of Fake/Mock Data**
+
+**CRITICAL REQUIREMENT**: React/Next.js developers MUST NEVER use fake, mock, or placeholder data values under any circumstances. This is a **mandatory requirement** with zero exceptions.
+
+#### **Forbidden Practices** ❌
+
+```tsx
+// ❌ ABSOLUTELY FORBIDDEN - Fake/mock data
+const ProductList: React.FC = () => {
+  const [products, setProducts] = useState<Product[]>([
+    { id: 1, name: 'Sample Product', price: 99.99 }, // FORBIDDEN
+    { id: 2, name: 'Another Product', price: 149.99 } // FORBIDDEN
+  ]);
+
+  useEffect(() => {
+    // ❌ FORBIDDEN - Using mock data as fallback
+    fetch('/api/products')
+      .then(res => res.json())
+      .then(data => setProducts(data))
+      .catch(err => {
+        console.error('API failed, using mock data');
+        setProducts(getMockProducts()); // ABSOLUTELY FORBIDDEN
+      });
+  }, []);
+
+  return (
+    <div>
+      {products.map(product => (
+        <ProductCard key={product.id} product={product} />
+      ))}
+    </div>
+  );
+};
+
+const getMockProducts = (): Product[] => {
+  return [{ id: 999, name: 'Mock Product', price: 0 }]; // FORBIDDEN
+};
+```
+
+```tsx
+// ❌ FORBIDDEN - Hard-coded mock values in components
+const ProductCard: React.FC = () => {
+  return (
+    <div className="product-card">
+      <h3>Sample Product Name</h3> {/* FORBIDDEN */}
+      <p className="price">$99.99</p>   {/* FORBIDDEN */}
+    </div>
+  );
+};
+
+// ❌ FORBIDDEN - Mock data in development
+const DevelopmentProducts: React.FC = () => {
+  return (
+    <div>
+      <div className="mock-product">Mock Product for Development</div> {/* FORBIDDEN */}
+    </div>
+  );
+};
+```
+
+#### **Required Implementation** ✅
+
+```tsx
+// ✅ CORRECT - Always request data from API endpoints using SWR
+import useSWR from 'swr';
+
+interface ApiResponse<T> {
+  data: T;
+  error?: string;
+}
+
+const fetcher = async (url: string): Promise<Product[]> => {
+  const response = await fetch(url);
+  if (!response.ok) {
+    throw new Error(`API Error: ${response.status} ${response.statusText}`);
+  }
+  return response.json();
+};
+
+const ProductList: React.FC = () => {
+  const { data: products, error, isLoading } = useSWR<Product[]>(
+    '/api/v1.0/products',
+    fetcher,
+    {
+      revalidateOnFocus: false,
+      revalidateOnReconnect: true,
+      errorRetryCount: 3,
+      errorRetryInterval: 1000
+    }
+  );
+
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center p-8">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+        <span className="ml-2">Loading products...</span>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="bg-red-50 border border-red-200 rounded-md p-4">
+        <div className="flex items-center">
+          <div className="flex-shrink-0">
+            <svg className="h-5 w-5 text-red-400" viewBox="0 0 20 20" fill="currentColor">
+              <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
+            </svg>
+          </div>
+          <div className="ml-3">
+            <h3 className="text-sm font-medium text-red-800">Unable to load products</h3>
+            <p className="mt-2 text-sm text-red-700">
+              Please check API endpoint configuration: {error.message}
+            </p>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (!products || products.length === 0) {
+    return (
+      <div className="text-center py-12">
+        <svg className="mx-auto h-12 w-12 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0v5a2 2 0 01-2 2H6a2 2 0 01-2 2m16-7H4" />
+        </svg>
+        <h3 className="mt-4 text-sm font-medium text-gray-900">No products available</h3>
+        <p className="mt-2 text-sm text-gray-500">Please contact your administrator.</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+      {products.map((product) => (
+        <ProductCard key={product.id} product={product} />
+      ))}
+    </div>
+  );
+};
+```
+
+#### **Server-Side Data Fetching** ✅
+
+```tsx
+// ✅ CORRECT - Server-side data fetching with Next.js App Router
+import { notFound } from 'next/navigation';
+
+interface ProductPageProps {
+  params: { id: string };
+}
+
+async function getProduct(id: string): Promise<Product | null> {
+  try {
+    const response = await fetch(`${process.env.API_BASE_URL}/api/v1.0/products/${id}`, {
+      next: { revalidate: 60 }, // Cache for 60 seconds
+      headers: {
+        'Content-Type': 'application/json',
+      },
+    });
+
+    if (!response.ok) {
+      if (response.status === 404) {
+        return null;
+      }
+      throw new Error(`Failed to fetch product: ${response.status}`);
+    }
+
+    return response.json();
+  } catch (error) {
+    console.error('Product fetch error:', error);
+    throw error; // Let Next.js handle the error boundary
+  }
+}
+
+export default async function ProductPage({ params }: ProductPageProps) {
+  const product = await getProduct(params.id);
+
+  if (!product) {
+    notFound(); // Show 404 page
+  }
+
+  return (
+    <div className="max-w-4xl mx-auto p-6">
+      <h1 className="text-3xl font-bold text-gray-900">{product.name}</h1>
+      <p className="mt-4 text-xl text-gray-600">${product.price}</p>
+      <div className="mt-6">
+        <img
+          src={product.image}
+          alt={product.name}
+          className="w-full h-96 object-cover rounded-lg"
+        />
+      </div>
+    </div>
+  );
+}
+```
+
+#### **Task Blocking Protocol** 🛑
+
+When API endpoints are not available or properly configured:
+
+1. **Mark Task as BLOCKED**: Do not proceed with component implementation
+2. **Show User-Friendly Message**: Display clear blocking message
+3. **Document API Requirements**: Specify exactly what endpoints are needed
+4. **Wait for Unblocking**: Only mark task complete when API endpoints are available
+
+```tsx
+// ✅ CORRECT - Blocking pattern when API unavailable
+const FeatureComponent: React.FC = () => {
+  const [apiAvailable, setApiAvailable] = useState(false);
+  const [isChecking, setIsChecking] = useState(true);
+
+  useEffect(() => {
+    checkApiEndpoints();
+  }, []);
+
+  const checkApiEndpoints = async () => {
+    setIsChecking(true);
+    try {
+      // Check if required APIs are available
+      const endpoints = [
+        '/api/v1.0/products',
+        '/api/v1.0/categories'
+      ];
+
+      const checks = await Promise.all(
+        endpoints.map(endpoint =>
+          fetch(endpoint, { method: 'HEAD' })
+            .then(res => res.ok)
+            .catch(() => false)
+        )
+      );
+
+      setApiAvailable(checks.every(check => check));
+    } catch (error) {
+      setApiAvailable(false);
+    } finally {
+      setIsChecking(false);
+    }
+  };
+
+  if (isChecking) {
+    return (
+      <div className="flex items-center justify-center p-8">
+        <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-primary mr-2"></div>
+        <span>Checking API availability...</span>
+      </div>
+    );
+  }
+
+  if (!apiAvailable) {
+    return (
+      <div className="bg-yellow-50 border border-yellow-200 rounded-md p-6">
+        <div className="flex items-start">
+          <div className="flex-shrink-0">
+            <svg className="h-6 w-6 text-yellow-400" fill="currentColor" viewBox="0 0 20 20">
+              <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
+            </svg>
+          </div>
+          <div className="ml-3">
+            <h3 className="text-lg font-medium text-yellow-800">Development Blocked</h3>
+            <p className="mt-2 text-sm text-yellow-700">
+              This component requires the following API endpoints:
+            </p>
+            <ul className="mt-2 text-sm text-yellow-700 list-disc list-inside">
+              <li><code className="bg-yellow-100 px-1 rounded">GET /api/v1.0/products</code> - Product listing</li>
+              <li><code className="bg-yellow-100 px-1 rounded">GET /api/v1.0/categories</code> - Category data</li>
+            </ul>
+            <p className="mt-4 text-sm text-yellow-700">
+              Please provide API endpoint contracts to continue development.
+            </p>
+            <button
+              onClick={checkApiEndpoints}
+              className="mt-4 bg-yellow-600 text-white px-4 py-2 rounded-md text-sm hover:bg-yellow-700 focus:outline-none focus:ring-2 focus:ring-yellow-500"
+            >
+              Retry API Connection
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // Component implementation when APIs are available
+  return (
+    <div>
+      {/* Your component implementation here */}
+    </div>
+  );
+};
+```
+
+#### **Development Workflow** 📋
+
+1. **API-First Development**: Always request API contracts before starting component development
+2. **SWR Integration**: Use SWR for client-side data fetching with proper error handling
+3. **Server Components**: Leverage Next.js App Router for server-side data fetching when appropriate
+4. **Error Boundaries**: Implement React error boundaries for graceful error handling
+5. **Loading States**: Show loading indicators during data fetching
+6. **Empty States**: Handle scenarios when API returns empty data
+7. **Type Safety**: Use TypeScript interfaces for all API responses
+
+#### **Quality Gate Enforcement** ⚡
+
+This policy is enforced by Arc-Agents quality gates. Any code containing mock data will fail quality checks and prevent task completion.
+
+**Validation Rules:**
+- Scan for hard-coded data arrays with realistic-looking values
+- Check for mock/fake data generation functions
+- Validate that all data comes from API calls (fetch, SWR, or server actions)
+- Ensure proper error handling without mock fallbacks
+- Verify proper TypeScript typing for API responses
+
+**Remember**: Mock data in production causes serious confusion and incidents. Always use real API endpoints or show appropriate blocked/error states.
+
 ## 🎯 **Critical UI Implementation Practices**
 
 ### **Mandatory Requirements for All Next.js Applications**

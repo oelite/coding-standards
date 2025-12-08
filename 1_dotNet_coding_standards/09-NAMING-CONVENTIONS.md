@@ -463,56 +463,47 @@ public static class DbSchema
 All OElite projects MUST follow the domain-based directory structure:
 
 ```
-OElite.Common/                         # Shared components and DTOs
-├── Biz/                              # Business domains (NEW STANDARD)
-│   ├── Customers/                    # Customer domain
-│   │   ├── Requests/                 # Customer API request models
-│   │   ├── Responses/                # Customer API response models
-│   │   ├── Reports/                  # Customer reporting models
-│   │   └── ModelTransformation/      # Customer model transformers
-│   ├── Products/                     # Product domain
-│   │   ├── Requests/                 # Product API request models
-│   │   ├── Responses/                # Product API response models
-│   │   ├── Reports/                  # Product reporting models
-│   │   └── ModelTransformation/      # Product model transformers
-│   └── Orders/                       # Order domain
-│       ├── Requests/                 # Order API request models
-│       ├── Responses/                # Order API response models
-│       ├── Reports/                  # Order reporting models
-│       └── ModelTransformation/      # Order model transformers
-├── Domain/                           # Core domain entities and shared components
-│   ├── Entities/                     # BaseEntity and core domain entities
-│   ├── Enums/                        # Shared domain enumerations
-│   └── ValueObjects/                 # Domain value objects
-├── Interfaces/                       # Service and repository contracts
+OElite.Common/                         # Shared components and DTOs under Business Domains
+│   Customers/                    # Customer domain
+│   ├── Requests/                 # Customer API request models
+│   ├── Responses/                # Customer API response models
+│   ├── Reports/                  # Customer reporting models
+│   └── ModelTransformation/      # Customer model transformers
+│   Products/                     # Product domain
+│   ├── Requests/                 # Product API request models
+│   ├── Responses/                # Product API response models
+│   ├── Reports/                  # Product reporting models
+│   └── ModelTransformation/      # Product model transformers
+│   Orders/                       # Order domain
+│   ├── Requests/                 # Order API request models
+│   ├── Responses/                # Order API response models
+│   ├── Reports/                  # Order reporting models
+│   └── ModelTransformation/      # Order model transformers
 └── Infrastructure/                   # Cross-cutting concerns
 
-OElite.Data.Repositories/              # Data access layer
-├── Biz/                              # Business domain repositories
-│   ├── Customers/                    # Customer data access
-│   │   ├── CustomerRepository.cs
-│   │   └── ICustomerRepository.cs
-│   ├── Products/                     # Product data access
-│   │   ├── ProductRepository.cs
-│   │   └── IProductRepository.cs
-│   └── Orders/                       # Order data access
-│       ├── OrderRepository.cs
-│       └── IOrderRepository.cs
+OElite.Data.Repositories/              # Business domain based Data access layer
+├── Customers/                    # Customer data access
+│   ├── CustomerRepository.cs
+│   └── ICustomerRepository.cs
+├── Products/                     # Product data access
+│   ├── ProductRepository.cs
+│   └── IProductRepository.cs
+│── Orders/                       # Order data access
+│   ├── OrderRepository.cs
+│   └── IOrderRepository.cs
 ├── Base/                             # Base repository classes
-├── Context/                          # DbCentre context classes
 └── Shared/                           # Shared query implementations
 
-OElite.Services/                       # Business services
-├── Biz/                              # Business domain services
-│   ├── Customers/                    # Customer business logic
-│   │   ├── CustomerService.cs
-│   │   └── CustomerProfileService.cs
-│   ├── Products/                     # Product business logic
-│   │   ├── ProductService.cs
-│   │   └── ProductCatalogService.cs
-│   └── Orders/                       # Order business logic
-│       ├── OrderService.cs
-│       └── OrderProcessingService.cs
+OElite.Services/                       # Business doain based services
+├── Customers/                    # Customer business logic
+│   ├── CustomerService.cs
+│   └── CustomerProfileService.cs
+├── Products/                     # Product business logic
+│   ├── ProductService.cs
+│   └── ProductCatalogService.cs
+│── Orders/                       # Order business logic
+│   ├── OrderService.cs
+│   └── OrderProcessingService.cs
 ├── Base/                             # Base service classes
 ├── Integration/                      # External service integrations
 └── Background/                       # Background processing services
@@ -536,14 +527,7 @@ OElite.Servers.ProjectName/            # Application servers
 │       ├── Development/
 │       ├── Production/
 │       └── Staging/
-├── Tests/                            # Test projects (organized by domain)
-│   ├── Unit/                         # Unit tests
-│   │   ├── Customers/                # Customer unit tests
-│   │   ├── Products/                 # Product unit tests
-│   │   └── Orders/                   # Order unit tests
-│   ├── Integration/                  # Integration tests
-│   └── Performance/                  # Performance tests
-└── Documentation/                    # Project documentation
+└── Docs/                    # Project documentation
 ```
 
 ### 2. **Domain-Based File Grouping** (NEW STANDARD)
@@ -551,7 +535,7 @@ Group related functionality by business domain for better organization and maint
 
 ```
 // ✅ Good domain-based file grouping
-OElite.Common/Biz/
+OElite.Common/
 ├── Products/                          # All product-related models together
 │   ├── Requests/
 │   │   ├── CreateProductRequest.cs
@@ -581,7 +565,7 @@ OElite.Common/Biz/
 │       ├── OrderAnalyticsReport.cs
 │       └── OrderTrendsReport.cs
 
-OElite.Services/Biz/
+OElite.Services/
 ├── Products/                          # All product services together
 │   ├── ProductService.cs
 │   ├── ProductCatalogService.cs
@@ -591,7 +575,7 @@ OElite.Services/Biz/
 │   ├── OrderProcessingService.cs
 │   └── OrderFulfillmentService.cs
 
-OElite.Data.Repositories/Biz/
+OElite.Data.Repositories/
 ├── Products/                          # All product repositories together
 │   ├── ProductRepository.cs
 │   ├── ProductCategoryRepository.cs
@@ -837,44 +821,7 @@ public class ProductExc : Exception                     // Abbreviated suffix
 public class Error : Exception                          // Too generic
 ```
 
-### 2. **Error Response Models**
-Use descriptive names for error response classes:
 
-```csharp
-// ✅ Correct error response names
-public class ApiErrorResponse
-{
-    public bool Success { get; set; } = false;
-    public ErrorDetails Error { get; set; }
-    public DateTime Timestamp { get; set; } = DateTime.UtcNow;
-    public string RequestId { get; set; }
-}
-
-public class ErrorDetails
-{
-    public string Code { get; set; }
-    public string Message { get; set; }
-    public List<ErrorDetail> Details { get; set; } = new();
-}
-
-public class ErrorDetail
-{
-    public string Field { get; set; }
-    public string Message { get; set; }
-    public object AttemptedValue { get; set; }
-}
-
-public class ValidationErrorResponse : ApiErrorResponse
-{
-    public Dictionary<string, List<string>> ValidationErrors { get; set; } = new();
-}
-
-// ❌ Incorrect error response names
-public class Error                                      // Too generic
-public class ApiError                                   // Missing Response suffix
-public class ErrorResp                                  // Abbreviated
-public class ResponseError                              // Backwards naming
-```
 
 ## Compliance Checklist
 
@@ -908,6 +855,5 @@ public class ResponseError                              // Backwards naming
 - [ ] Consistent naming patterns across related functionality
 - [ ] Names are self-documenting and reduce need for comments
 - [ ] Exception classes are descriptive with proper inheritance
-- [ ] Error response models follow consistent patterns
 
 This comprehensive naming convention system ensures consistency, readability, and maintainability across the entire OElite platform while providing clear guidance for all development activities.

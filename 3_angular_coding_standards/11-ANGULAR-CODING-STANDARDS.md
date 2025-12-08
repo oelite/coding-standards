@@ -6,6 +6,173 @@ This document establishes coding standards for Angular applications in the OElit
 
 **Technology Stack**: Angular 12+, TypeScript, Bootstrap 4, NgBootstrap, SSR, i18n
 
+## 🚨 **MANDATORY: No-Mock-Data Policy**
+
+### **Strict Prohibition of Fake/Mock Data**
+
+**CRITICAL REQUIREMENT**: Angular developers MUST NEVER use fake, mock, or placeholder data values under any circumstances. This is a **mandatory requirement** with zero exceptions.
+
+#### **Forbidden Practices** ❌
+
+```typescript
+// ❌ ABSOLUTELY FORBIDDEN - Fake/mock data
+export class ProductListComponent implements OnInit {
+  products: Product[] = [
+    { id: 1, name: 'Sample Product', price: 99.99 }, // FORBIDDEN
+    { id: 2, name: 'Another Product', price: 149.99 } // FORBIDDEN
+  ];
+
+  ngOnInit() {
+    // ❌ FORBIDDEN - Using mock data as fallback
+    this.productService.getProducts().subscribe(
+      data => this.products = data,
+      error => {
+        console.error('API failed, using mock data');
+        this.products = this.getMockProducts(); // ABSOLUTELY FORBIDDEN
+      }
+    );
+  }
+
+  private getMockProducts(): Product[] {
+    return [{ id: 999, name: 'Mock Product', price: 0 }]; // FORBIDDEN
+  }
+}
+```
+
+```html
+<!-- ❌ FORBIDDEN - Hard-coded mock values in templates -->
+<div class="product-card">
+  <h3>Sample Product Name</h3> <!-- FORBIDDEN -->
+  <p class="price">$99.99</p>     <!-- FORBIDDEN -->
+</div>
+
+<!-- ❌ FORBIDDEN - Mock data in development -->
+<div *ngIf="!products.length">
+  <div class="mock-product">Mock Product for Development</div> <!-- FORBIDDEN -->
+</div>
+```
+
+#### **Required Implementation** ✅
+
+```typescript
+// ✅ CORRECT - Always request data from API endpoints
+@Component({
+  selector: 'oes-product-list',
+  template: `
+    <div *ngIf="loading" class="loading-spinner">
+      <oes-spinner></oes-spinner>
+      <p>Loading products...</p>
+    </div>
+
+    <div *ngIf="error && !loading" class="error-state">
+      <oes-error-message
+        [message]="'Unable to load products. Please check API endpoint configuration.'"
+        [details]="error">
+      </oes-error-message>
+    </div>
+
+    <div *ngIf="products.length > 0 && !loading" class="products-grid">
+      <oes-product-card
+        *ngFor="let product of products"
+        [product]="product">
+      </oes-product-card>
+    </div>
+
+    <div *ngIf="products.length === 0 && !loading && !error" class="empty-state">
+      <p>No products available. Please contact your administrator.</p>
+    </div>
+  `
+})
+export class ProductListComponent implements OnInit {
+  products: Product[] = []; // Always start empty
+  loading = false;
+  error: string | null = null;
+
+  constructor(private productService: ProductService) {}
+
+  ngOnInit() {
+    this.loadProducts();
+  }
+
+  private loadProducts(): void {
+    this.loading = true;
+    this.error = null;
+
+    this.productService.getProducts().subscribe({
+      next: (data) => {
+        this.products = data;
+        this.loading = false;
+      },
+      error: (err) => {
+        this.error = `API Error: ${err.message}`;
+        this.loading = false;
+        // DO NOT use mock data - show error state instead
+      }
+    });
+  }
+}
+```
+
+#### **Task Blocking Protocol** 🛑
+
+When API endpoints are not available or properly configured:
+
+1. **Mark Task as BLOCKED**: Do not proceed with component implementation
+2. **Show User-Friendly Message**: Display clear blocking message
+3. **Document API Requirements**: Specify exactly what endpoints are needed
+4. **Wait for Unblocking**: Only mark task complete when API endpoints are available
+
+```typescript
+// ✅ CORRECT - Blocking pattern when API unavailable
+@Component({
+  selector: 'oes-feature-component',
+  template: `
+    <div class="development-blocked">
+      <oes-warning-icon></oes-warning-icon>
+      <h3>Development Blocked</h3>
+      <p>This component requires the following API endpoints:</p>
+      <ul>
+        <li><code>GET /api/v1.0/products</code> - Product listing</li>
+        <li><code>GET /api/v1.0/categories</code> - Category data</li>
+      </ul>
+      <p>Please provide API endpoint contracts to continue development.</p>
+      <oes-button (click)="retryApiConnection()">Retry API Connection</oes-button>
+    </div>
+  `
+})
+export class FeatureComponent implements OnInit {
+  ngOnInit() {
+    // Check if required APIs are available
+    this.checkApiEndpoints();
+  }
+
+  private checkApiEndpoints(): void {
+    // Validate API endpoint availability
+    // If not available, show blocked state
+  }
+}
+```
+
+#### **Development Workflow** 📋
+
+1. **API-First Development**: Always request API contracts before starting component development
+2. **Error Handling**: Implement proper error states for API failures
+3. **Loading States**: Show loading indicators during API calls
+4. **Empty States**: Handle scenarios when API returns empty data
+5. **User Communication**: Provide clear messages about data availability
+
+#### **Quality Gate Enforcement** ⚡
+
+This policy is enforced by Arc-Agents quality gates. Any code containing mock data will fail quality checks and prevent task completion.
+
+**Validation Rules:**
+- Scan for hard-coded data arrays with realistic-looking values
+- Check for mock/fake data generation functions
+- Validate that all data comes from service calls
+- Ensure proper error handling without mock fallbacks
+
+**Remember**: Mock data in production causes serious confusion and incidents. Always use real API endpoints or show appropriate blocked/error states.
+
 ## 🎯 **Critical UI Implementation Practices**
 
 ### **Mandatory Requirements for All Angular Applications**

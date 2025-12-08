@@ -6,30 +6,48 @@ The OElite platform implements comprehensive dependency injection patterns using
 
 ## Core Service Interface Standards
 
-### 1. **IOEliteService Interface** (Mandatory)
-All business services MUST implement the `IOEliteService` marker interface for consistent identification and registration.
+### 1. **Scoped Service Interface Hierarchy** (Mandatory)
+All business services MUST implement the appropriate scoped service interface for proper lifetime management and dependency injection compliance.
 
+#### **Service Lifetime Interface Hierarchy**
 ```csharp
-// ✅ Required interface implementation
-public class ProductService : IOEliteService
+// ✅ Base marker interface (do not use directly)
+public interface IOEliteService { }
+
+// ✅ Service lifetime-specific interfaces
+public interface ISingletonService : IOEliteService { }  // Stateless services, configuration, caching
+public interface IScopedService : IOEliteService { }     // Request context, tenant context, repositories
+public interface ITransientService : IOEliteService { } // Lightweight services, factory patterns
+```
+
+#### **Service Implementation Examples**
+
+**Scoped Service** (Most Common - Services with Repository Dependencies)
+```csharp
+// ✅ Scoped service - Services that depend on request-scoped resources
+public class ProductService : IScopedService
 {
-    private readonly IProductRepository _productRepository;
-    private readonly ICategoryRepository _categoryRepository;
+    private readonly IProductRepository _productRepository;  // Repository (scoped)
+    private readonly ICategoryRepository _categoryRepository; // Repository (scoped)
+    private readonly ITenantContext _tenantContext;          // Request context (scoped)
     private readonly ILogger<ProductService> _logger;
 
     public ProductService(
         IProductRepository productRepository,
         ICategoryRepository categoryRepository,
+        ITenantContext tenantContext,
         ILogger<ProductService> logger)
     {
         _productRepository = productRepository;
         _categoryRepository = categoryRepository;
+        _tenantContext = tenantContext;
         _logger = logger;
     }
 
     public async Task<Product> CreateProductAsync(CreateProductRequest request)
     {
-        _logger.LogInformation("Creating product: {ProductName}", request.Name);
+        _logger.LogInformation("Creating product: {ProductName} for tenant {TenantId}",
+            request.Name, _tenantContext.CurrentTenantId);
 
         var category = await _categoryRepository.GetByIdAsync(request.CategoryId);
         if (category == null)
@@ -39,17 +57,91 @@ public class ProductService : IOEliteService
         {
             Name = request.Name,
             Price = request.Price,
-            CategoryId = request.CategoryId
+            CategoryId = request.CategoryId,
+            OwnerTenantId = _tenantContext.CurrentTenantId
         };
 
         return await _productRepository.CreateAsync(product);
     }
 }
+```
 
-// ❌ Wrong - Missing IOEliteService interface
+**Singleton Service** (Stateless, Configuration, Caching)
+```csharp
+// ✅ Singleton service - Stateless services without request dependencies
+public class PriceCalculationService : ISingletonService
+{
+    private readonly IMemoryCache _cache;
+    private readonly ILogger<PriceCalculationService> _logger;
+    private readonly PricingConfig _config;
+
+    public PriceCalculationService(
+        IMemoryCache cache,
+        PricingConfig config,
+        ILogger<PriceCalculationService> logger)
+    {
+        _cache = cache;
+        _config = config;
+        _logger = logger;
+    }
+
+    public decimal CalculateDiscountedPrice(decimal originalPrice, decimal discountPercent)
+    {
+        var cacheKey = $"discount:{originalPrice}:{discountPercent}";
+        if (_cache.TryGetValue(cacheKey, out decimal cachedPrice))
+            return cachedPrice;
+
+        var discountedPrice = originalPrice * (1 - discountPercent / 100);
+        _cache.Set(cacheKey, discountedPrice, TimeSpan.FromMinutes(30));
+
+        return discountedPrice;
+    }
+}
+```
+
+**Transient Service** (Lightweight, Factory Patterns)
+```csharp
+// ✅ Transient service - Lightweight services created per operation
+public class EmailNotificationService : ITransientService
+{
+    private readonly IEmailSender _emailSender;
+    private readonly ILogger<EmailNotificationService> _logger;
+
+    public EmailNotificationService(
+        IEmailSender emailSender,
+        ILogger<EmailNotificationService> logger)
+    {
+        _emailSender = emailSender;
+        _logger = logger;
+    }
+
+    public async Task SendWelcomeEmailAsync(string email, string userName)
+    {
+        await _emailSender.SendEmailAsync(email, "Welcome!", $"Welcome {userName}!");
+        _logger.LogInformation("Welcome email sent to {Email}", email);
+    }
+}
+```
+
+#### **❌ Common Mistakes to Avoid**
+```csharp
+// ❌ Wrong - Singleton service consuming scoped dependency
+public class BadPriceService : ISingletonService
+{
+    private readonly IProductRepository _repository; // Repository is scoped!
+    // This will cause dependency injection scope violations
+}
+
+// ❌ Wrong - Missing scoped service interface
 public class ProductService
 {
     // This will not be auto-registered
+}
+
+// ❌ Wrong - Using base interface directly
+public class ProductService : IOEliteService
+{
+    // Should use IScopedService, ISingletonService, or ITransientService
 }
 ```
 
@@ -357,11 +449,12 @@ public class Program
 The hosting extensions automatically configure:
 
 #### **Automatic Service Registration**
-- ✅ **IOEliteService implementations** - All services implementing IOEliteService
+- ✅ **Scoped Service implementations** - All services implementing IScopedService, ISingletonService, ITransientService
 - ✅ **Repository implementations** - All repositories inheriting from DataRepository<T>
 - ✅ **Background services** - All services implementing IHostedService or inheriting from BackgroundService
 - ✅ **Bootstrap providers** - All implementations of IBootstrapProvider
 - ✅ **Interface registration** - All OElite interfaces implemented by services
+- ✅ **Hierarchical interface scanning** - Supports multiple levels of interface inheritance for service discovery
 
 #### **Automatic Configuration**
 - ✅ **Configs-only pattern** - Loads configs/appsettings.init.json + environment overrides
@@ -636,20 +729,33 @@ public class ProductProcessingWorker : BackgroundService, IOEliteService
 
 ### 5. **Service Lifetime Management**
 
-#### **Scoped Lifetime** (Default for Business Services)
+#### **Automatic Lifetime Detection** (Preferred - Using Interface Markers)
 ```csharp
-// ✅ Scoped services (per HTTP request)
+// ✅ Automatic registration based on interface markers
+public class OrderService : IScopedService { }        // Registered as Scoped automatically
+public class CacheService : ISingletonService { }     // Registered as Singleton automatically
+public class EmailService : ITransientService { }     // Registered as Transient automatically
+
+// ✅ Services are automatically discovered and registered with appropriate lifetimes
+// No manual registration needed - OElite.Common.Hosting handles this automatically
+```
+
+#### **Manual Registration** (When Interface Markers Can't Be Used)
+
+**Scoped Lifetime** (Per HTTP Request - Most Business Services)
+```csharp
+// ✅ Manual scoped registration for services that can't use IScopedService
 builder.Services.AddScoped<IOrderService, OrderService>();
 builder.Services.AddScoped<IProductService, ProductService>();
 builder.Services.AddScoped<ICustomerService, CustomerService>();
 
-// Repositories are typically scoped
-builder.Services.AddScoped<IOrderRepository, OrderRepository>();
+// Repositories are automatically registered as scoped
+// builder.Services.AddScoped<IOrderRepository, OrderRepository>(); // Not needed - automatic
 ```
 
-#### **Singleton Lifetime** (For Expensive Resources)
+**Singleton Lifetime** (Application Lifetime - Expensive Resources)
 ```csharp
-// ✅ Singleton services (application lifetime)
+// ✅ Manual singleton registration for services that can't use ISingletonService
 builder.Services.AddSingleton<IMemoryCache, MemoryCache>();
 builder.Services.AddSingleton<IConnectionMultiplexer>(serviceProvider =>
 {
@@ -661,11 +767,39 @@ builder.Services.AddSingleton<IConnectionMultiplexer>(serviceProvider =>
 builder.Services.AddSingleton<AppConfig>();
 ```
 
-#### **Transient Lifetime** (For Lightweight Objects)
+**Transient Lifetime** (New Instance Per Request - Lightweight Objects)
 ```csharp
-// ✅ Transient services (new instance each time)
+// ✅ Manual transient registration for services that can't use ITransientService
 builder.Services.AddTransient<IEmailSender, EmailSender>();
 builder.Services.AddTransient<IValidator<CreateProductRequest>, CreateProductRequestValidator>();
+```
+
+#### **Dependency Injection Scope Validation**
+The refined DI system automatically validates service lifetimes at application startup:
+
+```csharp
+// ✅ Valid - Singleton service with singleton dependencies
+public class ConfigService : ISingletonService
+{
+    private readonly IMemoryCache _cache;           // Singleton ✅
+    private readonly AppConfig _config;             // Singleton ✅
+    public ConfigService(IMemoryCache cache, AppConfig config) { }
+}
+
+// ✅ Valid - Scoped service with scoped/singleton dependencies
+public class OrderService : IScopedService
+{
+    private readonly IOrderRepository _repository;  // Scoped ✅
+    private readonly IMemoryCache _cache;           // Singleton ✅
+    public OrderService(IOrderRepository repository, IMemoryCache cache) { }
+}
+
+// ❌ Invalid - Will fail at startup with clear error message
+public class BadService : ISingletonService
+{
+    private readonly IOrderRepository _repository;  // Scoped ❌ - Scope violation!
+    // Error: "Cannot consume scoped service 'IOrderRepository' from singleton 'BadService'"
+}
 ```
 
 ## Advanced Dependency Injection Patterns
@@ -1008,19 +1142,23 @@ public class DatabaseService : IOEliteService, IDisposable
 
 ## Compliance Checklist
 
-### Required Patterns
-- [ ] All services implement `IOEliteService` interface
+### Required Patterns - Refined Dependency Injection
+- [ ] **NEW**: All services implement appropriate scoped service interfaces (`IScopedService`, `ISingletonService`, `ITransientService`)
+- [ ] **NEW**: Services with repository dependencies implement `IScopedService` (prevents captive dependencies)
+- [ ] **NEW**: Stateless services without request context implement `ISingletonService`
+- [ ] **NEW**: Lightweight services and factory patterns implement `ITransientService`
 - [ ] All repositories inherit from `DataRepository<T>` and implement `IDataRepository<T>`
 - [ ] All repositories receive `DbCentre` as constructor dependency
-- [ ] **NEW**: Applications use OElite.Common.Hosting.AspNetCore extensions (OeApp.RunWebAppAsync, OeApp.RunHybridAppAsync)
-- [ ] **NEW**: Configuration classes inherit from `BaseAppConfig` and implement `IAppConfig`
-- [ ] **NEW**: Bootstrap providers implement `IBootstrapProvider` for initialization logic
-- [ ] Proper service lifetime management (Scoped/Singleton/Transient)
+- [ ] Applications use OElite.Common.Hosting.AspNetCore extensions (OeApp.RunWebAppAsync, OeApp.RunHybridAppAsync)
+- [ ] Configuration classes inherit from `BaseAppConfig` and implement `IAppConfig`
+- [ ] Bootstrap providers implement `IBootstrapProvider` for initialization logic
+- [ ] **NEW**: No manual service registration needed for services implementing scoped interfaces (automatic discovery)
 - [ ] Exception handling follows OElite patterns
 - [ ] Logging is injected and used appropriately
 - [ ] Unit tests mock all dependencies properly
-- [ ] **NEW**: Caching uses OElite.Restme.Hosting adapters (IDistributedCache/IMemoryCache) OR direct IRestme
-- [ ] **NEW**: Service registration includes OElite.Restme.Hosting extensions (AddRestmeRedisCache, AddRestmeMemoryCache, etc.)
+- [ ] **MANDATORY**: Include `using OElite.Services;` directive in files using scoped service interfaces
+- [ ] Caching uses OElite.Restme.Hosting adapters (IDistributedCache/IMemoryCache) OR direct IRestme
+- [ ] Service registration includes OElite.Restme.Hosting extensions (AddRestmeRedisCache, AddRestmeMemoryCache, etc.)
 
 ### Performance Requirements
 - [ ] Expensive services use lazy loading where appropriate
@@ -1031,14 +1169,24 @@ public class DatabaseService : IOEliteService, IDisposable
 - [ ] **NEW**: Multi-tier caching strategy (distributed + memory) where appropriate
 - [ ] Async/await patterns are used consistently
 
-### Quality Standards
+### Quality Standards - Refined Dependency Injection
 - [ ] No service locator anti-pattern usage
 - [ ] Dependencies are injected through constructors only
 - [ ] Services have single responsibility
 - [ ] Repository methods are specific and focused
 - [ ] Configuration is strongly-typed and validated
 - [ ] Error handling is comprehensive and consistent
+- [ ] **NEW**: Services implement appropriate scoped interfaces based on their dependencies
+- [ ] **NEW**: Dependency injection scope violations are caught at application startup
+- [ ] **NEW**: Hierarchical interface inheritance is properly supported for service discovery
 - [ ] **NEW**: Caching implementations use OElite.Restme.Hosting adapters for consistency
 - [ ] **NEW**: Grace period and background refresh patterns are properly implemented
+- [ ] **NEW**: No captive dependency anti-patterns (Singleton services consuming Scoped dependencies)
 
-This dependency injection framework ensures consistent, testable, and maintainable service architecture across the entire OElite platform.
+### Scope Violation Prevention
+- [ ] **CRITICAL**: Singleton services only depend on other Singleton services
+- [ ] **CRITICAL**: Scoped services can depend on Scoped and Singleton services
+- [ ] **CRITICAL**: Transient services can depend on any service lifetime
+- [ ] **CRITICAL**: Application startup validates all service lifetimes and fails fast with clear error messages
+
+This refined dependency injection framework ensures consistent, testable, maintainable service architecture with proper lifetime management and scope violation prevention across the entire OElite platform.

@@ -26,10 +26,8 @@ public class ProductsController : ControllerBase
     }
 
     [HttpGet]
-    [ProducesResponseType(typeof(List<ProductResponse>), 200)]
-    [ProducesResponseType(400)]
-    [ProducesResponseType(500)]
-    public async Task<ActionResult<List<ProductResponse>>> GetProducts([FromQuery] GetProductsRequest request)
+    [TransformedResponse(typeof(ProductCollection), 200)]
+    public async Task<ProductCollection> GetProducts([FromQuery] ProductQuery request)
     {
         var products = await _productService.GetProductsAsync(request);
 
@@ -42,16 +40,14 @@ public class ProductsController : ControllerBase
     }
 
     [HttpPost]
-    [ProducesResponseType(typeof(ApiResponse<ProductResponse>), 201)]
-    [ProducesResponseType(typeof(ApiErrorResponse), 400)]
-    [ProducesResponseType(typeof(ApiErrorResponse), 409)]
-    public async Task<ActionResult<ProductResponse>> CreateProduct([FromBody] CreateProductRequest request)
+    [TransformedResponse(typeof(Product), 201)]
+    public async Task<Product> CreateProduct([FromBody] CreateProductRequest request)
     {
         var product = await _productService.CreateProductAsync(request);
-        var response = new ProductResponse(product);
 
-        // Returns standardized success response with 201 status
-        return CreatedAtAction(nameof(GetProduct), new { id = product.Id }, response);
+        // OEliteApiOutputFormatter handles response wrapping and transformation
+        // CreatedAtAction routing is handled automatically
+        return product;
     }
 }
 ```
@@ -68,22 +64,7 @@ The `OEliteApiOutputFormatter` automatically wraps responses in a consistent str
     "categoryId": "507f1f77bcf86cd799439012"
 }
 
-// ✅ Error Response Format (handled by middleware)
-{
-    "error": {
-        "message": "One or more validation errors occurred",
-        "details": [
-            {
-                "field": "name",
-                "message": "Product name is required"
-            },
-            {
-                "field": "price",
-                "message": "Price must be greater than 0"
-            }
-        ]
-    }
-}
+
 
 // ✅ Collection Response Format
 {
@@ -103,7 +84,7 @@ The `OEliteApiOutputFormatter` automatically wraps responses in a consistent str
 All API-related models MUST be organized using the OElite domain-based folder structure where each business domain contains all related components:
 
 ```
-OElite.Common/Biz/
+OElite.Common/
 ├── Products/                  # Product domain
 │   ├── Requests/              # Product API request models
 │   │   ├── CreateProductRequest.cs
@@ -299,7 +280,7 @@ public class ProductResponse
     public ProductResponse() { }
 }
 
-// ✅ ModelTransformation class (in OElite.Common/Biz/Products/ModelTransformation/)
+// ✅ ModelTransformation class (in OElite.Common/Products/ModelTransformation/)
 public class ProductModelTransformer : IModelTransformer<Product, ProductResponse>
 {
     private readonly ICategoryRepository _categoryRepository;
@@ -438,7 +419,7 @@ public class ProductSummaryResponse
 Use model transformation services organized by business domain for complex mapping scenarios:
 
 ```csharp
-// ✅ Domain-specific model transformation service (OElite.Common/Biz/Products/ModelTransformation/)
+// ✅ Domain-specific model transformation service (OElite.Common/Products/ModelTransformation/)
 public class ProductModelTransformer : IModelTransformer<Product, ProductResponse>
 {
     private readonly ICategoryRepository _categoryRepository;
@@ -494,14 +475,14 @@ public class ProductsController : ControllerBase
     }
 
     [HttpGet("{id}")]
-    public async Task<ActionResult<ProductResponse>> GetProduct(string id)
+    [TransformedResponse(typeof(Product), 200)]
+    public async Task<Product> GetProduct(string id)
     {
         var product = await _productService.GetProductAsync(id);
         if (product == null)
-            return NotFound();
+            throw new NotFoundException($"Product with ID {id} not found");
 
-        var response = await _transformer.TransformAsync(product);
-        return Ok(response);
+        return product; // OEliteApiOutputFormatter handles transformation
     }
 }
 ```
@@ -680,9 +661,6 @@ All controller actions MUST have comprehensive documentation:
 [Route("api/v{version:apiVersion}/[controller]")]
 [ApiVersion("1.0")]
 [Produces("application/json")]
-[ProducesResponseType(typeof(ApiErrorResponse), 401)]
-[ProducesResponseType(typeof(ApiErrorResponse), 403)]
-[ProducesResponseType(typeof(ApiErrorResponse), 500)]
 public class ProductsController : ControllerBase
 {
     private readonly ProductService _productService;
@@ -713,12 +691,11 @@ public class ProductsController : ControllerBase
     /// <response code="200">Returns the requested page of products</response>
     /// <response code="400">Invalid request parameters</response>
     [HttpGet]
-    [ProducesResponseType(typeof(ApiResponse<PaginatedResponse<ProductSummaryResponse>>), 200)]
-    [ProducesResponseType(typeof(ApiErrorResponse), 400)]
-    public async Task<ActionResult<PaginatedResponse<ProductSummaryResponse>>> GetProducts([FromQuery] GetProductsRequest request)
+    [TransformedResponse(typeof(ProductCollection), 200)]
+    public async Task<ProductCollection> GetProducts([FromQuery] ProductQuery request)
     {
         var result = await _productService.GetProductsAsync(request);
-        return Ok(result);
+        return result; // OEliteApiOutputFormatter handles response wrapping
     }
 
     /// <summary>
@@ -738,16 +715,15 @@ public class ProductsController : ControllerBase
     /// <response code="200">Returns the requested product details</response>
     /// <response code="404">Product not found</response>
     [HttpGet("{id}")]
-    [ProducesResponseType(typeof(ApiResponse<ProductResponse>), 200)]
-    [ProducesResponseType(typeof(ApiErrorResponse), 404)]
-    public async Task<ActionResult<ProductResponse>> GetProduct(
+    [TransformedResponse(typeof(Product), 200)]
+    public async Task<Product> GetProduct(
         [FromRoute] [SwaggerParameter("Product ID", Required = true)] string id)
     {
         var product = await _productService.GetProductAsync(id);
         if (product == null)
-            return NotFound($"Product with ID {id} not found");
+            throw new NotFoundException($"Product with ID {id} not found");
 
-        return Ok(product);
+        return product; // OEliteApiOutputFormatter handles response wrapping and transformation
     }
 
     /// <summary>
@@ -777,10 +753,8 @@ public class ProductsController : ControllerBase
     /// <response code="400">Invalid product data</response>
     /// <response code="409">Product with the same name already exists</response>
     [HttpPost]
-    [ProducesResponseType(typeof(ApiResponse<ProductResponse>), 201)]
-    [ProducesResponseType(typeof(ApiErrorResponse), 400)]
-    [ProducesResponseType(typeof(ApiErrorResponse), 409)]
-    public async Task<ActionResult<ProductResponse>> CreateProduct([FromBody] CreateProductRequest request)
+    [TransformedResponse(typeof(Product), 201)]
+    public async Task<Product> CreateProduct([FromBody] CreateProductRequest request)
     {
         var product = await _productService.CreateProductAsync(request);
         return CreatedAtAction(nameof(GetProduct), new { id = product.Id }, product);
@@ -788,185 +762,7 @@ public class ProductsController : ControllerBase
 }
 ```
 
-## Error Handling and Status Codes
 
-### 1. **Standardized Error Responses**
-Implement consistent error handling across all endpoints:
-
-```csharp
-// ✅ Global exception handling middleware
-public class ApiExceptionMiddleware
-{
-    private readonly RequestDelegate _next;
-    private readonly ILogger<ApiExceptionMiddleware> _logger;
-
-    public ApiExceptionMiddleware(RequestDelegate next, ILogger<ApiExceptionMiddleware> logger)
-    {
-        _next = next;
-        _logger = logger;
-    }
-
-    public async Task InvokeAsync(HttpContext context)
-    {
-        try
-        {
-            await _next(context);
-        }
-        catch (Exception ex)
-        {
-            await HandleExceptionAsync(context, ex);
-        }
-    }
-
-    private async Task HandleExceptionAsync(HttpContext context, Exception exception)
-    {
-        _logger.LogError(exception, "An unhandled exception occurred");
-
-        var response = context.Response;
-        response.ContentType = "application/json";
-
-        var errorResponse = exception switch
-        {
-            ValidationException vex => new ApiErrorResponse
-            {
-                Success = false,
-                Error = new ErrorDetails
-                {
-                    Code = "VALIDATION_ERROR",
-                    Message = "One or more validation errors occurred",
-                    Details = vex.Errors.Select(e => new ErrorDetail
-                    {
-                        Field = e.PropertyName,
-                        Message = e.ErrorMessage
-                    }).ToList()
-                },
-                Timestamp = DateTime.UtcNow,
-                RequestId = context.TraceIdentifier
-            },
-            NotFoundException nfex => new ApiErrorResponse
-            {
-                Success = false,
-                Error = new ErrorDetails
-                {
-                    Code = "NOT_FOUND",
-                    Message = nfex.Message
-                },
-                Timestamp = DateTime.UtcNow,
-                RequestId = context.TraceIdentifier
-            },
-            BusinessException bex => new ApiErrorResponse
-            {
-                Success = false,
-                Error = new ErrorDetails
-                {
-                    Code = "BUSINESS_RULE_VIOLATION",
-                    Message = bex.Message
-                },
-                Timestamp = DateTime.UtcNow,
-                RequestId = context.TraceIdentifier
-            },
-            _ => new ApiErrorResponse
-            {
-                Success = false,
-                Error = new ErrorDetails
-                {
-                    Code = "INTERNAL_SERVER_ERROR",
-                    Message = "An internal server error occurred"
-                },
-                Timestamp = DateTime.UtcNow,
-                RequestId = context.TraceIdentifier
-            }
-        };
-
-        response.StatusCode = exception switch
-        {
-            ValidationException => 400,
-            NotFoundException => 404,
-            BusinessException => 400,
-            UnauthorizedAccessException => 401,
-            _ => 500
-        };
-
-        var jsonResponse = JsonSerializer.Serialize(errorResponse, new JsonSerializerOptions
-        {
-            PropertyNamingPolicy = JsonNamingPolicy.CamelCase
-        });
-
-        await response.WriteAsync(jsonResponse);
-    }
-}
-```
-
-### 2. **HTTP Status Code Standards**
-Use appropriate HTTP status codes consistently:
-
-```csharp
-// ✅ Proper status code usage in controllers
-[ApiController]
-public class OrdersController : ControllerBase
-{
-    // 200 OK - Successful GET requests
-    [HttpGet]
-    public async Task<ActionResult<List<OrderResponse>>> GetOrders()
-    {
-        var orders = await _orderService.GetOrdersAsync();
-        return Ok(orders); // 200 OK
-    }
-
-    // 201 Created - Successful resource creation
-    [HttpPost]
-    public async Task<ActionResult<OrderResponse>> CreateOrder([FromBody] CreateOrderRequest request)
-    {
-        var order = await _orderService.CreateOrderAsync(request);
-        return CreatedAtAction(nameof(GetOrder), new { id = order.Id }, order); // 201 Created
-    }
-
-    // 204 No Content - Successful deletion or update with no response body
-    [HttpDelete("{id}")]
-    public async Task<ActionResult> DeleteOrder(string id)
-    {
-        await _orderService.DeleteOrderAsync(id);
-        return NoContent(); // 204 No Content
-    }
-
-    // 400 Bad Request - Validation errors
-    [HttpPut("{id}")]
-    public async Task<ActionResult<OrderResponse>> UpdateOrder(string id, [FromBody] UpdateOrderRequest request)
-    {
-        if (!ModelState.IsValid)
-            return BadRequest(ModelState); // 400 Bad Request
-
-        var order = await _orderService.UpdateOrderAsync(id, request);
-        return Ok(order); // 200 OK
-    }
-
-    // 404 Not Found - Resource doesn't exist
-    [HttpGet("{id}")]
-    public async Task<ActionResult<OrderResponse>> GetOrder(string id)
-    {
-        var order = await _orderService.GetOrderAsync(id);
-        if (order == null)
-            return NotFound($"Order with ID {id} not found"); // 404 Not Found
-
-        return Ok(order); // 200 OK
-    }
-
-    // 409 Conflict - Business rule violations
-    [HttpPost("{id}/cancel")]
-    public async Task<ActionResult> CancelOrder(string id)
-    {
-        try
-        {
-            await _orderService.CancelOrderAsync(id);
-            return NoContent(); // 204 No Content
-        }
-        catch (BusinessException ex)
-        {
-            return Conflict(ex.Message); // 409 Conflict
-        }
-    }
-}
-```
 
 ## Performance and Caching Patterns
 
@@ -984,24 +780,23 @@ public class CategoriesController : ControllerBase
     // Cache categories for 5 minutes
     [HttpGet]
     [ResponseCache(Duration = 300, VaryByQueryKeys = new[] { "includeProducts" })]
-    [ProducesResponseType(typeof(ApiResponse<List<CategoryResponse>>), 200)]
-    public async Task<ActionResult<List<CategoryResponse>>> GetCategories([FromQuery] bool includeProducts = false)
+    [TransformedResponse(typeof(CategoryCollection), 200)]
+    public async Task<CategoryCollection> GetCategories([FromQuery] bool includeProducts = false)
     {
         var categories = await _categoryService.GetCategoriesAsync(includeProducts);
-        return Ok(categories);
+        return categories; // OEliteApiOutputFormatter handles response wrapping
     }
 
     // Don't cache individual category lookups (might change frequently)
     [HttpGet("{id}")]
-    [ProducesResponseType(typeof(ApiResponse<CategoryResponse>), 200)]
-    [ProducesResponseType(typeof(ApiErrorResponse), 404)]
-    public async Task<ActionResult<CategoryResponse>> GetCategory(string id)
+    [TransformedResponse(typeof(Category), 200)]
+    public async Task<Category> GetCategory(string id)
     {
         var category = await _categoryService.GetCategoryAsync(id);
         if (category == null)
-            return NotFound();
+            throw new NotFoundException($"Category with ID {id} not found");
 
-        return Ok(category);
+        return category; // OEliteApiOutputFormatter handles response wrapping
     }
 }
 ```
@@ -1067,7 +862,6 @@ public class PaginationMetadata
 - [ ] Request/Response models are in appropriate domain folders
 - [ ] All models have comprehensive validation attributes
 - [ ] Swagger documentation is complete with examples
-- [ ] Error handling follows standardized patterns
 - [ ] Authentication and authorization are properly implemented
 
 ### Documentation Standards

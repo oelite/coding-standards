@@ -383,7 +383,235 @@ public class Order : BaseEntity
 
 ## MongoDB Integration Patterns
 
-### 1. **Complex Data Types**
+### 1. **MongoDB-Free Application Layer** ⭐ **NEW in OElite.Restme.MongoDb v2.1.0**
+
+The OElite.Restme.MongoDb package provides complete abstraction from MongoDB specifics, ensuring your application code remains vendor-neutral and testable.
+
+#### **IMongoDbCollection Interface Usage**
+```csharp
+// ✅ MongoDB-free collection operations with typed entities
+public async Task<List<Product>> GetActiveProductsAsync()
+{
+    // Get MongoDB-free collection interface
+    var productsCollection = DbCentre.GetMongoDbCollection<Product>();
+
+    // Lambda expressions - no MongoDB types needed
+    var activeProducts = await productsCollection.FindAsync(p => p.Status == EntityStatus.Active);
+
+    // Dictionary filters for dynamic queries
+    var filter = new Dictionary<string, object>
+    {
+        ["status"] = (int)EntityStatus.Active,
+        ["price"] = new Dictionary<string, object> { ["$gte"] = 10.00 }
+    };
+
+    var expensiveProducts = await productsCollection.FindAsync(filter);
+    return activeProducts;
+}
+
+// ✅ Aggregation operations with pure .NET types
+public async Task<List<(string Category, int Count)>> GetCategoryStatsAsync()
+{
+    var productsCollection = DbCentre.GetMongoDbCollection("products");
+
+    // Complex aggregation pipeline using standard Dictionary<string, object>
+    var pipeline = new Dictionary<string, object>[]
+    {
+        new Dictionary<string, object> {
+            ["$match"] = new Dictionary<string, object> { ["status"] = 1 }
+        },
+        new Dictionary<string, object> {
+            ["$group"] = new Dictionary<string, object> {
+                ["_id"] = "$categoryName",
+                ["count"] = new Dictionary<string, object> { ["$sum"] = 1 }
+            }
+        }
+    };
+
+    // Returns List<Dictionary<string, object>> - no MongoDB types exposed
+    var results = await productsCollection.AggregateAsync(pipeline);
+
+    return results.Select(doc => (
+        Category: (string)doc["_id"],
+        Count: (int)doc["count"]
+    )).ToList();
+}
+```
+
+#### **MongoDbDocument API** (Replaces BsonDocument)
+```csharp
+// ✅ Direct document operations without MongoDB dependencies
+public async Task<List<MongoDbDocument>> SearchProductDocuments(string searchTerm)
+{
+    // Get raw MongoDB-free collection for document operations
+    var collection = DbCentre.GetMongoDbCollection("products");
+
+    // Create filter using MongoDbDocument (replaces BsonDocument)
+    var filter = new MongoDbDocument
+    {
+        ["name"] = new MongoDbDocument { ["$regex"] = searchTerm, ["$options"] = "i" },
+        ["status"] = 1,
+        ["price"] = new MongoDbDocument { ["$gte"] = 5.00 }
+    };
+
+    // Returns List<MongoDbDocument> - pure .NET types, no MongoDB dependencies
+    var results = await collection.FindAsync(filter);
+    return results;
+}
+
+// ✅ Update operations with MongoDbDocument
+public async Task UpdateProductPricesAsync(string categoryId, decimal multiplier)
+{
+    var collection = DbCentre.GetMongoDbCollection("products");
+
+    var filter = new MongoDbDocument { ["categoryId"] = categoryId };
+    var update = new MongoDbDocument
+    {
+        ["$mul"] = new MongoDbDocument { ["price"] = multiplier },
+        ["$inc"] = new MongoDbDocument { ["updateCount"] = 1 },
+        ["$currentDate"] = new MongoDbDocument { ["lastModified"] = true }
+    };
+
+    await collection.UpdateManyAsync(filter, update);
+}
+```
+
+#### **Architecture Benefits of MongoDB-Free Pattern**
+- 🎯 **Zero Vendor Lock-in**: Switch databases without changing application logic
+- 🧪 **Enhanced Testability**: Mock with standard .NET interfaces and collections
+- 📚 **Clean Domain Models**: Business logic free from infrastructure concerns
+- 🔄 **Future-Proof**: Database implementation changes don't affect application code
+- 👥 **Developer Experience**: Team members don't need MongoDB expertise
+
+#### **Migration from Direct MongoDB Usage**
+```csharp
+// ❌ Before: Direct MongoDB dependencies
+using MongoDB.Driver;  // ❌ Direct MongoDB dependency
+using MongoDB.Bson;    // ❌ Exposes internal types
+
+public async Task<List<BsonDocument>> GetReports()  // ❌ MongoDB types in return signature
+{
+    var collection = _database.GetCollection<BsonDocument>("reports");
+    var pipeline = new BsonDocument[]  // ❌ MongoDB-specific pipeline format
+    {
+        new BsonDocument("$match", new BsonDocument("status", "active"))
+    };
+
+    var cursor = await collection.AggregateAsync(pipeline);
+    return await cursor.ToListAsync();  // ❌ Returns MongoDB-specific types
+}
+
+// ✅ After: MongoDB-free with OElite.Restme.MongoDb
+// ✅ Zero MongoDB dependencies - clean application code
+public async Task<List<(string Category, int Count)>> GetReports()  // ✅ Pure .NET return types
+{
+    var reportsCollection = DbCentre.GetMongoDbCollection("reports");
+
+    var pipeline = new Dictionary<string, object>[]  // ✅ Standard .NET collections
+    {
+        new Dictionary<string, object> {
+            ["$match"] = new Dictionary<string, object> { ["status"] = "active" }
+        },
+        new Dictionary<string, object> {
+            ["$group"] = new Dictionary<string, object> {
+                ["_id"] = "$category",
+                ["count"] = new Dictionary<string, object> { ["$sum"] = 1 }
+            }
+        }
+    };
+
+    // ✅ Returns List<Dictionary<string, object>> - no MongoDB types
+    var results = await reportsCollection.AggregateAsync(pipeline);
+
+    // ✅ Application code works with standard .NET types
+    return results.Select(doc => (
+        Category: (string)doc["_id"],
+        Count: (int)doc["count"]
+    )).ToList();
+}
+```
+
+### 2. **Enhanced MongoQuery Pattern**
+```csharp
+// ✅ High-performance LINQ operations with MongoQuery
+public class ProductRepository : DataRepository
+{
+    public MongoQuery<Product> Products => new(_adapter.GetCollection<Product>());
+
+    // Enhanced LINQ queries with extension method support
+    public async Task<List<Product>> GetExpensiveProductsAsync(decimal minPrice)
+    {
+        return await Products
+            .Where(p => p.Price > minPrice)
+            .Where(p => p.Name.IsNotNullOrEmpty()) // Extension method support
+            .OrderByDescending(p => p.Price)
+            .Take(10)
+            .ToListAsync();
+    }
+
+    // High-performance updates with fluent API (2-3x faster than traditional updates)
+    public async Task UpdateProductAsync(DbObjectId productId, string newName, decimal newPrice)
+    {
+        await Products
+            .Where(p => p.Id == productId)
+            .UpdateAsync(u => u
+                .Set(p => p.Name, newName)
+                .Set(p => p.Price, newPrice)
+                .Inc(p => p.ViewCount, 1)
+                .CurrentDate(p => p.UpdatedAt));
+    }
+
+    // Advanced aggregation operations with expression-to-pipeline conversion
+    public async Task<List<ProductSummary>> GetProductSummariesAsync()
+    {
+        return await Products
+            .Where(p => p.Status == EntityStatus.Active)
+            .SelectAsync(p => new ProductSummary
+            {
+                Name = p.Name,
+                Price = p.Price,
+                CategoryName = p.Category.Name // Nested property support
+            });
+    }
+
+    // Performance-optimized collection fetching
+    public async Task<ProductCollection> GetActiveProductsAsync(int pageIndex, int pageSize)
+    {
+        return await Products
+            .Where(p => p.Status == EntityStatus.Active)
+            .OrderBy(p => p.Name)
+            .FetchAsync<Product, ProductCollection>(pageIndex, pageSize, returnTotalCount: false);
+    }
+}
+```
+
+### 3. **Region-Aware Sharding & GDPR Compliance**
+```csharp
+// ✅ Automatic region awareness through BaseEntity
+[DbCollection("customers", DbNamingConvention.SnakeCase)]
+public class Customer : BaseEntity
+{
+    public string Email { get; set; } = string.Empty;
+    public string FirstName { get; set; } = string.Empty;
+
+    // Region field automatically inherited from BaseEntity
+    // Controls geographic data placement for GDPR compliance
+    // public string? Region { get; set; } // from BaseEntity
+}
+
+// Entity automatically placed in correct geographic zone
+var customer = new Customer
+{
+    Email = "user@example.com",
+    FirstName = "John",
+    Region = "EU" // Ensures data stays in European jurisdiction
+};
+
+// Supported regions: US, CA, EU, UK, AU, JP, IN, SG, etc.
+// Automatic zone sharding based on region field
+```
+
+### 4. **Complex Data Types**
 Handle complex MongoDB data types properly:
 
 ```csharp

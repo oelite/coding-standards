@@ -7,7 +7,7 @@ This document establishes the coding standards for entity collections in OElite 
 ## Collection Type Selection
 
 ### **BaseEntityCollection<T>** - For BaseEntity Objects
-Use `BaseEntityCollection<T>` for entities that inherit from `BaseEntity`:
+Use `BaseEntityCollection<T>` to create custom collection classes for entities that inherit from `BaseEntity`:
 
 ```csharp
 // ✅ REQUIRED - For BaseEntity-derived classes
@@ -22,9 +22,11 @@ public class ProductCollection : BaseEntityCollection<Product>
     public decimal TotalValue => this.Sum(p => p.Price * p.Stock);
 }
 ```
+Place the custom collection classes into the same class files where their entity classes are.
+
 
 ### **DataCollection<T>** - For Non-BaseEntity Objects
-Use `DataCollection<T>` for DTOs, responses, and other classes that don't inherit from `BaseEntity`:
+Use `DataCollection<T>` to create custom collections for DTOs, responses, and other classes that don't inherit from `BaseEntity`:
 
 ```csharp
 // ✅ REQUIRED - For DTOs and non-BaseEntity classes
@@ -40,6 +42,7 @@ public class ProductSearchResultCollection : DataCollection<ProductSearchResultD
     public int FeaturedProductsCount => this.Count(p => p.IsFeatured);
 }
 ```
+Place the custom collection classes into the same class files where their DTOs classes are.
 
 ## Core Requirements
 
@@ -71,6 +74,58 @@ public class OrderSummaryDtoCollection : DataCollection<OrderSummaryDto>
 {
     public decimal TotalOrderValue => this.Sum(order => order.TotalAmount);
     public int PendingOrdersCount => this.Count(order => order.Status == "Pending");
+}
+```
+Place the custom collection classes into the same class files where their T type classes are.
+
+### 1.1 **Collections Must NOT Have [DbField] Attributes** (Critical Rule)
+
+Collections should **NOT** have `[DbField]` attributes as these are specifically designed for entities, not collections:
+
+```csharp
+// ❌ WRONG - Collection with [DbField] attributes - NEVER DO THIS
+public class ProductCollection : BaseEntityCollection<Product>
+{
+    [DbField("totalItems")]      // ❌ Collections don't have database fields
+    public int TotalItems { get; set; }
+    
+    [DbField("currentPage")]     // ❌ Collections don't have database fields
+    public int CurrentPage { get; set; }
+    
+    [DbField("pageSize")]        // ❌ Collections don't have database fields
+    public int PageSize { get; set; }
+    
+    [DbField("hasNextPage")]     // ❌ Collections don't have database fields
+    public bool HasNextPage { get; set; }
+    
+    [DbField("hasPreviousPage")] // ❌ Collections don't have database fields
+    public bool HasPreviousPage { get; set; }
+}
+```
+
+**Collections inherit all necessary metadata properties from their base classes:**
+- `TotalRecordsCount` - inherited from base collection class
+- `MetaData` - inherited from base collection class for additional metadata
+- All collection methods and properties are inherited from the base class
+
+### 1.2 **Proper Collection Base Class Selection** (Mandatory)
+
+Always use the correct base collection class:
+
+- **BaseEntityCollection<T>** for types that inherit from BaseEntity (most entity collections)
+- **DataCollection<T>** for types that don't inherit from BaseEntity (DTOs, value objects)
+
+```csharp
+// ✅ CORRECT - Product inherits from BaseEntity, so use BaseEntityCollection<T>
+public class ProductCollection : BaseEntityCollection<Product>
+{
+    public decimal TotalValue => this.Sum(p => p.Price * p.Stock);
+}
+
+// ✅ CORRECT - ProductDto doesn't inherit from BaseEntity, so use DataCollection<T>
+public class ProductDtoCollection : DataCollection<ProductDto>
+{
+    public decimal TotalValue => this.Sum(p => p.Price * p.Stock);
 }
 ```
 
@@ -110,7 +165,7 @@ public class ProductsController : CrudControllerBase<Product, ProductCollection,
 {
     // ✅ CORRECT - BaseEntityCollection<T> for BaseEntity objects
     [HttpGet]
-    [ProducesResponseType(typeof(ProductCollection), 200)]
+    [TransformedResponse(typeof(ProductCollection), 200)]
     public async Task<ProductCollection> GetProductsAsync([FromQuery] ProductQuery query)
     {
         var results = await _productService.GetProductsAsync(query);
@@ -123,7 +178,7 @@ public class ProductsController : CrudControllerBase<Product, ProductCollection,
 
     // ✅ CORRECT - Single entity return (no collection needed)
     [HttpGet("{id}")]
-    [ProducesResponseType(typeof(Product), 200)]
+    [TransformedResponse(typeof(Product), 200)]
     public async Task<Product> GetProductAsync(string id)
     {
         return await _productService.GetByIdAsync(id);
@@ -136,7 +191,7 @@ public class CartController : ControllerBase
 {
     // ✅ CORRECT - DataCollection<T> for DTO objects
     [HttpGet("items")]
-    [ProducesResponseType(typeof(CartItemDtoCollection), 200)]
+    [TransformedResponse(typeof(CartItemDtoCollection), 200)]
     public async Task<CartItemDtoCollection> GetCartItemsAsync([FromQuery] CartQuery query)
     {
         var cartItems = await _cartService.GetCartItemsAsync(query);
@@ -405,7 +460,7 @@ public async Task<PagedResult<Product>> GetProducts([FromQuery] ProductQuery que
 
 // ✅ NEW - Strongly typed collection
 [HttpGet]
-[ProducesResponseType(typeof(ProductCollection), 200)]
+[TransformedResponse(typeof(ProductCollection), 200)]
 public async Task<ProductCollection> GetProducts([FromQuery] ProductQuery query)
 {
     return await _service.GetProductsAsync(query);
@@ -471,7 +526,7 @@ public class ProductSearchCollection : BaseEntityCollection<Product>
 - All entity collections MUST inherit from `BaseEntityCollection<T>`
 - Entity collections MUST be strongly typed (not generic)
 - Controller methods returning collections MUST use entity collection types
-- `[ProducesResponseType]` MUST specify the entity collection type for 200 responses
+- `[TransformedResponse]` MUST specify the entity collection type for 200 responses
 
 ### 2. **Runtime Checks**
 
@@ -493,8 +548,11 @@ public class ProductSearchCollection : BaseEntityCollection<Product>
 1. **Using generic collections in public APIs**
 2. **Mixing collection patterns within the same project**
 3. **Forgetting to set TotalRecordsCount**
-4. **Not using ProducesResponseType with collection types**
+4. **Not using TransformedResponse with collection types**
 5. **Creating bespoke collection classes instead of inheriting from BaseEntityCollection**
+6. **Adding [DbField] attributes to collections (collections should not have database field mappings)**
+7. **Using DataCollection<T> for entities that inherit from BaseEntity (should use BaseEntityCollection<T>)**
+8. **Using BaseEntityCollection<T> for DTOs that don't inherit from BaseEntity (should use DataCollection<T>)**
 
 ---
 

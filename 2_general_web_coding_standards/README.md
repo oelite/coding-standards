@@ -5,20 +5,19 @@ Welcome to the OElite Platform Developer Training Center. This comprehensive col
 ## 📚 Training Modules
 
 ### **Core Architecture Standards**
-1. **[Project Architecture & Layered Design](01-PROJECT-ARCHITECTURE.md)**
+1. **[Project Architecture & Layered Design](../1_dotNet_coding_standards/01-PROJECT-ARCHITECTURE.md)**
    - N-tier architecture principles
    - Project structure and organization
    - Separation of concerns
    - Domain-driven design principles
 
-2. **[Dependency Injection & Service Patterns](02-DEPENDENCY-INJECTION.md)**
+2. **[Dependency Injection & Service Patterns](../1_dotNet_coding_standards/02-DEPENDENCY-INJECTION.md)**
    - IOEliteService interface standards
    - DataRepository and IDataRepository patterns
    - DbCentre inheritance and usage
    - Service registration and lifecycle management
 
-### **Data & Entity Management**
-3. **[Database Entities & Attributes](03-DATABASE-ENTITIES.md)**
+3. **[Database Entities & Attributes](../1_dotNet_coding_standards/03-DATABASE-ENTITIES.md)**
    - DbCollection, DbField, DenormalizedField patterns
    - DenormalizedCollection usage
    - BaseEntity inheritance
@@ -52,10 +51,9 @@ Welcome to the OElite Platform Developer Training Center. This comprehensive col
    - Method and property conventions
 
 8. **[Error Handling & Logging](08-ERROR-HANDLING.md)**
-   - Exception handling patterns
-   - Structured logging standards
-   - Error response formatting
-   - Debugging and troubleshooting
+    - Exception handling patterns
+    - Structured logging standards
+    - Debugging and troubleshooting
 
 9. **[Validation & Security](09-VALIDATION-SECURITY.md)**
    - FluentValidation patterns
@@ -72,9 +70,9 @@ Welcome to the OElite Platform Developer Training Center. This comprehensive col
 ## 🎯 Quick Start Guide
 
 ### For New Developers
-1. Start with **[Project Architecture](01-PROJECT-ARCHITECTURE.md)** to understand the overall structure
-2. Read **[Dependency Injection](02-DEPENDENCY-INJECTION.md)** for service patterns
-3. Study **[Database Entities](03-DATABASE-ENTITIES.md)** for data modeling
+1. Start with **[Project Architecture](../1_dotNet_coding_standards/01-PROJECT-ARCHITECTURE.md)** to understand the overall structure
+2. Read **[Dependency Injection](../1_dotNet_coding_standards/02-DEPENDENCY-INJECTION.md)** for service patterns
+3. Study **[Database Entities](../1_dotNet_coding_standards/03-DATABASE-ENTITIES.md)** for data modeling
 4. Review **[API Patterns](05-API-RESPONSE-PATTERNS.md)** for controller development
 5. Follow **[Configuration Management](06-CONFIGURATION-MANAGEMENT.md)** for app setup
 

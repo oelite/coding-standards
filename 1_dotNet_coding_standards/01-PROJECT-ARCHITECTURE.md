@@ -4,6 +4,127 @@
 
 The OElite platform follows a comprehensive **N-tier architecture** pattern with strict separation of concerns, domain-driven design principles, and enterprise-grade scalability patterns. This document establishes the foundational architectural standards that all OElite applications must follow.
 
+## Functional Requirements-Driven Development Flow
+
+### **MANDATORY: Requirements-First Development Process**
+
+Before writing any code, **ALL** OElite developers must follow this functional requirements-driven flow:
+
+#### **3.1 UI Operations Analysis**
+- Start with functional requirements document
+- Identify **what UI level operations** users actually need to perform
+- Map user journeys and interaction patterns
+- Define success criteria for each operation
+
+#### **3.2 API Endpoints Design**
+- Based on UI operations, determine **what API endpoints** are required
+- Design RESTful contracts that support the identified UI operations
+- Ensure endpoints are stateless and follow HTTP conventions
+- Define request/response models for each endpoint
+
+#### **3.3 Data Entity Design**
+- Based on API contracts, identify **what data entities** need persistence
+- Create entity classes inheriting from `BaseEntity`
+- Design proper database schema with appropriate attributes:
+  - `[DbCollection("collectionName")]` - Collection/table name
+  - `[DbField("fieldName")]` - Field mapping
+  - `[DbIndex]` - Database indexes for performance
+  - `[DbShardKey]` - Sharding keys for scalability
+  - `[DenormalizedField]` - Denormalized field references
+  - `[DenormalizedCollection]` - Denormalized collection references
+- Analyze normalization vs denormalization needs
+- Create required DTOs/Models and ModelTransformers
+
+#### **3.4 Functional Methods Implementation**
+- Based on API endpoints, implement **functional methods with correct logic**
+- Create data repositories for persistence needs
+- Implement business logic in service layer
+- Ensure methods directly support the defined API contracts
+
+#### **3.5 Data Repository Standards**
+- **MANDATORY**: Create generic CRUD operations only
+- **AVOID**: Business logic in repositories (data-level logic acceptable but avoid complex business rules)
+- **STANDARD**: Use the following naming convention:
+
+```csharp
+// ✅ REQUIRED CRUD Naming Convention
+public interface IEntityRepository : IDataRepository<OrionDbCentre>
+{
+    // Core CRUD Operations
+    Task<Entity?> GetEntityAsync(EntityQuery query);
+    Task<EntityCollection> GetEntitiesAsync(EntityQuery query);
+    Task<Entity> UpdateEntityAsync(Entity entity);
+    Task<bool> DeleteEntityAsync(EntityQuery query);
+}
+```
+
+#### **3.6 Repository CRUD Implementation**
+**MANDATORY**: All repositories must implement at least these 4 core CRUD methods:
+
+```csharp
+// ✅ Example: ApiClientRepository CRUD Implementation
+public class ApiClientRepository : OrionDbRepository, IApiClientRepository
+{
+    // Get single entity
+    public async Task<OrionApiClient?> GetApiClientAsync(ApiClientQuery query)
+    {
+        // Implementation using query filters
+    }
+
+    // Get multiple entities with pagination/filtering
+    public async Task<OrionApiClientCollection> GetApiClientsAsync(ApiClientQuery query)
+    {
+        // Implementation with proper FetchAsync usage
+    }
+
+    // Update entity
+    public async Task<OrionApiClient> UpdateApiClientAsync(OrionApiClient apiClient)
+    {
+        // Implementation
+    }
+
+    // Delete entities
+    public async Task<bool> DeleteApiClientAsync(ApiClientQuery query)
+    {
+        // Implementation
+    }
+}
+```
+
+### **Repository Design Rules**
+
+#### **✅ ALLOWED in Repositories:**
+- Basic data filtering and querying
+- Pagination and sorting
+- Simple aggregations (counts, sums)
+- Data validation (null checks, basic constraints)
+- Database-specific optimizations
+
+#### **❌ FORBIDDEN in Repositories:**
+- Complex business logic
+- Cross-entity business rules
+- External API calls
+- Email sending or notifications
+- File system operations
+- Complex calculations or algorithms
+
+#### **Collection Type Standards**
+**MANDATORY**: Use proper entity collection types instead of generic collections:
+
+```csharp
+// ✅ CORRECT
+public async Task<OrionApiClientCollection> GetApiClientsAsync(ApiClientQuery query)
+{
+    return await query.FetchAsync<OrionApiClient, OrionApiClientCollection>();
+}
+
+// ❌ WRONG
+public async Task<List<OrionApiClient>> GetApiClientsAsync(ApiClientQuery query)
+{
+    return await query.ToListAsync();
+}
+```
+
 ## N-Tier Architecture Pattern
 
 ### Core Architectural Layers
@@ -40,22 +161,48 @@ public class Product : BaseEntity
 **Purpose**: Handles all database operations and data persistence
 **Location**: `OElite.Data.Repositories` namespace
 **Characteristics**:
-- Implements repository and unit of work patterns
-- Inherits from `DataRepository<T>` base class
-- Uses `DbCentre` for database context operations
-- Implements proper query optimization
+- **MANDATORY**: Implements standardized CRUD operations only
+- **MANDATORY**: Inherits from `OrionDbRepository` base class
+- **MANDATORY**: Uses `DbCentre` for database context operations
+- **MANDATORY**: Returns proper entity collection types
+- **FORBIDDEN**: Business logic (keep repositories data-focused only)
 
 ```csharp
-// ✅ Good - Data repository implementation
-public class ProductRepository : DataRepository<Product>, IProductRepository
+// ✅ REQUIRED - Repository CRUD Implementation
+public class ApiClientRepository : OrionDbRepository, IApiClientRepository
 {
-    public ProductRepository(DbCentre dbCentre) : base(dbCentre)
+    // Core CRUD Operations - MANDATORY
+    public async Task<OrionApiClient?> GetApiClientAsync(ApiClientQuery query)
     {
+        // Single entity retrieval with filtering
+        var mongoQuery = DbCentre.ApiClients;
+        // Apply query filters...
+        return await mongoQuery.FetchAsync();
     }
 
-    public async Task<List<Product>> GetActiveProductsAsync()
+    public async Task<OrionApiClientCollection> GetApiClientsAsync(ApiClientQuery query)
     {
-        return await GetAllAsync("{ 'isActive': true }");
+        // Multiple entities with pagination/filtering
+        var mongoQuery = DbCentre.ApiClients;
+        // Apply query filters...
+        return await mongoQuery.FetchAsync<OrionApiClient, OrionApiClientCollection>();
+    }
+
+    public async Task<OrionApiClient> UpdateApiClientAsync(OrionApiClient apiClient)
+    {
+        // Entity update
+        apiClient.UpdatedOnUtc = DateTime.UtcNow;
+        await DbCentre.ApiClients.ReplaceAsync(apiClient);
+        return apiClient;
+    }
+
+    public async Task<bool> DeleteApiClientAsync(ApiClientQuery query)
+    {
+        // Entity deletion with filtering
+        var mongoQuery = DbCentre.ApiClients;
+        // Apply query filters...
+        var result = await mongoQuery.DeleteAsync();
+        return result.DeletedCount > 0;
     }
 }
 ```
@@ -123,10 +270,12 @@ public class ProductsController : ControllerBase
     }
 
     [HttpPost]
-    public async Task<ActionResult<Product>> CreateProduct(CreateProductRequest request)
+    [TransformedResponse(typeof(Product), 201)]
+    public async Task<Product> CreateProduct(CreateProductRequest request)
     {
         var product = await _productService.CreateProductAsync(request);
-        return CreatedAtAction(nameof(GetProduct), new { id = product.Id }, product);
+        // OEliteApiOutputFormatter handles CreatedAtAction routing and response wrapping
+        return product;
     }
 }
 ```
@@ -140,49 +289,63 @@ The OElite platform uses a **domain-based folder structure** where each business
 ```
 OElite.Common/
 ├── Customers/                 # Customer domain
-│   ├── Requests/              # Customer API request models
-│   ├── Responses/             # Customer API response models
+│   ├── Models/                # Customer models
+│   │   ├── {{model}}.cs       # Customer models
+│   │   ├── Requests/          # Customer API request models
+│   │   ├── Responses/         # Customer API response models
+│   ├── ModelTransformers/     # Customer mmodel transformers
 │   ├── Reports/               # Customer reporting DTOs
-│   └── ModelTransformation/   # Customer model transformers
+│   └── {{entity}}.cs          # Customer entities (BaseEntity classes) 
 ├── Products/                  # Product domain
-│   ├── Requests/              # Product API request models
-│   ├── Responses/             # Product API response models
-│   ├── Reports/               # Product reporting DTOs
-│   └── ModelTransformation/   # Product model transformers
+│   ├── Models/                # Customer models
+│   │   ├── {{model}}.cs       # Customer models
+│   │   ├── Requests/          # Customer API request models
+│   │   ├── Responses/         # Customer API response models
+│   ├── ModelTransformers/     # Customer mmodel transformers
+│   ├── Reports/               # Customer reporting DTOs
+│   └── {{entity}}.cs          # Customer entities (BaseEntity classes) 
 ├── Orders/                    # Order domain
-│   ├── Requests/              # Order API request models
-│   ├── Responses/             # Order API response models
-│   ├── Reports/               # Order reporting DTOs
-│   └── ModelTransformation/   # Order model transformers
+│   ├── Models/                # Customer models
+│   │   ├── {{model}}.cs       # Customer models
+│   │   ├── Requests/          # Customer API request models
+│   │   ├── Responses/         # Customer API response models
+│   ├── ModelTransformers/     # Customer mmodel transformers
+│   ├── Reports/               # Customer reporting DTOs
+│   └── {{entity}}.cs          # Customer entities (BaseEntity classes) 
 ├── Payments/                  # Payment domain
-│   ├── Requests/              # Payment API request models
-│   ├── Responses/             # Payment API response models
-│   ├── Reports/               # Payment reporting DTOs
-│   └── ModelTransformation/   # Payment model transformers
+│   ├── Models/                # Customer models
+│   │   ├── {{model}}.cs       # Customer models
+│   │   ├── Requests/          # Customer API request models
+│   │   ├── Responses/         # Customer API response models
+│   ├── ModelTransformers/     # Customer mmodel transformers
+│   ├── Reports/               # Customer reporting DTOs
+│   └── {{entity}}.cs          # Customer entities (BaseEntity classes) 
 ├── Domain/                    # Core domain entities and shared components
-│   ├── Entities/              # BaseEntity and core domain entities
-│   ├── Enums/                 # Shared domain enumerations
-│   ├── ValueObjects/          # Domain value objects
-│   └── Events/                # Domain events
-├── Interfaces/                # Service and repository contracts
+│   ├── Models/                # Customer models
+│   │   ├── {{model}}.cs       # Customer models
+│   │   ├── Requests/          # Customer API request models
+│   │   ├── Responses/         # Customer API response models
+│   ├── ModelTransformers/     # Customer mmodel transformers
+│   ├── Reports/               # Customer reporting DTOs
+│   └── {{entity}}.cs          # Customer entities (BaseEntity classes) 
 └── Infrastructure/            # Cross-cutting concerns (path resolution, etc.)
 
 OElite.Data.Repositories/
 ├── Customers/                 # Customer data access
+│   ├── DbCentre.cs            # Partial class for DbCentre context with domain based db collections
 │   ├── CustomerRepository.cs
-│   ├── CustomerAddressRepository.cs
-│   └── ICustomerRepository.cs
+│   └── CustomerAddressRepository.cs
 ├── Products/                  # Product data access
-│   ├── ProductRepository.cs
+│   ├── DbCentre.cs            # Partial class for DbCentre context with domain based db collections
 │   ├── ProductCategoryRepository.cs
-│   └── IProductRepository.cs
+│   └── ProductRepository.cs
 ├── Orders/                    # Order data access
-│   ├── OrderRepository.cs
+│   ├── DbCentre.cs            # Partial class for DbCentre context with domain based db collections
 │   ├── OrderItemRepository.cs
-│   └── IOrderRepository.cs
+│   └── OrderRepository.cs
 ├── Payments/                  # Payment data access
-│   ├── PaymentRepository.cs
-│   └── IPaymentRepository.cs
+│   ├── DbCentre.cs            # Partial class for DbCentre context with domain based db collections
+│   └── PaymentRepository.cs
 ├── Base/                      # Base repository classes (DataRepository<T>)
 ├── Context/                   # DbCentre context classes
 └── Shared/                    # Shared query implementations
@@ -203,7 +366,7 @@ OElite.Services/
 ├── Payments/                  # Payment business logic
 │   ├── PaymentService.cs
 │   └── PaymentProcessingService.cs
-├── Base/                      # Base service classes (IOEliteService)
+├── Base/                      # Base service classes
 ├── Integration/               # External service integrations
 └── Background/                # Background processing services
 ```
@@ -221,6 +384,7 @@ OElite.Servers.{ServerName}/
 │       ├── Production/
 │       └── Staging/
 ├── Program.cs                # Application entry point
+├── k8s                      # k8s manifest/deployment files
 └── Dockerfile               # Container configuration
 ```
 
@@ -239,7 +403,7 @@ public class ProductService
 }
 
 // ✅ Good - Single responsibility
-public class ProductService
+public class ProductService: IOEliteService
 {
     private readonly IEmailService _emailService;
     private readonly ILogger<ProductService> _logger;
@@ -383,7 +547,7 @@ public class Order : BaseEntity  // Aggregate Root
     }
 }
 
-public class OrderItem : BaseEntity  // Part of Order aggregate
+public class OrderItem  // Part of Order aggregate
 {
     public string ProductId { get; private set; }
     public int Quantity { get; private set; }
@@ -419,7 +583,7 @@ Application/
 
 ### Configuration Loading Pattern
 ```csharp
-// ✅ Required pattern in Program.cs
+// ✅ Required pattern in Program.cs (Only needed if not using OElite application lifecycle hosting extensions)
 var environment = Environment.GetEnvironmentVariable("ASPNETCORE_ENVIRONMENT") ?? "Production";
 builder.Configuration
     .SetBasePath(Directory.GetCurrentDirectory())
@@ -433,8 +597,11 @@ builder.Configuration
 // ✅ Good - Inherits from BaseAppConfig for path resolution
 public class KortexAppConfig : BaseAppConfig
 {
-    public KortexAppConfig(OElitePathResolver? pathResolver = null) : base(pathResolver)
+    public KortexAppConfig(string jsonConfig, ILogger logger, IOElitePathResolver? pathResolver = null) : base(
+        OeAppType.Kortex,
+        jsonConfig, logger, "kortex", pathResolver)
     {
+        PopulateKortexSettings();        
     }
 
     // Strongly-typed configuration properties
@@ -493,19 +660,29 @@ public class DatabaseHealthCheck : IHealthCheck
 
 ## Performance and Scalability Patterns
 
-### 1. **OElite.Restme Caching Strategy** (MANDATORY)
-All caching operations MUST use the standardized OElite.Restme package methods instead of direct cache implementations:
+### 1. **Caching Strategy**
+OElite applications now natively support `IMemoryCache` and `IDistributedCache` for caching operations. The `OElite.Restme.Hosting` package automatically injects the necessary implementations during the application's lifecycle, allowing for direct use of these standard .NET caching interfaces.
+
+For memory caching, inject `IMemoryCache`. For distributed caching (e.g., Redis), inject `IDistributedCache`.
 
 ```csharp
-// ✅ REQUIRED - OElite.Restme caching pattern
+using Microsoft.Extensions.Caching.Memory;
+using Microsoft.Extensions.Caching.Distributed;
+using System.Text.Json; // Required for serializing/deserializing objects for IDistributedCache
+
+// ✅ RECOMMENDED - Direct IMemoryCache/IDistributedCache usage
 public class ProductService : IOEliteService
 {
-    private readonly IProductRepository _repository;
-    private readonly IRestme _restme; // OElite.Restme interface
+    private readonly IProductRepository _repository; // Assuming this is already present or needed
+    private readonly IMemoryCache _memoryCache;
+    private readonly IDistributedCache _distributedCache;
+    private readonly IRestme _restme; // For non-caching Restme helper methods
 
-    public ProductService(IProductRepository repository, IRestme restme)
+    public ProductService(IProductRepository repository, IMemoryCache memoryCache, IDistributedCache distributedCache, IRestme restme)
     {
         _repository = repository;
+        _memoryCache = memoryCache;
+        _distributedCache = distributedCache;
         _restme = restme;
     }
 
@@ -513,17 +690,34 @@ public class ProductService : IOEliteService
     {
         var cacheKey = $"product:{id}";
 
-        // ✅ Use FindmeAsync() for cache retrieval
-        var cachedProduct = await _restme.FindmeAsync<Product>(cacheKey);
-        if (cachedProduct != null)
+        // ✅ Use IMemoryCache for local caching
+        if (_memoryCache.TryGetValue(cacheKey, out Product cachedProduct))
+        {
             return cachedProduct;
+        }
+
+        // ✅ Use IDistributedCache for distributed caching (example)
+        var distributedCachedProductBytes = await _distributedCache.GetAsync(cacheKey);
+        if (distributedCachedProductBytes != null)
+        {
+            var distributedCachedProduct = JsonSerializer.Deserialize<Product>(distributedCachedProductBytes);
+            _memoryCache.Set(cacheKey, distributedCachedProduct, TimeSpan.FromMinutes(5)); // Cache in memory after fetching from distributed
+            return distributedCachedProduct;
+        }
 
         // Database fallback
         var dbProduct = await _repository.GetByIdAsync(id);
         if (dbProduct != null)
         {
-            // ✅ Use CachemeAsync() for caching data
-            await _restme.CachemeAsync(cacheKey, dbProduct, TimeSpan.FromHours(1));
+            // Cache in IMemoryCache
+            _memoryCache.Set(cacheKey, dbProduct, TimeSpan.FromMinutes(10));
+
+            // Cache in IDistributedCache
+            var productBytes = JsonSerializer.SerializeToUtf8Bytes(dbProduct);
+            await _distributedCache.SetAsync(cacheKey, productBytes, new DistributedCacheEntryOptions
+            {
+                AbsoluteExpirationRelativeToNow = TimeSpan.FromHours(1)
+            });
         }
 
         return dbProduct;
@@ -540,11 +734,17 @@ public class ProductService : IOEliteService
 
         var createdProduct = await _repository.CreateAsync(product);
 
-        // ✅ Cache the newly created product
-        var cacheKey = $"product:{createdProduct.Id}";
-        await _restme.CachemeAsync(cacheKey, createdProduct, TimeSpan.FromHours(1));
+        // ✅ Cache the newly created product in IMemoryCache
+        _memoryCache.Set($"product:{createdProduct.Id}", createdProduct, TimeSpan.FromMinutes(10));
 
-        // ✅ Use QueuemeAsync() for background processing
+        // ✅ Cache the newly created product in IDistributedCache
+        var productBytes = JsonSerializer.SerializeToUtf8Bytes(createdProduct);
+        await _distributedCache.SetAsync($"product:{createdProduct.Id}", productBytes, new DistributedCacheEntryOptions
+        {
+            AbsoluteExpirationRelativeToNow = TimeSpan.FromHours(1)
+        });
+
+        // ✅ Use QueuemeAsync() for background processing (non-caching Restme helper)
         var productCreatedEvent = new ProductCreatedEvent
         {
             ProductId = createdProduct.Id,
@@ -555,16 +755,6 @@ public class ProductService : IOEliteService
 
         return createdProduct;
     }
-}
-
-// ❌ WRONG - Direct cache usage (DEPRECATED)
-public class ProductService : IOEliteService
-{
-    private readonly IMemoryCache _memoryCache;           // Don't use directly
-    private readonly IDistributedCache _distributedCache; // Don't use directly
-    private readonly IServiceBus _serviceBus;             // Don't use directly
-
-    // This pattern is deprecated in OElite
 }
 ```
 
@@ -947,6 +1137,21 @@ public async Task CreateProduct_ValidRequest_ReturnsProduct()
 
 ## Compliance Checklist
 
+### Functional Requirements Flow (MANDATORY)
+- [ ] **3.1 UI Operations**: Code starts with functional requirements identifying actual user operations needed
+- [ ] **3.2 API Endpoints**: API contracts are designed based on UI operation requirements
+- [ ] **3.3 Data Entities**: Entity classes inherit from BaseEntity with proper database attributes ([DbCollection], [DbIndex], [DbShardKey], [DenormalizedField], [DenormalizedCollection])
+- [ ] **3.4 Functional Methods**: Methods implement logic that directly supports defined API contracts
+- [ ] **3.5 Data Repositories**: Repositories contain only data access logic, no business rules
+- [ ] **3.6 CRUD Standards**: All repositories implement the 4 core CRUD methods with proper naming convention
+
+### Repository Standards (MANDATORY)
+- [ ] **CRUD Implementation**: All repositories implement GetEntityAsync, GetEntitiesAsync, UpdateEntityAsync, DeleteEntityAsync
+- [ ] **Collection Types**: Methods return EntityCollection types (e.g., OrionApiClientCollection) instead of List<T>
+- [ ] **FetchAsync Usage**: All collection-returning methods use .FetchAsync<EntityType, EntityCollectionType>()
+- [ ] **No Business Logic**: Repositories contain only data access operations
+- [ ] **Query Objects**: Methods accept strongly-typed query objects for filtering
+
 ### Architecture Requirements
 - [ ] Follows N-tier architecture with clear layer separation
 - [ ] Implements proper dependency injection patterns
@@ -964,17 +1169,17 @@ public async Task CreateProduct_ValidRequest_ReturnsProduct()
 - [ ] No business logic in controllers
 - [ ] No direct database access from controllers
 - [ ] All services implement IOEliteService interface
-- [ ] All repositories inherit from DataRepository<T>
+- [ ] All repositories inherit from OrionDbRepository
 - [ ] Configuration classes inherit from BaseAppConfig
 - [ ] Proper error handling with custom exceptions
 - [ ] Comprehensive logging throughout application
 - [ ] Thread-safe implementations where applicable
 
-### OElite.Restme Requirements (MANDATORY)
-- [ ] **All caching uses _restme.FindmeAsync() and _restme.CachemeAsync() methods**
-- [ ] **All queue operations use _restme.QueuemeAsync() and _restme.DomeAsync() methods**
-- [ ] **No direct IMemoryCache, IDistributedCache, or IServiceBus usage**
-- [ ] **IRestme is properly injected and configured with appropriate providers**
+### OElite.Restme and Caching Requirements (MANDATORY)
+- [ ] **IMemoryCache and IDistributedCache are the primary interfaces for caching, automatically injected via OElite.Restme.Hosting.**
+- [ ] **IRestme is used for non-caching operations like _restme.QueuemeAsync() and _restme.DomeAsync() methods.**
+- [ ] **Caching operations directly use IMemoryCache and IDistributedCache.**
+- [ ] **IRestme is properly injected and configured with appropriate providers for non-caching functionalities.**
 - [ ] **Cache keys follow consistent naming patterns**
 - [ ] **Queue processing includes proper error handling and retry logic**
 - [ ] **Background services implement _restme.DomeAsync() for queue processing**
