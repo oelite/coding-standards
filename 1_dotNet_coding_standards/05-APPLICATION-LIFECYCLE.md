@@ -2,7 +2,24 @@
 
 ## Overview
 
-This document defines the standardized application lifecycle for all OElite applications using the phase-based lifecycle architecture (`OeWebApp`, `OeHybridApp`, `OeConsoleApp`).
+This document defines the standardized application lifecycle for all OElite applications using the phase-based lifecycle architecture (`OeWebApp`, `OeHybridApp`, `OeConsoleApp`). This architecture ensures consistent behavior, graceful shutdown, resource cleanup, and prevents orphaned processes.
+
+## 🎯 Core Principles
+
+### 1. **Graceful Shutdown by Design**
+- All applications MUST implement proper cancellation token propagation
+- Background services MUST respond to shutdown signals within 10 seconds
+- Never use `.Wait()` in shutdown handlers - always use async patterns with timeouts
+
+### 2. **Phase-Based Lifecycle Management**
+- Use `OeWebApp`, `OeHybridApp`, or `OeConsoleApp` for centralized lifecycle
+- All shutdown logic is automatic - no manual registration required
+- Leverage `OeAppPipelineBuilder` for middleware ordering
+
+### 3. **Resource Cleanup Guarantee**
+- All background tasks MUST be cancellable via `CancellationToken`
+- File handles, network connections, and external resources MUST be properly disposed
+- Use `using` statements and `IDisposable` patterns consistently
 
 ## Current Architecture (December 2024)
 
@@ -134,6 +151,16 @@ await OeWebApp.RunAsync<MyAppConfig>(
         };
     });
 ```
+
+**What's Automatic**:
+- Graceful shutdown with 10-second timeout
+- `OEliteApplicationLifetime` with SafeCancelToken patterns
+- All `IOEliteShutdownAware` services discovered and managed
+- Authentication/authorization when enabled
+- Rate limiting for API applications
+- Swagger/OpenAPI documentation
+- Prevention of ObjectDisposedException during shutdown
+- No manual cancellation token or cleanup code needed
 
 ### Pattern 2: Hybrid Application (OeHybridApp)
 
@@ -297,6 +324,296 @@ pipeline.AddAfterAuthentication(app =>
 }, priority: 20);  // Runs second
 ```
 
+## Background Service Patterns
+
+### ✅ PREFERRED: OEliteBackgroundService
+
+```csharp
+using OElite.Common.Hosting.Lifecycle;
+
+public class MyBackgroundService : OEliteBackgroundService
+{
+    public MyBackgroundService(ILogger<MyBackgroundService> logger) : base(logger) { }
+
+    protected override async Task ExecuteServiceAsync(CancellationToken cancellationToken)
+    {
+        while (!cancellationToken.IsCancellationRequested)
+        {
+            try
+            {
+                // Your service logic here
+                await DoWorkAsync(cancellationToken);
+
+                // Respect cancellation in delays
+                await Task.Delay(TimeSpan.FromMinutes(1), cancellationToken);
+            }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+            {
+                // Expected during shutdown
+                break;
+            }
+        }
+    }
+
+    protected override async Task OnShutdownAsync(CancellationToken cancellationToken)
+    {
+        // Custom cleanup logic
+        Logger.LogInformation("Performing custom cleanup...");
+        await CleanupResourcesAsync(cancellationToken);
+    }
+}
+```
+
+### 🔧 Manual Implementation with SafeCancelToken Patterns
+
+```csharp
+public class MyService : BackgroundService, IOEliteService, IOEliteShutdownAware
+{
+    private readonly ILogger<MyService> _logger;
+    private readonly CancellationTokenSource _serviceCts = new();
+
+    public async Task PrepareForShutdownAsync(CancellationToken cancellationToken)
+    {
+        _logger.LogInformation("Preparing for shutdown...");
+
+        // Use SafeCancelToken pattern to prevent ObjectDisposedException
+        SafeCancelToken(_serviceCts);
+
+        // Perform cleanup with timeout
+        try
+        {
+            await CleanupAsync().WaitAsync(TimeSpan.FromSeconds(5), cancellationToken);
+        }
+        catch (TimeoutException)
+        {
+            _logger.LogWarning("Cleanup timed out");
+        }
+    }
+
+    protected override async Task ExecuteAsync(CancellationToken stoppingToken)
+    {
+        using var combined = CancellationTokenSource.CreateLinkedTokenSource(
+            stoppingToken, _serviceCts.Token);
+
+        // Use combined.Token for all operations
+        await DoWorkAsync(combined.Token);
+    }
+
+    /// <summary>
+    /// Safely cancels the cancellation token source without throwing ObjectDisposedException
+    /// </summary>
+    private void SafeCancelToken(CancellationTokenSource tokenSource)
+    {
+        try
+        {
+            if (!tokenSource.IsCancellationRequested)
+            {
+                tokenSource.Cancel();
+                _logger.LogDebug("✅ Cancellation token cancelled safely");
+            }
+        }
+        catch (ObjectDisposedException)
+        {
+            _logger.LogDebug("⚠️ Attempted to cancel already disposed cancellation token source - ignoring");
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "⚠️ Error during safe token cancellation");
+        }
+    }
+
+    protected override void Dispose(bool disposing)
+    {
+        if (disposing)
+        {
+            SafeDisposeCancellationSource(_serviceCts);
+        }
+        base.Dispose(disposing);
+    }
+
+    /// <summary>
+    /// Safely disposes the cancellation token source without throwing ObjectDisposedException
+    /// </summary>
+    private void SafeDisposeCancellationSource(CancellationTokenSource tokenSource)
+    {
+        try
+        {
+            tokenSource?.Dispose();
+            _logger.LogDebug("✅ Cancellation token source disposed safely");
+        }
+        catch (ObjectDisposedException)
+        {
+            _logger.LogDebug("⚠️ Attempted to dispose already disposed cancellation token source - ignoring");
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "⚠️ Error during safe cancellation source disposal");
+        }
+    }
+}
+```
+
+## Task Management Patterns
+
+### ✅ CORRECT: Cancellable Background Tasks
+
+```csharp
+// In service initialization
+_backgroundTask = Task.Run(async () =>
+{
+    try
+    {
+        await LongRunningOperationAsync(_cancellationToken);
+    }
+    catch (OperationCanceledException) when (_cancellationToken.IsCancellationRequested)
+    {
+        // Expected during shutdown
+    }
+    catch (Exception ex)
+    {
+        _logger.LogError(ex, "Background task failed");
+    }
+}, _cancellationToken);
+
+// In shutdown handler
+public async Task PrepareForShutdownAsync(CancellationToken cancellationToken)
+{
+    _cancellationTokenSource.Cancel();
+
+    if (_backgroundTask != null)
+    {
+        try
+        {
+            await _backgroundTask.WaitAsync(TimeSpan.FromSeconds(5), cancellationToken);
+        }
+        catch (TimeoutException)
+        {
+            _logger.LogWarning("Background task did not complete within timeout");
+        }
+    }
+}
+```
+
+### ❌ FORBIDDEN: Blocking Operations in Shutdown
+
+```csharp
+// NEVER DO THIS - causes deadlocks
+lifetime.ApplicationStopping.Register(() =>
+{
+    CleanupBackgroundTasks().Wait(); // ❌ DEADLOCK RISK
+});
+
+// NEVER DO THIS - blocks shutdown
+public async Task StopAsync(CancellationToken cancellationToken)
+{
+    await _longRunningTask; // ❌ NO TIMEOUT
+}
+```
+
+## 🚨 Critical Anti-Patterns to Avoid
+
+### 1. **Synchronous Operations in Shutdown Handlers**
+```csharp
+// ❌ WRONG
+lifetime.ApplicationStopping.Register(() =>
+{
+    SomeAsyncOperation().Wait();
+});
+
+// ✅ CORRECT
+lifetime.ApplicationStopping.Register(() =>
+{
+    _cancellationTokenSource.Cancel();
+});
+```
+
+### 2. **Infinite Loops Without Cancellation**
+```csharp
+// ❌ WRONG
+while (true)
+{
+    await DoWork();
+    await Task.Delay(1000);
+}
+
+// ✅ CORRECT
+while (!cancellationToken.IsCancellationRequested)
+{
+    await DoWork(cancellationToken);
+    await Task.Delay(1000, cancellationToken);
+}
+```
+
+### 3. **Missing Timeout on Cleanup Operations**
+```csharp
+// ❌ WRONG
+await _backgroundTask; // Could hang forever
+
+// ✅ CORRECT
+await _backgroundTask.WaitAsync(TimeSpan.FromSeconds(5), cancellationToken);
+```
+
+### 4. **Unsafe CancellationTokenSource Operations**
+```csharp
+// ❌ WRONG - Can cause ObjectDisposedException race conditions
+public void Stop()
+{
+    _cancellationSource.Cancel();
+    _cancellationSource.Dispose();
+}
+
+// ✅ CORRECT - Use SafeCancelToken pattern
+public void Stop()
+{
+    SafeCancelToken();
+    SafeDisposeCancellationSource();
+}
+
+private void SafeCancelToken()
+{
+    try
+    {
+        if (!_cancellationSource.IsCancellationRequested)
+        {
+            _cancellationSource.Cancel();
+        }
+    }
+    catch (ObjectDisposedException)
+    {
+        // Token source already disposed - safe to ignore
+    }
+}
+
+private void SafeDisposeCancellationSource()
+{
+    try
+    {
+        _cancellationSource?.Dispose();
+    }
+    catch (ObjectDisposedException)
+    {
+        // Already disposed - safe to ignore
+    }
+}
+```
+
+## 📊 Shutdown Timeline with SafeCancelToken
+
+| Phase | Duration | Action | Responsibility | SafeToken Features |
+|-------|----------|--------|----------------|--------------------|
+| **Signal** | 0s | `ApplicationStopping` fired | Framework | - |
+| **Cancel** | 0s | SafeCancelToken() called | OEliteApplicationLifetime | Prevents ObjectDisposedException |
+| **Prepare** | 0-2s | `IOEliteShutdownAware.PrepareForShutdownAsync()` | Application Services | Safe cancellation propagation |
+| **Stop** | 2-8s | `IHostedService.StopAsync()` | Hosted Services | Graceful service shutdown |
+| **Dispose** | 8-10s | SafeDisposeCancellationSource() | OEliteApplicationLifetime | Safe resource cleanup |
+| **Force** | 10s+ | Timeout reached, force termination | Framework | Last resort cleanup |
+
+**Key Features:**
+- **Race condition prevention**: SafeCancelToken methods prevent ObjectDisposedException
+- **Automatic cleanup**: No manual cancellation token management required
+- **Timeout enforcement**: 10-second maximum shutdown time
+- **Process cleanup**: No orphaned processes holding ports
+
 ## WebLifecycleOptions Configuration
 
 ### Required Options for Web Applications
@@ -376,33 +693,6 @@ Bootstrap providers are automatically executed when:
 - `OeConsoleApp.RunAsync()` is called
 - `host.InitOeApp<T>()` is called (manual pattern)
 
-## Graceful Shutdown
-
-All lifecycle types (`OeWebApp`, `OeHybridApp`, `OeConsoleApp`) provide graceful shutdown with:
-
-- **10-second timeout**: Background services have 10 seconds to clean up
-- **Application-wide cancellation**: `CancellationToken` propagated to all hosted services
-- **Coordinated shutdown**: Web host and background services shut down together
-
-### Using Cancellation Tokens
-
-```csharp
-public class MyBackgroundService : BackgroundService
-{
-    protected override async Task ExecuteAsync(CancellationToken stoppingToken)
-    {
-        while (!stoppingToken.IsCancellationRequested)
-        {
-            await DoWorkAsync(stoppingToken);
-            await Task.Delay(TimeSpan.FromMinutes(1), stoppingToken);
-        }
-        
-        // Cleanup on shutdown
-        await CleanupAsync();
-    }
-}
-```
-
 ## Configuration Management
 
 ### Application Configuration (IAppConfig)
@@ -474,38 +764,6 @@ public class ApiVersioningConfiguration
 }
 ```
 
-## Implementation Examples
-
-### Correct Implementation Pattern
-```csharp
-using OElite.Common.Hosting.AspNetCore;
-using OElite.Common.Hosting.AspNetCore.Configuration;
-
-await OeWebApp.RunAsync<MyAppConfig>(
-    args,
-    "My App",
-    configureServices: builder => { },
-    configureOptions: options =>
-    {
-        options.EnableSwagger = true;
-        options.EnableAuthentication = true;
-        options.EnableAuthorization = true;
-        
-        options.ConfigurePipeline = pipeline =>
-        {
-            pipeline.AddAfterAuthentication(app =>
-            {
-                app.UsePermissionEnrichment();
-            });
-            
-            pipeline.AddAfterAuthorization(app =>
-            {
-                app.MapHub<MyHub>("/hubs/my");
-            });
-        };
-    });
-```
-
 ## Common Patterns
 
 ### Pattern: Permission Enrichment After Authentication
@@ -572,6 +830,58 @@ options.ConfigurePipeline = pipeline =>
 };
 ```
 
+## 🛠️ Migration Guide
+
+### Step 1: **Identify Current Issues**
+- Search for `.Wait()` calls in shutdown handlers
+- Find background tasks without cancellation tokens
+- Look for missing `IDisposable` implementations
+
+### Step 2: **Update to Latest OeApp** (Automatic - No Code Changes)
+- Lifecycle management with SafeCancelToken patterns is now built into all `OeApp` methods
+- No manual registration required
+- All existing applications get automatic graceful shutdown with race condition prevention
+- ObjectDisposedException prevention during shutdown sequences
+
+### Step 3: **Refactor Background Services**
+- Inherit from `OEliteBackgroundService` (recommended)
+- Or implement `IOEliteShutdownAware` manually
+- Add proper cancellation token handling
+
+### Step 4: **Remove Manual Shutdown Code**
+- Remove `.Wait()` calls in shutdown handlers
+- Remove manual `OEliteApplicationLifetime` registrations
+- Remove custom cleanup code (now automatic)
+
+### Step 5: **Test Shutdown Behavior**
+```bash
+# Start application
+./your-app.sh start
+
+# Test graceful shutdown (should complete within 10 seconds)
+# Ctrl+C or:
+kill -TERM <pid>
+
+# Verify no orphaned processes
+lsof -i :<port>  # Should return nothing
+```
+
+## 📈 Best Practices Summary
+
+1. **Use phase-based lifecycle runners** - Get automatic lifecycle management with SafeCancelToken patterns
+2. **Choose the right runner for your application type:**
+   - `OeWebApp.RunAsync<T>()` for standard web applications
+   - `OeConsoleApp.RunAsync<T>()` for standard console applications
+   - `OeHybridApp.RunAsync<T>()` for hybrid apps (background + web)
+3. **Inherit from OEliteBackgroundService** - Proper cancellation token handling built-in
+4. **Implement IOEliteShutdownAware** for services with custom cleanup requirements
+5. **Always use SafeCancelToken patterns** when manually managing CancellationTokenSource
+6. **Always use cancellation tokens** for long-running operations
+7. **Never use .Wait()** in any application code - use async patterns with timeouts
+8. **Test shutdown behavior** regularly (should complete within 10 seconds)
+9. **Monitor for orphaned processes** in production - SafeCancelToken patterns prevent this
+10. **Avoid ObjectDisposedException** by using proper disposal patterns in custom services
+
 ## Code Standards
 
 ### Required Patterns
@@ -595,22 +905,30 @@ All applications MUST:
 - **OElite.Servers.Nexus** - Web API with permission enrichment
 - **OElite.Servers.Kortex** - Hybrid app (proxy + management API)
 - **OElite.Servers.Obelisk** - Hybrid app (mail server + management API)
+- **OElite.Servers.Tesseract** - Storage server API
+- **OElite.Servers.Hephaestus** - MCP server API
 - **OElite.OeSterling.Api** - Blockchain web API
 - **OElite.OeSterling.Node** - Hybrid app (blockchain sync + node API)
+- **OElite.OeSterling.MiningClient** - CLI mining tool
 - **Orion.Api** - Workflow orchestration API
 - **Orion.Worker.Console** - Background job worker
 - **Origin.Api** - Authentication API
 - **OElite.Servers.Chromia** - Console app (PDF generation)
 - **OElite.Migration.CollectionMerger** - CLI tool (execute-and-exit pattern)
 
+## Related Standards
+
+- **07-CONFIGURATION-MANAGEMENT.md** - Configuration lifecycle
+- **03-DEPENDENCY-INJECTION.md** - Service registration patterns
+- **10-OELITE-RESTME-HOSTING-GUIDE.md** - OElite.Restme integration patterns
+
 ## Additional Resources
 
 - **LIFECYCLE-README.md** (helios/core) - Complete lifecycle architecture documentation
 - **LIFECYCLE-REFACTORING-COMPLETE.md** (helios/core) - Migration guide and examples
-- **03-DEPENDENCY-INJECTION.md** - Auto-discovery configuration details
-- **10-OELITE-RESTME-HOSTING-GUIDE.md** - OElite.Restme integration patterns
 
 ---
 
-**Last Updated**: December 8, 2024
-**Version**: 2.0 (Phase-Based Lifecycle Architecture)
+**Last Updated**: December 8, 2024  
+**Version**: 3.0 (Consolidated Lifecycle Standards)  
+**Implementation Priority**: HIGH - This affects all applications and prevents production issues like port conflicts and resource leaks.
