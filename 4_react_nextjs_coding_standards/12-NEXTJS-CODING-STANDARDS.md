@@ -6,6 +6,290 @@ This document establishes coding standards for Next.js applications in the OElit
 
 **Technology Stack**: Next.js 14+, React 18+, TypeScript, Tailwind CSS, SWR, Framer Motion
 
+## UI Library Policy
+
+### Default UI Component Library
+- **Shadcn/ui is the default UI component library** for all new Next.js development. Shadcn/ui is built on Radix UI primitives and Tailwind CSS — it provides accessible, customizable, tree-shakeable components.
+- **MUI (Material-UI) is deprecated** for new development. Legacy MUI theme overrides from commercial templates (e.g., `jupiter/occ/src/@core/theme/overrides/`) exist for the occ app only and must NOT be used for new development.
+- **New Next.js apps** should scaffold with Shadcn/ui, Tailwind CSS, and use `cn()` utility for className merging. All interactive components should use Shadcn/ui components from `components/ui/`.
+
+### Shadcn Component Priority (MANDATORY)
+Shadcn/ui provides a comprehensive set of pre-built, accessible UI components. **Sophia (frontend engineer) MUST always prefer Shadcn/ui components over custom-built components, basic HTML elements, or hand-written styles.** This eliminates redundant implementation, ensures accessibility compliance by default, and maintains visual consistency across all applications.
+
+**Priority order for UI components:**
+
+1. **Shadcn/ui component** — Check `components/ui/` first. If a Shadcn component exists that matches the requirement, use it.
+2. **Radix UI primitive** — For advanced use cases, import directly from `@radix-ui/*` and compose with Shadcn patterns.
+3. **Lucide React icon** — For icons, use `lucide-react` exclusively. Never inline SVGs or use icon fonts.
+4. **Tailwind utility classes on native elements** — Only when no Shadcn/Radix component fits.
+
+**Allowed exceptions** (when custom implementation is permitted):
+- When a Shadcn component needs customization beyond what `className`, `slotProps`, or `asChild` provide — **extend the existing Shadcn component, never build from scratch**.
+- When a third-party library (e.g., Recharts, ApexCharts, TanStack Table) provides domain-specific functionality that Shadcn does not cover.
+
+#### ✅ Preferred — Use Shadcn components
+```tsx
+// ✅ Button → use Shadcn Button, not <button className="...">
+import { Button } from '@/components/ui/button';
+
+<Button variant="outline" size="lg" onClick={handleClick}>
+  Click me
+</Button>
+
+// ✅ Dialog → use Shadcn Dialog, not custom modal with <div> + <button>
+import { Button } from '@/components/ui/button';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from '@/components/ui/dialog';
+
+<Dialog>
+  <DialogTrigger asChild>
+    <Button variant="outline">Open Dialog</Button>
+  </DialogTrigger>
+  <DialogContent>
+    <DialogHeader>
+      <DialogTitle>Dialog Title</DialogTitle>
+    </DialogHeader>
+    <p>Dialog content here</p>
+  </DialogContent>
+</Dialog>
+
+// ✅ Card → use Shadcn Card, not custom <div className="border rounded...">
+import { Button } from '@/components/ui/button';
+import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
+
+<Card>
+  <CardHeader>
+    <CardTitle>Card Title</CardTitle>
+    <CardDescription>Card description</CardDescription>
+  </CardHeader>
+  <CardContent>Card content</CardContent>
+  <CardFooter>
+    <Button>Action</Button>
+  </CardFooter>
+</Card>
+
+// ✅ Select → use Shadcn Select, not custom <select> with styles
+import { Button } from '@/components/ui/button';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
+
+<Select>
+  <SelectTrigger className="w-[180px]">
+    <SelectValue placeholder="Select..." />
+  </SelectTrigger>
+  <SelectContent>
+    <SelectItem value="option1">Option 1</SelectItem>
+    <SelectItem value="option2">Option 2</SelectItem>
+  </SelectContent>
+</Select>
+
+// ✅ Input → use Shadcn Input, not <input className="...">
+import { Input } from '@/components/ui/input';
+
+<Input type="email" placeholder="Email" />
+
+// ✅ Table → use Shadcn Table, not custom <table> with hand-written styles
+import { Button } from '@/components/ui/button';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+
+<Table>
+  <TableHeader>
+    <TableRow>
+      <TableHead>Name</TableHead>
+      <TableHead>Status</TableHead>
+    </TableRow>
+  </TableHeader>
+  <TableBody>
+    <TableRow>
+      <TableCell>Item</TableCell>
+      <TableCell>Active</TableCell>
+    </TableRow>
+  </TableBody>
+</Table>
+
+// ✅ Badge → use Shadcn Badge, not <span className="px-2 py-1 rounded bg-blue-100...">
+import { Badge } from '@/components/ui/badge';
+
+<Badge variant="secondary">Secondary</Badge>
+
+// ✅ Tabs → use Shadcn Tabs, not custom tab implementation
+import { Button } from '@/components/ui/button';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+
+<Tabs defaultValue="account">
+  <TabsList>
+    <TabsTrigger value="account">Account</TabsTrigger>
+    <TabsTrigger value="password">Password</TabsTrigger>
+  </TabsList>
+  <TabsContent value="account">Account settings</TabsContent>
+  <TabsContent value="password">Password settings</TabsContent>
+</Tabs>
+
+// ✅ Alert/Toast → use Shadcn Alert, not custom alert div
+import { Button } from '@/components/ui/button';
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
+
+<Alert>
+  <AlertTitle>Heads up!</AlertTitle>
+  <AlertDescription>You can add components to your app.</AlertDescription>
+</Alert>
+
+// ✅ Checkbox/Radio/Switch → use Shadcn, not custom toggle
+import { Checkbox } from '@/components/ui/checkbox';
+import { Label } from '@/components/ui/label';
+
+<div className="flex items-center space-x-2">
+  <Checkbox id="terms" />
+  <Label htmlFor="terms">Accept terms</Label>
+</div>
+
+// ✅ Separator → use Shadcn Separator, not <hr className="...">
+import { Separator } from '@/components/ui/separator';
+
+<Separator className="my-4" />
+
+// ✅ Avatars → use Shadcn Avatar, not custom <img> circles
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
+
+<Avatar>
+  <AvatarImage src="/user.png" alt="User" />
+  <AvatarFallback>JD</AvatarFallback>
+</Avatar>
+
+// ✅ Collapsible/Accordion → use Shadcn, not custom expand/collapse
+import { Button } from '@/components/ui/button';
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
+
+<Collapsible>
+  <CollapsibleTrigger asChild>
+    <Button variant="outline">Toggle</Button>
+  </CollapsibleTrigger>
+  <CollapsibleContent>Content</CollapsibleContent>
+</Collapsible>
+```
+
+#### ❌ Avoid — Building from scratch when Shadcn exists
+```tsx
+// ❌ BAD — Custom button instead of Shadcn Button
+const CustomButton = ({ children, onClick }) => (
+  <button
+    className="inline-flex items-center justify-center rounded-md text-sm font-medium
+               bg-primary text-primary-foreground hover:bg-primary/90 h-10 px-4 py-2"
+    onClick={onClick}
+  >
+    {children}
+  </button>
+);
+
+// ❌ BAD — Custom modal with raw div instead of Shadcn Dialog
+const CustomModal = ({ isOpen, onClose, title, children }) => {
+  if (!isOpen) return null;
+  return (
+    <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center">
+      <div className="bg-white rounded-lg p-6 w-full max-w-lg">
+        <div className="flex justify-between items-center mb-4">
+          <h2 className="text-lg font-semibold">{title}</h2>
+          <button onClick={onClose}>✕</button>
+        </div>
+        {children}
+      </div>
+    </div>
+  );
+};
+
+// ❌ BAD — Custom card with hand-written styles instead of Shadcn Card
+const CustomCard = ({ title, description, children, footer }) => (
+  <div className="border rounded-lg shadow-sm bg-white">
+    {title && <div className="p-6 pb-2">
+      <h3 className="text-lg font-semibold">{title}</h3>
+      {description && <p className="text-sm text-muted-foreground">{description}</p>}
+    </div>}
+    <div className="p-6 pt-2">{children}</div>
+    {footer && <div className="p-6 pt-0 flex justify-end gap-2">{footer}</div>}
+  </div>
+);
+
+// ❌ BAD — Custom select with raw <select>
+const CustomSelect = ({ options, value, onChange }) => (
+  <select
+    value={value}
+    onChange={e => onChange(e.target.value)}
+    className="border rounded-md px-3 py-2 text-sm"
+  >
+    {options.map(opt => (
+      <option key={opt.value} value={opt.value}>{opt.label}</option>
+    ))}
+  </select>
+);
+
+// ❌ BAD — Custom table with hand-written styles
+const CustomTable = ({ columns, data }) => (
+  <table className="w-full border-collapse border">
+    <thead>
+      <tr className="bg-gray-50">
+        {columns.map(col => (
+          <th key={col.key} className="border px-4 py-2 text-left">{col.header}</th>
+        ))}
+      </tr>
+    </thead>
+    <tbody>
+      {data.map((row, i) => (
+        <tr key={i}>
+          {columns.map(col => (
+            <td key={col.key} className="border px-4 py-2">
+              {row[col.key]}
+            </td>
+          ))}
+        </tr>
+      ))}
+    </tbody>
+  </table>
+);
+```
+
+#### Decision Flow for Sophia
+
+```
+Need a UI component?
+│
+├─ Is it a button, input, select, dialog, table, card, alert, badge, tabs,
+│  form element, avatar, separator, collapsible, toast, popover, tooltip,
+│  drawer, sheet, scroll-area, skeleton, switch, checkbox, radio, slider?
+│   │
+│   ├─ YES → Use Shadcn component from components/ui/
+│   │         If styling needed, extend via className/slotProps, not rebuild.
+│   │
+│   └─ NO → Does a Radix UI primitive cover this (dropdown-menu, command,
+│            navigation-menu, scroll-area, resizable, accordion)?
+│            │
+│            ├─ YES → Use Radix primitive, compose with Shadcn patterns.
+│            │
+│            └─ NO → Does a third-party library fit (Recharts, ApexCharts,
+│                 TanStack Table, date-fns)?
+│                 │
+│                 ├─ YES → Use that library.
+│                 │
+│                 └─ NO → Build minimal custom implementation, but
+│                       document why no existing component fits.
+```
+
+#### Key Principles
+
+- **Shadcn components are NOT black-box components** — they are copy-paste editable components. If a Shadcn component needs minor customization, edit the component file in `components/ui/`, do NOT bypass it.
+- **No reinventing the wheel** — If `Button`, `Card`, `Dialog`, `Table`, `Select`, `Input`, `Badge`, `Alert`, `Tabs`, `Separator`, `Avatar`, `Collapsible`, `Sheet`, `Drawer`, `Popover`, `Tooltip`, `Toast`, `Checkbox`, `RadioGroup`, `Switch`, `Slider`, `ScrollArea`, `Skeleton`, `Progress`, `Form`, `Label`, `Command`, `Calendar`, `Datepicker` exist in `components/ui/`, they MUST be used.
+- **Icons → Lucide React** — Use `lucide-react` for all icons. Never inline SVGs, use emoji, or import other icon libraries.
+- **Accessibility by default** — Shadcn/Radix components ship with ARIA attributes, keyboard navigation, and screen reader support. Custom implementations frequently miss these — using Shadcn avoids that risk entirely.
+
 ## 🚨 **MANDATORY: No-Mock-Data Policy**
 
 ### **Strict Prohibition of Fake/Mock Data**

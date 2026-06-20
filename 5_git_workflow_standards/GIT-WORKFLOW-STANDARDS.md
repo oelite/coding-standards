@@ -8,9 +8,10 @@ The OElite team consists of 12 members (10 AI agents + human developers) who wor
 
 ### Key Principles
 
-- **`develop` is the single integration branch.** All changes enter `develop` through merge requests. No direct commits.
+- **`develop` is the Local Integration Basin.** The main working directory checks out `develop`. Agents branch **from** and merge **back into** local `develop` for accumulation. Remote `develop` is only touched by human developers.
 - **Worktree isolation.** AI agents work in isolated git worktrees, never in the main working directory.
-- **GitLab-first.** Issues, merge requests, code reviews, and approvals all happen in GitLab (https://code.phanes.ltd).
+- **Local Merge Model.** Agents complete tasks by merging their feature branch directly into local `develop`. This eliminates remote race conditions and network latency during agentic workflows.
+- **Human Publisher.** Human developers review the state of local `develop`, approve work, and push to remote `origin/develop` when ready. This keeps CI/CD triggers under human control.
 - **Parallel by design.** Directory-level ownership and worktree isolation let multiple agents work simultaneously without stepping on each other.
 
 ---
@@ -91,17 +92,16 @@ review/grace-US-001-auth-token-refresh
 review/felix-US-015-checkout-payment-flow
 ```
 
-### 2.4 Branch Lifecycle
+### 2.4 Branch Lifecycle (Local Merge Model)
 
 ```
-1. Create feature branch from latest develop
+1. Create feature branch from latest local develop
 2. Work in worktree (agent) or local checkout (human)
 3. Commit with conventional messages
-4. Rebase on latest develop
-5. Push feature branch
-6. Create MR targeting develop
-7. Review, approve, merge
-8. Delete feature branch
+4. Sync main develop with remote
+5. Rebase agent's branch onto main develop
+6. Merge agent's branch into main develop (Local Merge)
+7. (Optional) Human reviews local develop and pushes to remote
 ```
 
 ---
@@ -141,16 +141,15 @@ git config user.email "daniel@phanes.ltd"
 
 This ensures commits are attributed to the correct agent regardless of the host machine's global git config.
 
-### 3.4 Worktree Lifecycle
+### 3.4 Worktree Lifecycle (Local Merge Model)
 
 ```
-1. CREATE    scripts/oelite-gitlab.sh worktree-create <agent> <branch> [base]
+1. CREATE    scripts/oelite-gitlab.sh worktree-create <agent> <branch>
 2. WORK      cd .worktrees/<agent>/ && make changes && commit
-3. PUSH      git push origin <branch>
-4. MR        scripts/oelite-gitlab.sh mr-create <project> <agent> <source> develop <title>
-5. REVIEW    Reviewers approve via GitLab
-6. MERGE     MR merged into develop (via GitLab)
-7. CLEANUP   scripts/oelite-gitlab.sh worktree-remove <agent>
+3. SYNC      git checkout develop && git pull origin develop (Main dir)
+            cd .worktrees/<agent>/ && git rebase develop (Agent dir)
+4. MERGE     git checkout develop && git merge <agent>/<branch> (Main dir)
+5. CLEANUP   scripts/oelite-gitlab.sh worktree-remove <agent>
 ```
 
 ### 3.5 Stale Worktree Policy
@@ -210,40 +209,57 @@ Some files are shared across the codebase and can only be modified by **one agen
 
 **Rule:** If you need to modify a gated file, check with Emma first. She will coordinate who goes first and ensure no conflicts.
 
-### 4.3 Work on develop Is Forbidden for Agents
+### 4.3 Working with the Main `develop` Branch
 
-AI agents **NEVER** work directly on the `develop` branch. All agent work happens in worktrees on feature branches. This is non-negotiable.
+AI agents **NEVER** work directly on `develop` in the main directory. All agent work happens in worktrees on feature branches. However, agents **DO** merge their completed work back into the main `develop` branch using the **Late Sync** model:
 
 ```bash
-# WRONG - agent on develop
+# WRONG - agent working directly on develop in main dir
+cd /path/to/repo
 git checkout develop
 # make changes...
 
-# CORRECT - agent in worktree on feature branch
+# CORRECT - agent works in worktree, then merges into main develop
 scripts/oelite-gitlab.sh worktree-create daniel feature/US-001-auth-token-refresh
 cd .worktrees/daniel/
 # make changes...
+git checkout ../develop
+git merge daniel/feature/US-001-auth-token-refresh --no-edit
 ```
 
-### 4.4 Before MR: Rebase on develop
+The **Late Sync** model ensures main `develop` is always up-to-date before merging:
+1. Main directory pulls latest from remote
+2. Agent worktree rebases on main `develop`
+3. Main directory merges the now-clean feature branch
+This prevents stale merges and remote race conditions.
 
-Before creating an MR, the agent must rebase their feature branch on the latest `develop`:
+### 4.4 Pre-Merge Sync (The Critical "Late Sync")
+
+Before merging into `develop`, agents MUST ensure they are building on the latest state:
 
 ```bash
-scripts/oelite-gitlab.sh sync <agent>
+# Main Directory: Pull latest
+git checkout develop && git pull origin develop
+
+# Agent Worktree: Rebase onto updated develop
+git checkout <branch>
+git rebase ../develop    # Resolve conflicts here
 ```
 
-This fetches the latest `develop` and rebases the worktree branch on top of it. Resolve any conflicts before proceeding.
+### 4.5 Local Merge Verification
 
-### 4.5 Before MR: Conflict Pre-Check
-
-Run a dry-run merge to verify the feature branch can merge cleanly:
+Run a dry-run merge to verify the feature branch can merge cleanly into local `develop`:
 
 ```bash
-git merge-tree $(git merge-base HEAD origin/develop) origin/develop HEAD
+git checkout develop
+git merge --no-commit --no-ff <agent>/<branch>
+git merge-tree HEAD $(git merge-base HEAD <agent>/<branch>) <agent>/<branch>
+# Verify clean output, then:
+git merge --abort
+git checkout <agent>/<branch>
 ```
 
-If the output shows conflict markers, resolve them before creating the MR.
+If conflicts are detected, resolve them in the worktree before proceeding to Phase 4 (Local Merge).
 
 ---
 
@@ -285,20 +301,19 @@ Date:   Fri Jun 14 10:30:00 2026 +0000
 
 GitLab shows the commit under `daniel.phanes`'s profile. MRs created by agents appear as created by the agent's GitLab account.
 
-### 5.5 Human on `develop` + Agent Worktrees: The Sync Protocol
+### 5.5 Human on `develop` + Agent Worktrees: The Local Merge Sync Protocol
 
-The human developer (project owner) works directly on `develop` in the main working directory. AI agents work in `.worktrees/<agent>/` on feature branches. These are **independent** — the human's commits on `develop` do not affect agent worktrees until the agent explicitly syncs.
+The human developer works directly on `develop` in the main working directory. AI agents work in `.worktrees/<agent>/` on feature branches. These are **independent** until the agent completes their task.
 
 #### Why This Works
 
 Git worktrees have **independent working directories and indexes**. When the human commits and pushes to `develop`:
-
 - The main working directory updates normally.
 - Agent worktrees are **untouched**. Their files, staging area, and branch pointer remain exactly as they were.
 - No agent process is interrupted. No files change under any agent.
 - Multiple agents can be working simultaneously — none are affected.
 
-The only coordination point is the **explicit sync** (`scripts/oelite-gitlab.sh sync <agent>`), which runs `git fetch origin develop` + `git rebase origin/develop` inside the agent's worktree. This is the single moment when the agent's branch incorporates the human's latest work.
+The coordination happens via **explicit Late Sync** before the agent merges into main `develop`. This ensures the agent incorporates the human's latest remote pushes before modifying the local integration branch.
 
 #### The Two Sync Points
 
@@ -307,7 +322,7 @@ Agents sync at exactly **two moments** during every task:
 | Sync Point | When | Why |
 |------------|------|-----|
 | **Before starting work** | After worktree creation, before first edit | Ensures the agent builds on the latest `develop`, not stale code |
-| **Before creating MR** | After all edits are done, before `mr-create` | Ensures no conflicts with the human's latest pushes since work began |
+| **Before merging into local `develop`** | After all edits are done, before `git merge` in main dir | Ensures no conflicts with the human's latest remote pushes or other merged agents |
 
 #### The Protocol
 
@@ -324,56 +339,56 @@ git push origin develop
 
 This is always safe. It never disrupts any agent worktree.
 
-**Agent** (sync-first workflow):
+**Agent** (Late Sync & Local Merge workflow):
 
 ```bash
 # 1. Source environment
 source scripts/oelite-gitlab-env.sh
 
-# 2. Sync BEFORE starting work — get latest develop
-scripts/oelite-gitlab.sh sync daniel
+# 2. Sync main develop with remote (start of task)
+git checkout develop && git pull origin develop
 
-# 3. Create worktree (already based on latest develop from sync)
+# 3. Create worktree
 scripts/oelite-gitlab.sh worktree-create daniel feature/US-001-auth-token-refresh
 
 # 4. Work in the worktree
 cd .worktrees/daniel/
 # ... edit files, commit ...
 
-# 5. Sync AGAIN before creating MR — pick up any human pushes since step 2
-scripts/oelite-gitlab.sh sync daniel
+# 5. Late Sync: Update main develop with remote
+git checkout ../develop
+git pull origin develop
 
-# 6. If sync detects conflicts: resolve them in the worktree
-#    git mergetool / manual resolution → git add → git rebase --continue
+# 6. Rebase agent branch onto updated main develop
+git checkout feature/US-001-auth-token-refresh
+git rebase ../develop
 
-# 7. Push and create MR
-git push origin feature/US-001-auth-token-refresh
-scripts/oelite-gitlab.sh mr-create <project> daniel feature/US-001-auth-token-refresh develop "MR title" "MR description"
+# 7. Resolve conflicts in worktree if needed
+# git add <resolved-files> && git rebase --continue
+
+# 8. Merge into main develop
+git checkout ../develop
+git merge daniel/feature/US-001-auth-token-refresh --no-edit
+
+# 9. Cleanup
+scripts/oelite-gitlab.sh worktree-remove daniel
 ```
 
 #### What If the Human Has Uncommitted Changes?
 
 The human's uncommitted changes in the main working directory do **not** block agents. Agents work in separate directories with separate indexes. The sync command only fetches from the **remote** `origin/develop`, not the local working directory. So:
-
 - Human has uncommitted files in the main checkout → agents are unaffected.
 - Human has committed locally but not pushed → agents won't see those changes until the human pushes.
-- Human has pushed to `origin/develop` → agents see those changes on their next sync.
+- Human has pushed to `origin/develop` → agents see those changes on their Late Sync.
 
 **Guideline for humans**: Commit and push to `develop` regularly so agents always have recent code to build on. Stale `develop` branches mean agents work on outdated code and face larger rebases later.
 
 #### What If Multiple Agents Are Working?
 
-Each agent syncs independently. No coordination between agents is needed for sync:
-
-```bash
-# Daniel syncs his worktree
-scripts/oelite-gitlab.sh sync daniel
-
-# Sophia syncs her worktree (completely independent)
-scripts/oelite-gitlab.sh sync sophia
-```
-
-Both agents rebase their own feature branches on the latest `develop`. They don't see each other's work unless one has already merged to `develop`.
+Each agent syncs and merges independently into local `develop`. Because agents merge sequentially (only one main `develop` directory), their work accumulates cleanly:
+- Agent A finishes → merges into local `develop` → cleanup
+- Agent B finishes → pulls latest remote → rebases → merges into local `develop` (now includes Agent A's work) → cleanup
+No coordination is needed between agents for the merge step.
 
 #### Conflict Resolution During Sync
 
@@ -489,48 +504,41 @@ scripts/oelite-gitlab.sh worktree-list
 scripts/oelite-gitlab.sh worktree-remove daniel
 ```
 
-### 7.4 Merge Request Management
+### 7.4 Sync & Local Merge
 
 | Command | Description |
 |---------|-------------|
-| `scripts/oelite-gitlab.sh mr-create <project> <agent> <source> <target> <title> [desc]` | Create a merge request |
-| `scripts/oelite-gitlab.sh mr-list <project>` | List open merge requests |
-| `scripts/oelite-gitlab.sh mr-comment <project> <iid> <agent> <message>` | Comment on a merge request |
-| `scripts/oelite-gitlab.sh mr-approve <project> <iid> <agent>` | Approve a merge request |
-
-**Parameters:**
-
-- `<source>`: Source branch (e.g., `feature/US-001-auth-token-refresh`)
-- `<target>`: Target branch (always `develop`)
-- `<title>`: MR title
-- `[desc]`: Optional MR description
+| `scripts/oelite-gitlab.sh worktree-list` | List all active worktrees in the current repo |
+| `scripts/oelite-gitlab.sh worktree-remove <agent>` | Remove an agent's worktree after merge |
+| `scripts/oelite-gitlab.sh status` | Show overall status (active worktrees, recent issues) |
 
 **Examples:**
 
 ```bash
-scripts/oelite-gitlab.sh mr-create oelite/helios/core daniel feature/US-001-auth-token-refresh develop "Add token refresh endpoint" "Implements US-001. Adds RS256 token refresh with Redis blacklist."
-scripts/oelite-gitlab.sh mr-list oelite/helios/core
-scripts/oelite-gitlab.sh mr-comment oelite/helios/core 18 grace "LGTM. Pattern compliance verified."
-scripts/oelite-gitlab.sh mr-approve oelite/helios/core 18 grace
-```
-
-### 7.5 Sync & Status
-
-| Command | Description |
-|---------|-------------|
-| `scripts/oelite-gitlab.sh sync <agent>` | Rebase the agent's worktree branch on latest `develop` |
-| `scripts/oelite-gitlab.sh status` | Show overall status (active worktrees, open MRs, recent issues) |
-
-**Examples:**
-
-```bash
-scripts/oelite-gitlab.sh sync daniel
+git checkout develop && git pull origin develop   # Sync main directory
+git -C .worktrees/daniel rebase develop           # Sync agent worktree
+git checkout develop && git merge daniel/feature/xxx --no-edit # Local merge
+scripts/oelite-gitlab.sh worktree-remove daniel   # Cleanup
 scripts/oelite-gitlab.sh status
 ```
 
+### 7.5 GitLab Operations (Human Publisher)
+
+GitLab operations (MR creation, approvals, comments) are reserved for **human developers** in this model:
+
+| Command | Description |
+|---------|-------------|
+| `scripts/oelite-gitlab.sh issues <project>` | Fetch open issues |
+| `scripts/oelite-gitlab.sh issue-assign <project> <iid> <agent>` | Assign issue to agent |
+| `scripts/oelite-gitlab.sh issue-comment <project> <iid> <agent> <message>` | Comment on an issue as agent |
+| `scripts/oelite-gitlab.sh mr-create <project> <agent> <source> <target> <title> [desc]` | Create MR (human only) |
+| `scripts/oelite-gitlab.sh mr-list <project>` | List open MRs |
+| `scripts/oelite-gitlab.sh mr-comment <project> <iid> <agent> <message>` | Comment on an MR |
+| `scripts/oelite-gitlab.sh mr-approve <project> <iid> <agent>` | Approve an MR |
+
 ---
 
-## 8. Session Bootstrap
+## 8. Session Bootstrap (Local Merge Model)
 
 Every agent session starts with this sequence. No exceptions.
 
@@ -556,15 +564,13 @@ scripts/oelite-gitlab.sh setup
 
 Confirms all PATs are valid and can authenticate against GitLab.
 
-### Step 3: Sync on Latest `develop`
+### Step 3: Sync Main `develop` with Remote
 
 ```bash
-scripts/oelite-gitlab.sh sync <agent>
+git checkout develop && git pull origin develop
 ```
 
-**This is the first critical sync point.** Fetches the latest `develop` from the remote and rebases the agent's local tracking branch. This ensures the agent builds on the most recent code — including any commits the human developer pushed since the last session.
-
-If the agent doesn't have an existing worktree/branch yet, this updates the local `develop` reference so the next step creates the worktree from the latest code.
+**This is the first critical sync point.** Ensures the main directory holds the latest remote state before creating a worktree.
 
 ### Step 4: Fetch Issues
 
@@ -580,7 +586,7 @@ Review open issues. Emma assigns issues to agents before work begins.
 scripts/oelite-gitlab.sh worktree-create <agent> <branch>
 ```
 
-This creates the worktree directory, checks out a new feature branch from the latest `develop` (which was just synced in Step 3), and sets the per-worktree git config (`user.name` and `user.email`).
+This creates the worktree directory, checks out a new feature branch from the latest local `develop`, and sets the per-worktree git config (`user.name` and `user.email`).
 
 ### Step 6: Work in the Worktree
 
@@ -588,15 +594,18 @@ This creates the worktree directory, checks out a new feature branch from the la
 cd .worktrees/<agent>/
 ```
 
-All file edits, builds, and tests happen inside the worktree directory. The worktree is a full checkout of the repo on the feature branch. The human developer may continue pushing to `develop` during this time — the worktree is unaffected (see Section 5.5).
+All file edits, builds, and tests happen inside the worktree directory. The worktree is a full checkout of the repo on the feature branch. The human developer may continue pushing to `develop` during this time — the worktree is unaffected.
 
-### Step 7: Sync Again Before MR
+### Step 7: Late Sync & Rebase
 
 ```bash
-scripts/oelite-gitlab.sh sync <agent>
+git checkout ../develop
+git pull origin develop
+git checkout <branch>
+git rebase ../develop
 ```
 
-**This is the second critical sync point.** Before creating the MR, rebase the feature branch on the latest `develop` to pick up any commits the human (or other merged agents) pushed while the agent was working.
+**This is the second critical sync point.** Before merging into main `develop`, rebase the feature branch on the latest remote `develop` to pick up any commits the human (or other merged agents) pushed while working.
 
 If sync detects conflicts, resolve them in the worktree before proceeding:
 
@@ -608,23 +617,16 @@ git rebase --continue
 
 Run tests after resolving conflicts to confirm nothing is broken.
 
-### Step 8: Push and Create MR
-
-When work is complete and the branch is rebased on latest `develop`:
+### Step 8: Local Merge
 
 ```bash
-git add .
-git commit -m "Title
-
-- Change 1
-- Change 2"
-git push origin <branch>
-scripts/oelite-gitlab.sh mr-create <project> <agent> <branch> develop "MR title" "MR description"
+git checkout ../develop
+git merge <agent>/<branch> --no-edit
 ```
 
-### Step 9: After MR Merged
+The agent's work is now directly integrated into the local `develop` branch. Other agents can immediately build on these changes.
 
-Once the MR is approved and merged in GitLab:
+### Step 9: After Merge Complete
 
 ```bash
 scripts/oelite-gitlab.sh worktree-remove <agent>
@@ -711,13 +713,14 @@ If agents can't resolve a conflict independently, Emma mediates. For architectur
 
 ---
 
-## 11. MR Checklist
+## 11. Pre-Merge Checklist
 
-Before creating an MR, the agent **MUST** verify every item below. No MR should be created with unchecked items.
+Before merging into local `develop`, the agent **MUST** verify every item below. No merge should be created with unchecked items.
 
-### Pre-MR Verification
+### Pre-Merge Verification
 
-- [ ] Rebased on latest `develop` (run `scripts/oelite-gitlab.sh sync <agent>`)
+- [ ] Main `develop` pulled from remote (`git checkout develop && git pull origin develop`)
+- [ ] Feature branch rebased on latest local `develop` (`git rebase ../develop`)
 - [ ] Build passes in worktree (`dotnet build` / `npm run build` / `ng build`)
 - [ ] Tests pass (unit tests at minimum; integration tests if applicable)
 - [ ] No placeholder/mock/TODO data in changed files
@@ -729,12 +732,10 @@ Before creating an MR, the agent **MUST** verify every item below. No MR should 
 - [ ] No raw `MongoDB.Driver`, `BsonDocument`, or manual DI (backend)
 - [ ] Health endpoint verified if service is runnable
 
-### MR Metadata
+### Merge Metadata
 
-- [ ] MR title references the issue (e.g., "Add token refresh endpoint (US-001)")
-- [ ] MR description explains what changed and why
-- [ ] MR description lists files changed
-- [ ] Required reviewers identified from the workflow chain in `AGENTS.md`
+- [ ] Merge is executed in main directory: `git checkout develop && git merge <branch> --no-edit`
+- [ ] Worktree is removed after successful merge: `scripts/oelite-gitlab.sh worktree-remove <agent>`
 
 ---
 
@@ -853,6 +854,7 @@ git pull origin develop
 | Date | Update |
 |------|--------|
 | Jun 2026 | Initial standard. Worktree protocol, branch strategy, GitLab integration, CLI tool reference. |
+| Jun 20 2026 | **Major Update**: Replaced MR-centric remote workflow with **Late Sync & Local Merge Model**. Agents now merge directly into local `develop` instead of pushing/remotely creating MRs. Human developers act as "Publishers" for remote `develop`. Updated Sections 1, 2.4, 3.4, 4.3, 4.4, 4.5, 5.5, 7.4, 8, 11 to reflect agentic AI local-first workflow. |
 
 ---
 
