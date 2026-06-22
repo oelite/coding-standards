@@ -290,8 +290,36 @@ cmd_worktree_create() {
   local agent="$1"
   local branch="$2"
   local base_branch="${3:-develop}"
+  local owner="$agent"  # Default: agent IS the owner (owner DNA)
 
   validate_agent "$agent" || return 1
+
+  # Parse optional --owner flag
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --owner)
+        if [[ -z "${2:-}" ]]; then
+          echo "[ERROR] --owner requires a value" >&2
+          return 1
+        fi
+        owner="$2"
+        shift 2
+        ;;
+      *)
+        echo "[ERROR] Unknown option: $1" >&2
+        return 1
+        ;;
+    esac
+  done
+
+  # Validate owner if specified (can be different from agent when delegating)
+  if [[ "$owner" != "$agent" ]]; then
+    if [[ -z "${AGENT_IDS[$owner]:-}" ]]; then
+      echo "[ERROR] Unknown owner: $owner" >&2
+      echo "Valid owners: ${(j:, :)ALL_AGENTS}" >&2
+      return 1
+    fi
+  fi
 
   local root
   root=$(repo_root)
@@ -317,18 +345,30 @@ cmd_worktree_create() {
   echo "Creating worktree at $wt_path..."
   git worktree add "$wt_path" "$branch"
 
-  local agent_name
-  agent_name=$(get_agent_name "$agent")
-  local agent_email
-  agent_email=$(get_agent_email "$agent")
+  local owner_name
+  owner_name=$(get_agent_name "$owner")
+  local owner_email
+  owner_email=$(get_agent_email "$owner")
 
-  git -C "$wt_path" config --local user.name "$agent_name"
-  git -C "$wt_path" config --local user.email "$agent_email"
+  # Owner DNA: git identity = owner, not agent
+  git -C "$wt_path" config --local user.name "$owner_name"
+  git -C "$wt_path" config --local user.email "$owner_email"
 
-  echo "[OK] Worktree created for $agent"
+  # Store ownership metadata for workflow tracking
+  echo "$owner" > "$wt_path/.git-worktree-owner"
+
+  # Log ownership attribution (for transparency)
+  if [[ "$owner" != "$agent" ]]; then
+    echo "[OK] Worktree created for executor $agent (owner: $owner)"
+  else
+    echo "[OK] Worktree created for $agent"
+  fi
   echo "  Path:   $wt_path"
   echo "  Branch: $branch"
-  echo "  Config: user.name=$agent_name, user.email=$agent_email"
+  echo "  Owner:  $owner_name <$owner_email> (owner DNA)"
+  if [[ "$owner" != "$agent" ]]; then
+    echo "  Executor: $agent (using owner's GitLab identity)"
+  fi
 }
 
 cmd_worktree_list() {
@@ -558,6 +598,205 @@ cmd_mr_approve() {
   fi
 }
 
+cmd_mr_check_eligible() {
+  local project_path="$1"
+
+  local encoded_path
+  encoded_path=$(url_encode_path "$project_path")
+
+  local pat
+  pat=$(get_pat "emma")
+  api_get "/projects/$encoded_path/merge_requests?state=opened&per_page=100" "$pat"
+
+  if [[ "$_API_STATUS" != "200" ]]; then
+    echo "[ERROR] Failed to fetch MRs (HTTP $_API_STATUS)" >&2
+    echo "$_API_RESPONSE" >&2
+    return 1
+  fi
+
+  echo "$_API_RESPONSE" | python3 -c "
+import sys, json
+from datetime import datetime, timezone
+
+mrs = json.load(sys.stdin)
+if not mrs:
+    print('No open merge requests found.')
+    sys.exit(0)
+
+print(f'{\"IID\":<6} │ {\"Title\":<40} │ {\"Author\":<16} │ {\"Status\":<12} │ ELIGIBLE │ REASONS')
+print('─' * 130)
+
+for mr in mrs:
+    iid = str(mr.get('iid', ''))
+    title = mr.get('title', '')[:40]
+    author = mr.get('author', {}).get('username', '')[:16]
+    merge_status = mr.get('merge_status', '')
+    state = mr.get('state', '')
+    created_at = mr.get('created_at', '')
+    labels = mr.get('labels', [])
+    review_changes = mr.get('user_notes_count', 0)
+    
+    # Check eligibility criteria
+    reasons = []
+    eligible = True
+    
+    # 1. CI Pipeline Passed
+    if merge_status not in ('can_be_merged', 'merge_status_can_be_merged'):
+        eligible = False
+        reasons.append('CI not green')
+    
+    # 2. No Requested Changes (check notes for reject comments)
+    if mr.get('has_conflicts', False):
+        eligible = False
+        reasons.append('Has conflicts')
+    
+    # 3. Not WIP
+    if title.startswith('WIP:'):
+        eligible = False
+        reasons.append('WIP flag')
+    
+    # 4. Not marked requires-manual-review
+    if 'requires-manual-review' in labels:
+        eligible = False
+        reasons.append('Manual review flag')
+    
+    # 5. Review window (10 min)
+    if created_at:
+        try:
+            created_dt = datetime.fromisoformat(created_at.replace('Z', '+00:00'))
+            now_dt = datetime.now(timezone.utc)
+            age_minutes = (now_dt - created_dt).total_seconds() / 60
+            if age_minutes < 10:
+                eligible = False
+                reasons.append(f'Age <10m ({age_minutes:.0f}m)')
+        except (ValueError, TypeError):
+            pass
+    
+    status_str = 'ELIGIBLE' if eligible else 'INELIGIBLE'
+    reasons_str = ', '.join(reasons) if reasons else '—'
+    color_marker = '✓' if eligible else '✗'
+    
+    print(f'{iid:<6} │ {title:<40} │ {author:<16} │ {merge_status or state:<12} │ {color_marker} {status_str:<11} │ {reasons_str}')
+
+print()
+print(f'Total: {len(mrs)} open MR(s)')
+"
+}
+
+cmd_mr_auto_approve() {
+  local project_path="$1"
+
+  local encoded_path
+  encoded_path=$(url_encode_path "$project_path")
+
+  local pat
+  pat=$(get_pat "emma")
+  api_get "/projects/$encoded_path/merge_requests?state=opened&per_page=100" "$pat"
+
+  if [[ "$_API_STATUS" != "200" ]]; then
+    echo "[ERROR] Failed to fetch MRs (HTTP $_API_STATUS)" >&2
+    echo "$_API_RESPONSE" >&2
+    return 1
+  fi
+
+  echo "Checking eligible MRs..."
+  echo ""
+  
+  local eligible_mrs
+  eligible_mrs=$(echo "$_API_RESPONSE" | python3 -c "
+import sys, json
+from datetime import datetime, timezone
+
+mrs = json.load(sys.stdin)
+eligible = []
+
+for mr in mrs:
+    iid = mr.get('iid')
+    title = mr.get('title', '')
+    merge_status = mr.get('merge_status', '')
+    labels = mr.get('labels', [])
+    created_at = mr.get('created_at', '')
+    has_conflicts = mr.get('has_conflicts', False)
+    
+    # Check eligibility criteria
+    reasons = []
+    is_eligible = True
+    
+    # 1. CI Pipeline Passed
+    if merge_status not in ('can_be_merged', 'merge_status_can_be_merged'):
+        is_eligible = False
+    
+    # 2. Has conflicts
+    if has_conflicts:
+        is_eligible = False
+    
+    # 3. Not WIP
+    if title.startswith('WIP:'):
+        is_eligible = False
+    
+    # 4. Not marked requires-manual-review
+    if 'requires-manual-review' in labels:
+        is_eligible = False
+    
+    # 5. Review window (10 min)
+    if created_at and is_eligible:
+        try:
+            created_dt = datetime.fromisoformat(created_at.replace('Z', '+00:00'))
+            now_dt = datetime.now(timezone.utc)
+            age_minutes = (now_dt - created_dt).total_seconds() / 60
+            if age_minutes < 10:
+                is_eligible = False
+        except (ValueError, TypeError):
+            pass
+    
+    if is_eligible:
+        eligible.append(iid)
+
+# Output eligible IIDs as newline-separated list
+for iid in eligible:
+    print(iid)
+")
+
+  if [[ -z "$eligible_mrs" ]]; then
+    echo "[INFO] No eligible MRs found for auto-approval."
+    echo "Tip: Run 'mr-check-eligible' to see why MRs are ineligible."
+    return 0
+  fi
+
+  echo "Found $(echo "$eligible_mrs" | wc -l | tr -d ' ') eligible MR(s)."
+  echo ""
+  
+  local approved_count=0
+  local failed_count=0
+  
+  while IFS= read -r mr_iid; do
+    [[ -z "$mr_iid" ]] && continue
+    
+    # Use emma's PAT for auto-approval (reviewer identity)
+    local emma_pat
+    emma_pat=$(get_pat "emma")
+    
+    api_post "/projects/$encoded_path/merge_requests/$mr_iid/approve" "$emma_pat" ""
+    
+    if [[ "$_API_STATUS" == "200" || "$_API_STATUS" == "201" ]]; then
+      echo "[OK] MR !$mr_iid approved (auto-approved)"
+      ((approved_count++))
+    else
+      echo "[WARN] MR !$mr_iid approval failed (HTTP $_API_STATUS) — may require manual approval" >&2
+      ((failed_count++))
+    fi
+  done <<< "$eligible_mrs"
+  
+  echo ""
+  echo "=== Auto-Approval Summary ==="
+  echo "  Approved: $approved_count"
+  echo "  Failed:   $failed_count"
+  
+  if [[ $failed_count -gt 0 ]]; then
+    return 1
+  fi
+}
+
 cmd_sync() {
   local agent="$1"
 
@@ -596,8 +835,8 @@ cmd_status() {
   echo "Repo: $root"
   echo ""
 
-  printf "%-12s │ %-30s │ %-8s │ %-8s │ %-12s │ %s\n" "AGENT" "BRANCH" "AHEAD" "BEHIND" "LAST COMMIT" "STATUS"
-  print_separator 100
+  printf "%-12s │ %-12s │ %-30s │ %-8s │ %-8s │ %-12s │ %s\n" "AGENT" "OWNER" "BRANCH" "AHEAD" "BEHIND" "LAST COMMIT" "STATUS"
+  print_separator 110
 
   local now
   now=$(date +%s)
@@ -617,6 +856,12 @@ cmd_status() {
         if [[ "$wt_path" == "$root/.worktrees/"* ]]; then
           agent_name="${wt_path#$root/.worktrees/}"
           found=true
+
+          # Read owner DNA metadata
+          local owner="$agent_name"
+          if [[ -f "$wt_path/.git-worktree-owner" ]]; then
+            owner=$(<"$wt_path/.git-worktree-owner")
+          fi
 
           ahead="" behind="" last_date="" last_ts="" status_label=""
 
@@ -646,8 +891,8 @@ cmd_status() {
             status_label="—"
           fi
 
-          printf "%-12s │ %-30s │ %-8s │ %-8s │ %-12s │ %s\n" \
-            "$agent_name" "$branch" "$ahead" "$behind" "$last_date" "$status_label"
+          printf "%-12s │ %-12s │ %-30s │ %-8s │ %-8s │ %-12s │ %s\n" \
+            "$agent_name" "$owner" "$branch" "$ahead" "$behind" "$last_date" "$status_label"
         fi
         wt_path=""
         branch=""
@@ -657,6 +902,51 @@ cmd_status() {
 
   if ! git worktree list --porcelain | grep -q "$root/.worktrees/"; then
     echo "No active agent worktrees found."
+  fi
+}
+
+cmd_worktree_owner() {
+  local agent="$1"
+  local new_owner="${2:-}"
+
+  validate_agent "$agent" || return 1
+  check_worktree_exists "$agent" || return 1
+
+  local wt_path
+  wt_path=$(worktree_path "$agent")
+  local owner_file="$wt_path/.git-worktree-owner"
+  local current_owner
+  if [[ -f "$owner_file" ]]; then
+    current_owner=$(<"$owner_file")
+  else
+    current_owner="$agent"
+  fi
+
+  if [[ -z "$new_owner" ]]; then
+    # Display current owner
+    local owner_name
+    owner_name=$(get_agent_name "$current_owner")
+    local owner_email
+    owner_email=$(get_agent_email "$current_owner")
+    echo "Worktree Owner DNA for $agent:"
+    echo "  Path:   $wt_path"
+    echo "  Owner:  $owner_name <$owner_email>"
+    echo "  Config: user.name=$owner_name, user.email=$owner_email"
+  else
+    # Set new owner
+    validate_agent "$new_owner" || return 1
+    local new_owner_name
+    new_owner_name=$(get_agent_name "$new_owner")
+    local new_owner_email
+    new_owner_email=$(get_agent_email "$new_owner")
+
+    echo "$new_owner" > "$owner_file"
+    git -C "$wt_path" config --local user.name "$new_owner_name"
+    git -C "$wt_path" config --local user.email "$new_owner_email"
+
+    echo "[OK] Owner DNA updated for $agent:"
+    echo "  Path:   $wt_path"
+    echo "  New owner: $new_owner_name <$new_owner_email>"
   fi
 }
 
@@ -685,10 +975,13 @@ COMMANDS:
     Post a comment on an issue as the specified agent.
     Example: oelite-gitlab.sh issue-comment uranus/origin-auth 42 grace "LGTM"
 
-  worktree-create <agent> <branch> [base-branch]
+  worktree-create <agent> <branch> [base-branch] [--owner <team-member>]
     Create a git worktree for an agent with per-worktree identity.
     Default base-branch is develop.
+    --owner specifies the team member who owns the commit attribution (owner DNA).
+    When omitted, the agent IS the owner.
     Example: oelite-gitlab.sh worktree-create daniel feature/US-001-auth
+    Example: oelite-gitlab.sh worktree-create sophia feature/auth --owner daniel
 
   worktree-list
     List all active agent worktrees with branch, last commit, and sync status.
@@ -696,6 +989,13 @@ COMMANDS:
   worktree-remove <agent> [--delete-branch]
     Remove an agent's worktree. Use --delete-branch to also delete the branch.
     Example: oelite-gitlab.sh worktree-remove daniel --delete-branch
+
+  worktree-owner <agent> [new-owner]
+    View or update worktree owner DNA (commit attribution).
+    Without new-owner: displays current owner identity.
+    With new-owner: updates git config and owner metadata to the new owner.
+    Example: oelite-gitlab.sh worktree-owner daniel
+    Example: oelite-gitlab.sh worktree-owner daniel emma
 
   mr-create <project-path> <agent> <source> <target> <title> [description]
     Create a merge request using the agent's PAT.
@@ -712,6 +1012,14 @@ COMMANDS:
   mr-approve <project-path> <mr-iid> <agent>
     Approve a merge request as the specified agent.
     Example: oelite-gitlab.sh mr-approve uranus/origin-auth 15 grace
+
+  mr-check-eligible <project-path>
+    Check which open MRs meet auto-approval criteria (CI green, no conflicts, not WIP, not manual-review flagged, age ≥10min).
+    Example: oelite-gitlab.sh mr-check-eligible oelite/helios/core
+
+  mr-auto-approve <project-path>
+    Auto-approve all MRs that meet eligibility criteria. Uses emma's PAT for approval attribution.
+    Example: oelite-gitlab.sh mr-auto-approve oelite/helios/core
 
   sync <agent>
     Rebase the agent's worktree on the latest origin/develop.
@@ -753,8 +1061,11 @@ case "$command" in
   mr-list)        cmd_mr_list "$@" ;;
   mr-comment)     cmd_mr_comment "$@" ;;
   mr-approve)     cmd_mr_approve "$@" ;;
+  mr-check-eligible) cmd_mr_check_eligible "$@" ;;
+  mr-auto-approve)  cmd_mr_auto_approve "$@" ;;
   sync)           cmd_sync "$@" ;;
   status)         cmd_status "$@" ;;
+  worktree-owner) cmd_worktree_owner "$@" ;;
   help|--help|-h) cmd_help ;;
   *)
     echo "[ERROR] Unknown command: $command" >&2

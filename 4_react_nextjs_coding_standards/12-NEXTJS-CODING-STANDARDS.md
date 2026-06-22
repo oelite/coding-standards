@@ -3010,6 +3010,54 @@ export default async function AnotherBadComponent() {
 />
 ```
 
+## E2E Testing Quality Standards
+
+E2E tests (Playwright) MUST follow these mandatory quality gates. Tests that fail any gate are rejected by Olivia.
+
+### Gate 1: Every Test Must Have Assertions
+
+- **Minimum 3 assertions per test** (including `expect()` calls)
+- Tests with only `page.goto()` and `page.waitForLoadState()` are **NO-OPS** and MUST be rejected
+- Every test MUST verify: (1) element visibility, (2) expected state change, (3) data/behavior correctness
+- **Tautological assertions are forbidden**: `expect(count).toBeGreaterThanOrEqual(0)` always passes
+
+### Gate 2: Real Server, Real API (NO MOCK DATA)
+
+- All E2E tests MUST run against a **live running dev server** (`npm run dev`)
+- Tests MUST verify that API calls are actually made (use `page.route()` to log network requests)
+- **No hardcoded data assertions**: Tests MUST NOT assert on hardcoded strings like "Premium Widget", "$49.99"
+- Data in the UI must come from the actual API response
+
+### Gate 3: Interaction Coverage
+
+For EVERY feature, tests MUST cover:
+- **Positive flow**: Happy path (navigate → interact → save → verify)
+- **Negative flow**: Error handling (invalid input → error message)
+- **Permission/RBAC**: Role-based access (admin sees create, viewer does not)
+- **Edge cases**: Double-click, rapid navigation, loading states, error states
+- **Accessibility**: Keyboard navigation (Tab, Enter, Escape), ARIA attributes
+- **Data persistence**: CRUD round-trip (create → refresh → verify → delete → verify gone)
+- **Responsive**: Mobile → tablet → desktop layouts
+
+### Gate 4: Minimum Test Count Per Feature
+
+| Feature Complexity | Minimum Atomic Tests |
+|-------------------|---------------------|
+| Simple page (read-only list) | 8-15 |
+| CRUD page (create, read, update, delete) | 25-50 |
+| Form with validation + API | 15-30 |
+| Permission-dependent UI | 10-20 per role |
+| Dashboard with charts/metrics | 10-20 |
+| Complex workflow (multi-step) | 30-60 |
+
+### Gate 5: Test Execution Evidence
+
+- Every feature must show **executed test output** — not just "test files exist"
+- Tests must be run with `npx playwright test --reporter=line` and output captured
+- Before declaring "done", provide: (1) command + output showing all tests passed, (2) coverage mapping to user stories, (3) total test count per feature
+
+---
+
 ## Validation Rules
 
 ### 1. **Compilation Checks**

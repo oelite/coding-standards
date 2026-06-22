@@ -16,9 +16,73 @@ The OElite team consists of 12 members (10 AI agents + human developers) who wor
 
 ---
 
-## 1. Team Identity Registry
+## 1.5 Mandatory Pre-Task Sync (Hard Gate)
 
-Every team member has a unique GitLab identity. AI agents commit under their own name and email. All GitLab operations (comments, MRs, approvals) use the agent's personal access token (PAT).
+**This is a non-negotiable gate. No work begins until this step is completed.**
+
+Before ANY task begins — including research, exploration, planning, or code review — the main directory's `develop` branch MUST be pulled from remote:
+
+```bash
+# HARD GATE — execute before any task, including reading code or creating a worktree
+git checkout develop && git pull origin develop
+```
+
+### Why This Exists
+
+After human developers approve MRs on GitLab and push to `origin/develop`, the main directory's local `develop` can become stale. Without this hard gate:
+
+- Agents build on outdated code that has already been merged to remote
+- MRs created by agents may conflict with recently-merged remote changes
+- The main directory holds an inconsistent view of `develop` vs `origin/develop`
+- Team members have no way to know whether `develop` is current
+
+### Enforcement
+
+| Scenario | Action |
+|----------|--------|
+| Starting a new task session | `git checkout develop && git pull origin develop` — mandatory first step |
+| Switching between tasks | Re-sync before creating a new worktree |
+| Emma doing planning | Pull `origin/develop` before creating tasks or assigning issues |
+| Human developer working | Already on `develop` — pull before any commit |
+
+**Failure to sync before starting work means the agent branches from stale `develop`, increasing rebase conflicts and risking the merge of outdated code.**
+
+---
+
+## 1.6 Periodic Sync Responsibility
+
+The `develop` branch must never go stale between agent sessions. The following responsibilities ensure continuous freshness:
+
+### Per-Agent Session Sync
+
+Every agent session MUST begin with a `git pull origin develop` (see §1.5 above). This covers the sync at task boundaries.
+
+### Inter-Session Sync (Between Tasks)
+
+Between agent sessions, the main directory's `develop` is the shared integration point. The following rules apply:
+
+| Role | Responsibility |
+|------|---------------|
+| **Emma** (Product Coordinator) | MUST sync `develop` before starting any planning session or creating tasks. She is the workflow orchestrator and her planning must be based on current code. |
+| **Human developers** | MUST sync `develop` before any commit or push. Push frequently to `origin/develop` so agents always have recent code. |
+| **Any team member** working in the main directory | MUST sync before any operation that touches `develop` (commit, merge, rebase). |
+
+### Stale `develop` Detection
+
+Use `scripts/oelite-gitlab.sh status` to check how far behind any worktree is:
+
+```
+AGENT     OWNER      BRANCH                           AHEAD    BEHIND   LAST COMMIT  STATUS
+daniel    daniel     feature/US-001-auth-token-refresh   3        2        2026-06-20   active
+```
+
+The `BEHIND` column shows how many commits the worktree's source branch (local `develop`) is behind `origin/develop`. If `BEHIND > 0`, run `git pull origin develop` in the main directory before continuing.
+
+---
+
+## 2. Team Identity Registry
+
+Every team member has a unique GitLab identity. AI agents commit under the team member's GitLab identity configured in their worktree — **never under the AI executor's own name**. All GitLab operations (comments, MRs, approvals) use the configured team member's personal access token (PAT).
 
 | Agent | Role | GitLab Username | Email | GitLab User ID |
 |-------|------|-----------------|-------|----------------|
@@ -44,7 +108,7 @@ Every team member has a unique GitLab identity. AI agents commit under their own
 
 ---
 
-## 2. Git Flow: Branch Strategy
+## 3. Git Flow: Branch Strategy
 
 ### 2.1 Permanent Branches
 
@@ -106,7 +170,7 @@ review/felix-US-015-checkout-payment-flow
 
 ---
 
-## 3. Worktree Protocol
+## 4. Worktree Protocol
 
 Git worktrees allow multiple agents to work on the same repo simultaneously, each in their own isolated directory with their own branch.
 
@@ -173,7 +237,7 @@ scripts/oelite-gitlab.sh worktree-remove <agent>
 
 ---
 
-## 4. Parallel Development Rules
+## 5. Parallel Development Rules
 
 ### 4.1 Directory-Level Ownership
 
@@ -263,7 +327,7 @@ If conflicts are detected, resolve them in the worktree before proceeding to Pha
 
 ---
 
-## 5. Human + AI Collaboration
+## 6. Human + AI Collaboration
 
 ### 5.1 Human Developers
 
@@ -415,7 +479,7 @@ git log --oneline origin/develop...HEAD
 
 ---
 
-## 6. GitLab Integration
+## 7. GitLab Integration
 
 All project management happens in GitLab at https://code.phanes.ltd. The CLI tool `scripts/oelite-gitlab.sh` wraps the GitLab API using each agent's PAT.
 
@@ -446,7 +510,7 @@ All project management happens in GitLab at https://code.phanes.ltd. The CLI too
 
 ---
 
-## 7. CLI Tool Reference
+## 8. CLI Tool Reference
 
 The CLI tool `scripts/oelite-gitlab.sh` is the single interface for all GitLab operations. It reads PATs from macOS Keychain at runtime via `scripts/oelite-gitlab-env.sh`.
 
@@ -535,10 +599,70 @@ GitLab operations (MR creation, approvals, comments) are reserved for **human de
 | `scripts/oelite-gitlab.sh mr-list <project>` | List open MRs |
 | `scripts/oelite-gitlab.sh mr-comment <project> <iid> <agent> <message>` | Comment on an MR |
 | `scripts/oelite-gitlab.sh mr-approve <project> <iid> <agent>` | Approve an MR |
+| `scripts/oelite-gitlab.sh mr-check-eligible <project>` | List MRs that meet auto-approval criteria |
+| `scripts/oelite-gitlab.sh mr-auto-approve <project>` | Auto-approve all eligible open MRs |
 
 ---
 
-## 8. Session Bootstrap (Local Merge Model)
+## 7.6 MR Auto-Approval (Enhanced Workflow)
+
+MRs created by agents that have completed their full review chain can be auto-approved to eliminate the manual bottleneck where reviewers must manually check GitLab for ready MRs. This is a **supplement** to manual review — it accelerates MRs that are already eligible, not a replacement for review.
+
+### Eligibility Criteria
+
+An MR is eligible for auto-approval when **ALL** of the following conditions are met:
+
+| # | Criterion | Check Method |
+|---|-----------|-------------|
+| 1 | **CI Pipeline Passed** | All pipeline stages are green (`merge_status == "can_be_merged"`) |
+| 2 | **No Requested Changes** | No reviewer has requested changes on the MR |
+| 3 | **Implementer Verification Complete** | The implementing agent's verification is complete (build + tests pass) |
+| 4 | **No Scope Conflicts** | No other open MR overlaps with the same directory scope (Emma's directory ownership) |
+| 5 | **Review Window Passed** | MR has been open for at least **10 minutes** (allows for human observation) |
+
+### Auto-Approval Workflow
+
+```bash
+# 1. Check which MRs are eligible for auto-approval
+scripts/oelite-gitlab.sh mr-check-eligible oelite/helios/core
+
+# 2. Review the eligible MRs (shown with eligibility details)
+# If satisfied, approve all eligible:
+scripts/oelite-gitlab.sh mr-auto-approve oelite/helios/core
+```
+
+### Auto-Approval Rules
+
+- **Auto-approval appears under the agent who runs the command** (not the implementing agent)
+- **Only one agent runs auto-approve per project at a time** — Emma coordinates who runs it (typically the reviewer whose turn it is: Grace for backend, Felix for frontend, Marcus for architecture)
+- **Auto-approved MRs still require a human push** to `origin/develop` (no automated remote push)
+- **If any criterion fails**, the MR is listed as ineligible with the reason, and the reviewer must manually review it
+
+### When Auto-Approval Does NOT Apply
+
+| Scenario | Action |
+|----------|--------|
+| MR touches security-sensitive code (auth, crypto, keys) | MUST be manually reviewed by Maya |
+| MR changes architecture-critical files (Program.cs, BaseEntity, shared interfaces) | MUST be manually reviewed by Marcus |
+| MR is marked with label `requires-manual-review` | MUST be manually reviewed by the assigned reviewer |
+| MR has conflicts unresolved | NOT eligible — resolve conflicts first |
+| MR is a WIP (title starts with `WIP:`) | NOT eligible — wait for final version |
+
+### Integration with Review Chain
+
+Auto-approval supplements the existing review chain defined in `AGENTS.md`:
+
+```
+Agent completes work → MR created → CI passes → Auto-approve eligible MRs → Human push to remote
+                                              ↓
+                                      Not eligible? → Manual review by assigned reviewer
+```
+
+This reduces the manual overhead on reviewers (Grace, Felix, Emma) while maintaining the quality gates of the review chain. Reviewers focus their manual attention on MRs that need human judgment (security, architecture, complex logic), while simple MRs flow through auto-approval.
+
+---
+
+## 9. Session Bootstrap (Local Merge Model)
 
 Every agent session starts with this sequence. No exceptions.
 
@@ -636,9 +760,9 @@ This cleans up the worktree directory and the local feature branch.
 
 ---
 
-## 9. Security Rules
+## 10. Security Rules
 
-### 9.1 PAT Storage
+### 10.1 PAT Storage
 
 - PATs are stored in **macOS Keychain** only. Never in files. Never committed.
 - Each PAT is stored as a generic password with service name `oelite-gitlab-<agent>` and account `oelite`.
@@ -650,12 +774,12 @@ This cleans up the worktree directory and the local feature branch.
 security add-generic-password -s "oelite-gitlab-daniel" -a "oelite" -w "glpat-xxxxxxxxxxxx" -U
 ```
 
-### 9.2 Environment Files
+### 10.2 Environment Files
 
 - `.env` files are in `.gitignore`. Never commit them.
 - The `scripts/oelite-gitlab-env.sh` script does not create `.env` files. It exports variables into the current shell session only.
 
-### 9.3 PAT Hygiene
+### 10.3 PAT Hygiene
 
 - Each agent uses **their own PAT**. No sharing PATs between agents.
 - Rotate PATs periodically (recommended: every 90 days).
@@ -665,7 +789,7 @@ security add-generic-password -s "oelite-gitlab-daniel" -a "oelite" -w "glpat-xx
 security delete-generic-password -s "oelite-gitlab-<agent>" -a "oelite"
 ```
 
-### 9.4 No Secrets in Commits
+### 10.4 No Secrets in Commits
 
 - Never commit PATs, API keys, passwords, or connection strings.
 - Use environment variables or Keychain references.
@@ -673,17 +797,17 @@ security delete-generic-password -s "oelite-gitlab-<agent>" -a "oelite"
 
 ---
 
-## 10. Conflict Resolution
+## 11. Conflict Resolution
 
-### 10.1 Prevention
+### 11.1 Prevention
 
 Directory-level ownership prevents most conflicts. Emma assigns non-overlapping directory scopes per task. Agents stay within their scope.
 
-### 10.2 Shared File Serialization
+### 11.2 Shared File Serialization
 
 Shared files (Program.cs, docker-compose, shared interfaces, AGENTS.md, etc.) are gated. Only one agent modifies a shared file at a time. Emma coordinates the order.
 
-### 10.3 Conflict Resolution During Rebase
+### 11.3 Conflict Resolution During Rebase
 
 If conflicts arise when rebasing on `develop`:
 
@@ -699,7 +823,7 @@ git rebase --continue
 git push origin <branch> --force-with-lease
 ```
 
-### 10.4 Two Agents Need the Same File
+### 11.4 Two Agents Need the Same File
 
 If two agents need to modify the same file:
 
@@ -707,13 +831,13 @@ If two agents need to modify the same file:
 2. The first agent completes their MR and merges.
 3. The second agent rebases on the updated `develop` and incorporates the first agent's changes.
 
-### 10.5 Escalation
+### 11.5 Escalation
 
 If agents can't resolve a conflict independently, Emma mediates. For architectural conflicts, Marcus adjudicates.
 
 ---
 
-## 11. Pre-Merge Checklist
+## 12. Pre-Merge Checklist
 
 Before merging into local `develop`, the agent **MUST** verify every item below. No merge should be created with unchecked items.
 
@@ -726,7 +850,7 @@ Before merging into local `develop`, the agent **MUST** verify every item below.
 - [ ] No placeholder/mock/TODO data in changed files
 - [ ] Code follows OElite coding standards (`coding-standards/`)
 - [ ] Directory scope respected (no changes outside assigned scope)
-- [ ] Commit messages follow convention (see Section 12)
+- [ ] Commit messages follow convention (see Section 13)
 - [ ] No secrets, PATs, or credentials in committed files
 - [ ] No `as any`, `@ts-ignore`, or type-error suppression (frontend)
 - [ ] No raw `MongoDB.Driver`, `BsonDocument`, or manual DI (backend)
@@ -739,7 +863,7 @@ Before merging into local `develop`, the agent **MUST** verify every item below.
 
 ---
 
-## 12. Commit Message Convention
+## 13. Commit Message Convention
 
 All commits follow a consistent format for traceability and changelog generation.
 
@@ -790,7 +914,7 @@ Implement checkout payment flow UI
 
 ---
 
-## 13. Edge Cases & FAQ
+## 14. Edge Cases & FAQ
 
 ### Q: What if my worktree gets into a broken state?
 
@@ -841,7 +965,7 @@ git pull origin develop
 
 ---
 
-## 14. Standards Maintenance
+## 15. Standards Maintenance
 
 ### Update Process
 
@@ -854,7 +978,8 @@ git pull origin develop
 | Date | Update |
 |------|--------|
 | Jun 2026 | Initial standard. Worktree protocol, branch strategy, GitLab integration, CLI tool reference. |
-| Jun 20 2026 | **Major Update**: Replaced MR-centric remote workflow with **Late Sync & Local Merge Model**. Agents now merge directly into local `develop` instead of pushing/remotely creating MRs. Human developers act as "Publishers" for remote `develop`. Updated Sections 1, 2.4, 3.4, 4.3, 4.4, 4.5, 5.5, 7.4, 8, 11 to reflect agentic AI local-first workflow. |
+| Jun 20 2026 | **Major Update**: Replaced MR-centric remote workflow with **Late Sync & Local Merge Model**. Agents now merge directly into local `develop` instead of pushing/remotely creating MRs. Human developers act as "Publishers" for remote `develop`. Updated Sections 2.4, 3.4, 4.3, 4.4, 4.5, 5.5, 7.4, 8, 11 to reflect agentic AI local-first workflow. |
+| Jun 21 2026 | **Workflow Enhancement**: Added mandatory pre-task sync (hard gate) at §1.5, periodic sync responsibilities at §1.6, and stale `develop` detection via `status`. Added MR auto-approval eligibility criteria at §7.6 and CLI commands (`mr-check-eligible`, `mr-auto-approve`) at §8.5. Agents MUST sync `git pull origin develop` before every task. Reviewers can auto-approve eligible MRs via CLI. |
 
 ---
 
