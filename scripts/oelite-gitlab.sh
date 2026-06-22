@@ -294,7 +294,8 @@ cmd_worktree_create() {
 
   validate_agent "$agent" || return 1
 
-  # Parse optional --owner flag
+  shift 3 2>/dev/null || shift $#
+
   while [[ $# -gt 0 ]]; do
     case "$1" in
       --owner)
