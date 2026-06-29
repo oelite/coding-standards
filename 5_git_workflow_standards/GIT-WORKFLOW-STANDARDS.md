@@ -349,11 +349,11 @@ git log --oneline origin/develop...HEAD
 
 ## 6. Human + AI Collaboration
 
-### 5.1 Human Developers
+### 6.1 Human Developers
 
 Human developers work however they prefer. Direct commits on `develop`, feature branches, anything goes. The only requirement: **all code enters `develop` through MRs**, same as agents.
 
-### 5.2 AI Agents
+### 6.2 AI Agents
 
 AI agents follow strict worktree protocol. They never touch the main working directory's branch. Every change goes through:
 
@@ -367,7 +367,7 @@ AI agents follow strict worktree protocol. They never touch the main working dir
 8. Sync local `develop` for next task
 9. Worktree cleanup
 
-### 5.3 Same Rules for Everyone
+### 6.3 Same Rules for Everyone
 
 All code enters `develop` through MRs. Human or AI, the review process is identical:
 
@@ -376,7 +376,7 @@ All code enters `develop` through MRs. Human or AI, the review process is identi
 - No self-merging without review (unless explicitly authorized by Emma)
 - GitLab auto-merges on approval + CI green (feature branch auto-deleted)
 
-### 5.4 Visibility
+### 6.4 Visibility
 
 Humans see agent commits under agent names in git log and GitLab. For example:
 
@@ -390,7 +390,7 @@ Date:   Fri Jun 14 10:30:00 2026 +0000
 
 GitLab shows the commit under `daniel.phanes`'s profile. MRs created by agents appear as created by the agent's GitLab account. When the MR is approved and CI passes, GitLab auto-merges the change and auto-deletes the source branch.
 
-### 5.5 Human on `develop` + Agent Worktrees: The MR-Centric Sync Protocol
+### 6.5 Human on `develop` + Agent Worktrees: The MR-Centric Sync Protocol
 
 The human developer works directly on `develop` in the main working directory. AI agents work in `.worktrees/<agent>/` on feature branches. All code enters `develop` through GitLab MRs — whether from humans or agents.
 
@@ -503,30 +503,30 @@ git log --oneline origin/develop...HEAD
 
 ---
 
-## 6. GitLab Integration
+## 7. GitLab Integration
 
 All project management happens in GitLab at https://code.phanes.ltd. The CLI tool `scripts/oelite-gitlab.sh` wraps the GitLab API using each agent's PAT.
 
-### 6.1 Issues
+### 7.1 Issues
 
 - Issues are tracked in GitLab per project.
 - Emma assigns issues to agents via `scripts/oelite-gitlab.sh issue-assign`.
 - Agents comment on issues using their own PAT. Comments appear under the agent's GitLab identity.
-- Issue state transitions are managed per the **Issue Lifecycle Protocol** (see §7 below).
+- Issue state transitions are managed per the **Issue Lifecycle Protocol** (see §8 below).
 
-### 6.2 Merge Requests
+### 7.2 Merge Requests
 
 - MRs are created via `scripts/oelite-gitlab.sh mr-create` with the implementing agent's PAT.
 - The MR description should reference the issue it addresses.
 - Reviewers are assigned based on the workflow chain defined in `AGENTS.md`.
 
-### 6.3 Approvals
+### 7.3 Approvals
 
 - Reviewers approve via `scripts/oelite-gitlab.sh mr-approve` using their own PAT.
 - Approval appears under the reviewer's GitLab identity.
 - Required approvals depend on the change type (see workflow chains in `AGENTS.md`).
 
-### 6.4 Comments
+### 7.4 Comments
 
 - Issue comments: `scripts/oelite-gitlab.sh issue-comment <project> <iid> <agent> <message>`
 - MR comments: `scripts/oelite-gitlab.sh mr-comment <project> <iid> <agent> <message>`
@@ -534,11 +534,11 @@ All project management happens in GitLab at https://code.phanes.ltd. The CLI too
 
 ---
 
-## 7. Issue Lifecycle Protocol (SCRUM/Dev Workflow)
+## 8. Issue Lifecycle Protocol (SCRUM/Dev Workflow)
 
 This section defines the mandatory issue status workflow that every agent MUST follow. It ensures full traceability from issue creation through business validation.
 
-### 7.1 Issue Statuses
+### 8.1 Issue Statuses
 
 OElite uses GitLab labels to track issue status. The following labels are **mandatory** on every project's GitLab instance:
 
@@ -551,7 +551,7 @@ OElite uses GitLab labels to track issue status. The following labels are **mand
 | `Done` | #3CB371 | MR merged + business validation passed | Emma (on merge + Isabella validation) |
 | `Blocked` | #FF0000 | External dependency blocking progress | Assignee (when blocked) |
 
-### 7.2 Status Transition Rules
+### 8.2 Status Transition Rules
 
 Every status change MUST be accompanied by:
 1. **Label update** in GitLab (add new status label, remove old one)
@@ -568,7 +568,7 @@ Every status change MUST be accompanied by:
 | Blocker encountered | `In Progress` | `Blocked` | Assignee | Comment: "Blocked by: [reason]. Needs: [dependency]." |
 | Blocker resolved | `Blocked` | `In Progress` | Assignee | Comment: "Blocker resolved. Resuming work." |
 
-### 7.3 Agent Responsibilities by Role
+### 8.3 Agent Responsibilities by Role
 
 #### Emma (Product & Delivery Coordinator)
 - Creates issues with `To Do` label, clear acceptance criteria, and story points
@@ -592,7 +592,7 @@ Every status change MUST be accompanied by:
 - Validates deliverable against business requirements after MR merge
 - Confirms `Done` status with Emma or requests changes (return to `In Progress`)
 
-### 7.4 SCRUM Integration
+### 8.4 SCRUM Integration
 
 #### Sprint Planning (Emma-led)
 - Issues are assigned to sprints via GitLab Milestones
@@ -620,7 +620,7 @@ An issue is only `Done` when ALL are true:
 - [ ] Documentation updated (per Part IV Self-Maintenance Protocol)
 - [ ] No `Blocked` label remaining
 
-### 7.5 Issue Comment Templates
+### 8.5 Issue Comment Templates
 
 Every status transition MUST include a structured comment:
 
@@ -653,7 +653,7 @@ Blocked by: [specific dependency or issue]
 - ETA: [expected resolution date if known]
 ```
 
-### 7.6 CLI Commands for Issue Management
+### 8.6 CLI Commands for Issue Management
 
 | Command | Description | When to Use |
 |---------|-------------|-------------|
@@ -665,11 +665,11 @@ Blocked by: [specific dependency or issue]
 
 ---
 
-## 8. CLI Tool Reference
+## 9. CLI Tool Reference
 
 The CLI tool `scripts/oelite-gitlab.sh` is the single interface for all GitLab operations. It reads PATs from macOS Keychain at runtime via `scripts/oelite-gitlab-env.sh`.
 
-### 8.1 Setup
+### 9.1 Setup
 
 ```bash
 scripts/oelite-gitlab.sh setup
@@ -677,7 +677,7 @@ scripts/oelite-gitlab.sh setup
 
 Verifies all PATs are present in Keychain and accessible. Run this at the start of every session to confirm identity.
 
-### 8.2 Issue Management
+### 9.2 Issue Management
 
 | Command | Description |
 |---------|-------------|
@@ -701,7 +701,7 @@ scripts/oelite-gitlab.sh issue-assign oelite/helios/core 42 daniel
 scripts/oelite-gitlab.sh issue-comment oelite/helios/core 42 daniel "Implementation started. Working on token refresh logic."
 ```
 
-### 8.3 Worktree Management
+### 9.3 Worktree Management
 
 | Command | Description |
 |---------|-------------|
@@ -724,7 +724,7 @@ scripts/oelite-gitlab.sh worktree-list
 scripts/oelite-gitlab.sh worktree-remove daniel
 ```
 
-### 7.4 Sync & Merge Operations
+### 9.4 Sync & Merge Operations
 
 | Command | Description |
 |---------|-------------|
@@ -742,7 +742,7 @@ scripts/oelite-gitlab.sh status                   # Check status
 scripts/oelite-gitlab.sh worktree-remove daniel   # Cleanup after MR merged
 ```
 
-### 7.5 GitLab Operations (Agent + Human)
+### 9.5 GitLab Operations (Agent + Human)
 
 GitLab operations are available to both agents and humans. **Agents perform their own MR workflow** — push branches, create MRs, respond to review comments:
 
@@ -760,11 +760,11 @@ GitLab operations are available to both agents and humans. **Agents perform thei
 
 ---
 
-## 7.6 MR Auto-Approval (Enhanced Workflow)
+## 10. MR Auto-Approval (Enhanced Workflow)
 
 MRs created by agents that have completed their full review chain can be auto-approved to eliminate the manual bottleneck where reviewers must manually check GitLab for ready MRs. This is a **supplement** to manual review — it accelerates MRs that are already eligible, not a replacement for review.
 
-### Eligibility Criteria
+### 10.1 Eligibility Criteria
 
 An MR is eligible for auto-approval when **ALL** of the following conditions are met:
 
@@ -776,7 +776,7 @@ An MR is eligible for auto-approval when **ALL** of the following conditions are
 | 4 | **No Scope Conflicts** | No other open MR overlaps with the same directory scope (Emma's directory ownership) |
 | 5 | **Review Window Passed** | MR has been open for at least **10 minutes** (allows for human observation) |
 
-### Auto-Approval Workflow
+### 10.2 Auto-Approval Workflow
 
 ```bash
 # 1. Check which MRs are eligible for auto-approval
@@ -787,14 +787,14 @@ scripts/oelite-gitlab.sh mr-check-eligible oelite/helios/core
 scripts/oelite-gitlab.sh mr-auto-approve oelite/helios/core
 ```
 
-### Auto-Approval Rules
+### 10.3 Auto-Approval Rules
 
 - **Auto-approval appears under the agent who runs the command** (not the implementing agent)
 - **Only one agent runs auto-approve per project at a time** — Emma coordinates who runs it (typically the reviewer whose turn it is: Grace for backend, Felix for frontend, Marcus for architecture)
 - **Auto-approved MRs are automatically merged by GitLab** and the source branch is auto-deleted (no manual steps needed)
 - **If any criterion fails**, the MR is listed as ineligible with the reason, and the reviewer must manually review it
 
-### When Auto-Approval Does NOT Apply
+### 10.4 When Auto-Approval Does NOT Apply
 
 | Scenario | Action |
 |----------|--------|
@@ -804,7 +804,7 @@ scripts/oelite-gitlab.sh mr-auto-approve oelite/helios/core
 | MR has conflicts unresolved | NOT eligible — resolve conflicts first |
 | MR is a WIP (title starts with `WIP:`) | NOT eligible — wait for final version |
 
-### Integration with Review Chain
+### 10.5 Integration with Review Chain
 
 Auto-approval supplements the existing review chain defined in `AGENTS.md`:
 
@@ -824,7 +824,7 @@ This reduces the manual overhead on reviewers (Grace, Felix, Emma) while maintai
 
 ---
 
-## 9. Agent Session Protocol (MR-Centric Model)
+## 11. Agent Session Protocol (MR-Centric Model)
 
 Every agent session follows this sequence. No exceptions.
 
@@ -922,9 +922,9 @@ git checkout develop && git pull origin develop
 
 ---
 
-## 10. Security Rules
+## 12. Security Rules
 
-### 10.1 PAT Storage
+### 12.1 PAT Storage
 
 - PATs are stored in **macOS Keychain** only. Never in files. Never committed.
 - Each PAT is stored as a generic password with service name `oelite-gitlab-<agent>` and account `oelite`.
@@ -936,12 +936,12 @@ git checkout develop && git pull origin develop
 security add-generic-password -s "oelite-gitlab-daniel" -a "oelite" -w "glpat-xxxxxxxxxxxx" -U
 ```
 
-### 10.2 Environment Files
+### 12.2 Environment Files
 
 - `.env` files are in `.gitignore`. Never commit them.
 - The `scripts/oelite-gitlab-env.sh` script does not create `.env` files. It exports variables into the current shell session only.
 
-### 10.3 PAT Hygiene
+### 12.3 PAT Hygiene
 
 - Each agent uses **their own PAT**. No sharing PATs between agents.
 - Rotate PATs periodically (recommended: every 90 days).
@@ -951,7 +951,7 @@ security add-generic-password -s "oelite-gitlab-daniel" -a "oelite" -w "glpat-xx
 security delete-generic-password -s "oelite-gitlab-<agent>" -a "oelite"
 ```
 
-### 10.4 No Secrets in Commits
+### 12.4 No Secrets in Commits
 
 - Never commit PATs, API keys, passwords, or connection strings.
 - Use environment variables or Keychain references.
@@ -959,17 +959,17 @@ security delete-generic-password -s "oelite-gitlab-<agent>" -a "oelite"
 
 ---
 
-## 11. Conflict Resolution
+## 13. Conflict Resolution
 
-### 11.1 Prevention
+### 13.1 Prevention
 
 Directory-level ownership prevents most conflicts. Emma assigns non-overlapping directory scopes per task. Agents stay within their scope.
 
-### 11.2 Shared File Serialization
+### 13.2 Shared File Serialization
 
 Shared files (Program.cs, docker-compose, shared interfaces, AGENTS.md, etc.) are gated. Only one agent modifies a shared file at a time. Emma coordinates the order.
 
-### 11.3 Conflict Resolution During Rebase
+### 13.3 Conflict Resolution During Rebase
 
 If conflicts arise when rebasing on `origin/develop`:
 
@@ -985,7 +985,7 @@ git rebase --continue
 git push origin <branch> --force-with-lease
 ```
 
-### 11.4 Two Agents Need the Same File
+### 13.4 Two Agents Need the Same File
 
 If two agents need to modify the same file:
 
@@ -993,13 +993,13 @@ If two agents need to modify the same file:
 2. The first agent completes their MR and it merges.
 3. The second agent rebases on the updated `origin/develop` and incorporates the first agent's changes.
 
-### 11.5 Escalation
+### 13.5 Escalation
 
 If agents can't resolve a conflict independently, Emma mediates. For architectural conflicts, Marcus adjudicates.
 
 ---
 
-## 12. Pre-MR Checklist
+## 14. Pre-MR Checklist
 
 Before creating an MR, the agent **MUST** verify every item below. No MR should be created with unchecked items.
 
@@ -1029,7 +1029,7 @@ Before creating an MR, the agent **MUST** verify every item below. No MR should 
 
 ---
 
-## 13. Commit Message Convention
+## 15. Commit Message Convention
 
 All commits follow a consistent format for traceability and changelog generation.
 
@@ -1080,7 +1080,7 @@ Implement checkout payment flow UI
 
 ---
 
-## 14. Edge Cases & FAQ
+## 16. Edge Cases & FAQ
 
 ### Q: What if my worktree gets into a broken state?
 
@@ -1137,7 +1137,7 @@ GitLab will re-evaluate mergeability automatically.
 
 ---
 
-## 15. Standards Maintenance
+## 17. Standards Maintenance
 
 ### Update Process
 
@@ -1151,9 +1151,9 @@ GitLab will re-evaluate mergeability automatically.
 |------|--------|
 | Jun 2026 | Initial standard. Worktree protocol, branch strategy, GitLab integration, CLI tool reference. |
 | Jun 20 2026 | **Major Update**: Replaced MR-centric remote workflow with **Late Sync & Local Merge Model**. Agents now merge directly into local `develop` instead of pushing/remotely creating MRs. Human developers act as "Publishers" for remote `develop`. Updated Sections 2.4, 3.4, 4.3, 4.4, 4.5, 5.5, 7.4, 8, 11 to reflect agentic AI local-first workflow. |
-| Jun 21 2026 | **Workflow Enhancement**: Added mandatory pre-task sync (hard gate) at §1.5, periodic sync responsibilities at §1.6, and stale `develop` detection via `status`. Added MR auto-approval eligibility criteria at §7.6 and CLI commands (`mr-check-eligible`, `mr-auto-approve`) at §8.5. Agents MUST sync `git pull origin develop` before every task. Reviewers can auto-approve eligible MRs via CLI. |
+| Jun 21 2026 | **Workflow Enhancement**: Added mandatory pre-task sync (hard gate) at §1.5, periodic sync responsibilities at §1.6, and stale `develop` detection via `status`. Added MR auto-approval eligibility criteria at §10 and CLI commands (`mr-check-eligible`, `mr-auto-approve`) at §9.5. Agents MUST sync `git pull origin develop` before every task. Reviewers can auto-approve eligible MRs via CLI. |
 | Jun 22 2026 | **Major Update**: Reverted to **MR-Centric Model**. Local Merge Model proved inconsistent for agentic teams — agents frequently skipped steps or performed them out of order, leading to stale local `develop` branches and unreviewed code accumulation. New workflow: agents push feature branches → create MRs → reviewers approve → GitLab auto-merges + auto-deletes branch. All code enters `develop` through reviewed MRs. Review is a gate, not an afterthought. |
-| Jun 29 2026 | **SCRUM/Dev Workflow Enhancement**: Added explicit GitLab issue lifecycle protocol at §7. Defined mandatory status labels (`To Do`, `In Progress`, `PR Review`, `Ready to Merge`, `Done`, `Blocked`), status transition rules, role responsibilities, SCRUM integration, issue comment templates, and definition-of-done checklist. Added `issue-status` CLI command. Emma owns issue assignment and closure; assignees update labels during workflow; reviewers set `Ready to Merge`; Isabella validates before `Done`. |
+| Jun 29 2026 | **SCRUM/Dev Workflow Enhancement**: Added explicit GitLab issue lifecycle protocol at §8. Defined mandatory status labels (`To Do`, `In Progress`, `PR Review`, `Ready to Merge`, `Done`, `Blocked`), status transition rules, role responsibilities, SCRUM integration, issue comment templates, and definition-of-done checklist. Added `issue-status` CLI command. Emma owns issue assignment and closure; assignees update labels during workflow; reviewers set `Ready to Merge`; Isabella validates before `Done`. |
 
 ---
 
