@@ -503,7 +503,7 @@ git log --oneline origin/develop...HEAD
 
 ---
 
-## 7. GitLab Integration
+## 6. GitLab Integration
 
 All project management happens in GitLab at https://code.phanes.ltd. The CLI tool `scripts/oelite-gitlab.sh` wraps the GitLab API using each agent's PAT.
 
@@ -512,7 +512,7 @@ All project management happens in GitLab at https://code.phanes.ltd. The CLI too
 - Issues are tracked in GitLab per project.
 - Emma assigns issues to agents via `scripts/oelite-gitlab.sh issue-assign`.
 - Agents comment on issues using their own PAT. Comments appear under the agent's GitLab identity.
-- Issue state transitions (open, in_progress, review, done) are managed by Emma.
+- Issue state transitions are managed per the **Issue Lifecycle Protocol** (see §7 below).
 
 ### 6.2 Merge Requests
 
@@ -534,11 +534,142 @@ All project management happens in GitLab at https://code.phanes.ltd. The CLI too
 
 ---
 
+## 7. Issue Lifecycle Protocol (SCRUM/Dev Workflow)
+
+This section defines the mandatory issue status workflow that every agent MUST follow. It ensures full traceability from issue creation through business validation.
+
+### 7.1 Issue Statuses
+
+OElite uses GitLab labels to track issue status. The following labels are **mandatory** on every project's GitLab instance:
+
+| Label | Color | Meaning | Who Sets It |
+|-------|-------|---------|-------------|
+| `To Do` | #666666 | Issue created, not yet started | Emma (on creation) |
+| `In Progress` | #0075CA | Agent actively working | Assignee (on worktree creation) |
+| `PR Review` | #FCA326 | MR created, awaiting review | Assignee (on MR creation) |
+| `Ready to Merge` | #009966 | MR approved + CI green | Reviewer (on approval) |
+| `Done` | #3CB371 | MR merged + business validation passed | Emma (on merge + Isabella validation) |
+| `Blocked` | #FF0000 | External dependency blocking progress | Assignee (when blocked) |
+
+### 7.2 Status Transition Rules
+
+Every status change MUST be accompanied by:
+1. **Label update** in GitLab (add new status label, remove old one)
+2. **Issue comment** explaining the transition (who, what, why)
+3. **CLI command**: `scripts/oelite-gitlab.sh issue-status <project> <iid> <agent> <opened|closed>` (for open/close only)
+
+| Trigger | From | To | Who | Required Action |
+|---------|------|----|-----|-----------------|
+| Emma assigns issue to agent | `To Do` | `In Progress` | Emma + Assignee | `issue-assign` + comment "Assigned to @agent. Starting work." |
+| Agent creates worktree and begins implementation | `To Do` or unlabeled | `In Progress` | Assignee | Comment: "Implementation started. Branch: `feature/US-XXX-description`" |
+| Agent creates MR | `In Progress` | `PR Review` | Assignee | Comment: "MR !N created. Link: [MR URL]. Ready for review by @reviewer." |
+| Reviewer approves MR + CI green | `PR Review` | `Ready to Merge` | Reviewer | Comment: "Approved. CI green. Auto-merge pending." |
+| MR merged into develop | `Ready to Merge` | `Done` | Emma | Comment: "Merged into develop. Business validation: @isabella." + `issue-status closed` |
+| Blocker encountered | `In Progress` | `Blocked` | Assignee | Comment: "Blocked by: [reason]. Needs: [dependency]." |
+| Blocker resolved | `Blocked` | `In Progress` | Assignee | Comment: "Blocker resolved. Resuming work." |
+
+### 7.3 Agent Responsibilities by Role
+
+#### Emma (Product & Delivery Coordinator)
+- Creates issues with `To Do` label, clear acceptance criteria, and story points
+- Assigns issues to the correct owner based on domain expertise
+- Updates status to `In Progress` when assigning
+- Updates status to `Done` after MR merge + Isabella's business validation
+- Closes the issue via `issue-status closed` when fully complete
+
+#### Assignee (Implementing Agent: Daniel/Sophia/Jonathan/Ethan/etc.)
+- Sets `In Progress` label when starting work (after worktree creation)
+- Sets `PR Review` label when MR is created
+- Sets `Blocked` label when encountering blockers, with detailed comment
+- Never closes the issue — only Emma closes after business validation
+
+#### Reviewer (Grace/Felix/Maya/Marcus/Victor)
+- Reviews MR within the workflow chain
+- Sets `Ready to Merge` label after approval + CI green
+- If changes requested: comment with specific fixes, assignee returns to `In Progress`
+
+#### Isabella (Business Analyst)
+- Validates deliverable against business requirements after MR merge
+- Confirms `Done` status with Emma or requests changes (return to `In Progress`)
+
+### 7.4 SCRUM Integration
+
+#### Sprint Planning (Emma-led)
+- Issues are assigned to sprints via GitLab Milestones
+- Each issue MUST have: acceptance criteria, story points, priority label
+- Definition of Ready: issue has clear scope, acceptance criteria, and no blockers
+
+#### Daily Progress
+- Agents comment on their `In Progress` issues with daily updates
+- Blockers are escalated to Emma within the same day
+- Emma reviews `Blocked` issues and reassigns or clarifies
+
+#### Sprint Review
+- Emma reviews all `Done` issues against sprint goals
+- Isabella confirms business validation for each completed issue
+- Undefined issues return to `To Do` for next sprint
+
+#### Definition of Done (Issue Level)
+An issue is only `Done` when ALL are true:
+- [ ] MR merged into `develop`
+- [ ] CI pipeline green (build + unit tests)
+- [ ] Integration tests pass (local Docker infrastructure)
+- [ ] E2E tests pass (if user-facing)
+- [ ] Code review approved by required reviewer
+- [ ] Business validation passed (Isabella confirms)
+- [ ] Documentation updated (per Part IV Self-Maintenance Protocol)
+- [ ] No `Blocked` label remaining
+
+### 7.5 Issue Comment Templates
+
+Every status transition MUST include a structured comment:
+
+**Starting Work:**
+```
+Starting work on this issue.
+
+- Worktree: `.worktrees/<agent>/`
+- Branch: `feature/US-XXX-description`
+- Estimated approach: [brief technical plan]
+- Dependencies: [any blockers or dependencies]
+```
+
+**Ready for Review:**
+```
+MR created and ready for review.
+
+- MR: !<mr-iid> ([URL])
+- Changes: [summary of what changed]
+- Verification: [build/test/health commands run]
+- Reviewer: @<reviewer> (per workflow chain)
+```
+
+**Blocked:**
+```
+Blocked by: [specific dependency or issue]
+
+- What's needed: [exact requirement]
+- Impact: [how this blocks progress]
+- ETA: [expected resolution date if known]
+```
+
+### 7.6 CLI Commands for Issue Management
+
+| Command | Description | When to Use |
+|---------|-------------|-------------|
+| `issue-assign <project> <iid> <agent>` | Assign issue to agent | Emma: during sprint planning or task assignment |
+| `issue-comment <project> <iid> <agent> <message>` | Post comment on issue | Any agent: status updates, progress reports, blockers |
+| `issue-status <project> <iid> <agent> <opened\|closed>` | Open or close issue | Emma: close after Done; reopen if regression found |
+
+**Note:** Label changes (In Progress, PR Review, Ready to Merge, Blocked) are managed via GitLab UI or API. The CLI `issue-status` command handles the binary open/close state.
+
+---
+
 ## 8. CLI Tool Reference
 
 The CLI tool `scripts/oelite-gitlab.sh` is the single interface for all GitLab operations. It reads PATs from macOS Keychain at runtime via `scripts/oelite-gitlab-env.sh`.
 
-### 7.1 Setup
+### 8.1 Setup
 
 ```bash
 scripts/oelite-gitlab.sh setup
@@ -546,13 +677,14 @@ scripts/oelite-gitlab.sh setup
 
 Verifies all PATs are present in Keychain and accessible. Run this at the start of every session to confirm identity.
 
-### 7.2 Issue Management
+### 8.2 Issue Management
 
 | Command | Description |
 |---------|-------------|
 | `scripts/oelite-gitlab.sh issues <project>` | Fetch open issues for a project |
 | `scripts/oelite-gitlab.sh issue-assign <project> <iid> <agent>` | Assign issue to an agent |
 | `scripts/oelite-gitlab.sh issue-comment <project> <iid> <agent> <message>` | Comment on an issue as an agent |
+| `scripts/oelite-gitlab.sh issue-status <project> <iid> <agent> <opened\|closed>` | Open or close an issue as an agent |
 
 **Parameters:**
 
@@ -569,7 +701,7 @@ scripts/oelite-gitlab.sh issue-assign oelite/helios/core 42 daniel
 scripts/oelite-gitlab.sh issue-comment oelite/helios/core 42 daniel "Implementation started. Working on token refresh logic."
 ```
 
-### 7.3 Worktree Management
+### 8.3 Worktree Management
 
 | Command | Description |
 |---------|-------------|
@@ -684,8 +816,8 @@ Agent completes work → Push branch → MR created → CI passes → Reviewer a
                                                           Agent syncs local develop
                                                ↓ (if not eligible)
                                        Manual review by assigned reviewer
-                                               ↓ (if changes requested)
-                                       Agent fixes → pushes → re-review
+                                                ↓ (if changes requested)
+                                        Agent fixes → pushes → re-review
 ```
 
 This reduces the manual overhead on reviewers (Grace, Felix, Emma) while maintaining the quality gates of the review chain. Reviewers focus their manual attention on MRs that need human judgment (security, architecture, complex logic), while standard MRs flow through auto-approval and auto-merge.
@@ -1021,6 +1153,7 @@ GitLab will re-evaluate mergeability automatically.
 | Jun 20 2026 | **Major Update**: Replaced MR-centric remote workflow with **Late Sync & Local Merge Model**. Agents now merge directly into local `develop` instead of pushing/remotely creating MRs. Human developers act as "Publishers" for remote `develop`. Updated Sections 2.4, 3.4, 4.3, 4.4, 4.5, 5.5, 7.4, 8, 11 to reflect agentic AI local-first workflow. |
 | Jun 21 2026 | **Workflow Enhancement**: Added mandatory pre-task sync (hard gate) at §1.5, periodic sync responsibilities at §1.6, and stale `develop` detection via `status`. Added MR auto-approval eligibility criteria at §7.6 and CLI commands (`mr-check-eligible`, `mr-auto-approve`) at §8.5. Agents MUST sync `git pull origin develop` before every task. Reviewers can auto-approve eligible MRs via CLI. |
 | Jun 22 2026 | **Major Update**: Reverted to **MR-Centric Model**. Local Merge Model proved inconsistent for agentic teams — agents frequently skipped steps or performed them out of order, leading to stale local `develop` branches and unreviewed code accumulation. New workflow: agents push feature branches → create MRs → reviewers approve → GitLab auto-merges + auto-deletes branch. All code enters `develop` through reviewed MRs. Review is a gate, not an afterthought. |
+| Jun 29 2026 | **SCRUM/Dev Workflow Enhancement**: Added explicit GitLab issue lifecycle protocol at §7. Defined mandatory status labels (`To Do`, `In Progress`, `PR Review`, `Ready to Merge`, `Done`, `Blocked`), status transition rules, role responsibilities, SCRUM integration, issue comment templates, and definition-of-done checklist. Added `issue-status` CLI command. Emma owns issue assignment and closure; assignees update labels during workflow; reviewers set `Ready to Merge`; Isabella validates before `Done`. |
 
 ---
 
