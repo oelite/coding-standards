@@ -1,6 +1,6 @@
 # OElite Coding Standards - Master Index
 
-**Last Updated**: November 2025
+**Last Updated**: June 2026
 **Authoritative Source**: This `/coding-standards/` directory is the SINGLE SOURCE OF TRUTH for all OElite coding standards.
 
 ---
@@ -40,11 +40,31 @@ coding-standards/
 ├── 3_angular_coding_standards/            # Angular Standards (ec-std-01)
 │   └── 11-ANGULAR-CODING-STANDARDS.md     # Mobile-first, Bootstrap, No-Mock-Data Policy
 │
-└── 4_react_nextjs_coding_standards/       # Next.js Standards (ec-nx-01)
-    └── 12-NEXTJS-CODING-STANDARDS.md      # App Router, Tailwind, server/client components
+├── 4_react_nextjs_coding_standards/       # Next.js Standards (ec-nx-01)
+│   └── 12-NEXTJS-CODING-STANDARDS.md      # App Router, Tailwind, server/client components
+│
+├── 5_git_workflow_standards/              # Git workflow, worktree, issue lifecycle, task templates
+│   ├── GIT-WORKFLOW-STANDARDS.md          # Main GitLab MR-centric workflow
+│   ├── WORKTREE-OWNER-DNA.md              # Commit attribution protocol
+│   ├── TASK-TEMPLATES.md                  # Task creation, bug fix, DoR, DoD
+│   └── ISSUE-MR-TEMPLATES.md              # GitLab issue and MR templates
+│
+├── 6_documentation_standards/             # Documentation templates
+│   └── DOC-STANDARDS.md                   # BRD, SRS, User Story, README, User Guide templates
+│
+└── .gitlab/                               # GitLab golden-standard templates
+    ├── issue_templates/                   # Feature, Bug, Task issue templates
+    └── merge_request_templates/           # Default MR template
 ```
 
 ---
+
+## 🚨 AGENTS.md
+
+`AGENTS.md` is maintained inside this repository as the authoritative team workflow guide.
+A symlink at the OElite root directory points to `coding-standards/AGENTS.md` so agentic sessions
+continue to discover it at the expected location. See the file itself for full role definitions,
+workflow chains, and mandatory verification steps.
 
 ## 🔥 CRITICAL UPDATES (November 2025)
 
@@ -110,6 +130,14 @@ The OElite standards are automatically applied via `.cursor/rules/oelite-standar
 | Angular (ec-std-01) | 11-ANGULAR-CODING-STANDARDS.md | Mobile-first, Bootstrap 4, No-Mock-Data, SSR, i18n |
 | Next.js (ec-nx-01) | 12-NEXTJS-CODING-STANDARDS.md | App Router, Tailwind CSS, server/client components, SWR |
 
+### Task & Documentation Templates
+
+| Template | Location | Purpose |
+|----------|----------|---------|
+| Task / Bug / Sprint | `5_git_workflow_standards/TASK-TEMPLATES.md` | Task creation, bug fixes, Definition of Ready/Done |
+| GitLab Issue / MR | `5_git_workflow_standards/ISSUE-MR-TEMPLATES.md` | Reference templates for `.gitlab/` folders |
+| Documentation | `6_documentation_standards/DOC-STANDARDS.md` | BRD, SRS, User Story, README, User Guide templates |
+
 ---
 
 ## 🚨 NON-NEGOTIABLE RULES
@@ -147,6 +175,7 @@ The OElite standards are automatically applied via `.cursor/rules/oelite-standar
 
 | Date | Update |
 |------|--------|
+| Jun 2026 | Extracted documentation templates to `6_documentation_standards/DOC-STANDARDS.md`; added `TASK-TEMPLATES.md` and `ISSUE-MR-TEMPLATES.md` for task/MR creation |
 | Nov 2025 | MongoDB-Free v2.1.0, No-Mock-Data Policy, Restme.Hosting |
 | Nov 2025 | Entity Collection Patterns standard |
 | Nov 2025 | Application Lifecycle standard |
