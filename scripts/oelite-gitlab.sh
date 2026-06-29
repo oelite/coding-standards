@@ -286,6 +286,37 @@ cmd_issue_comment() {
   fi
 }
 
+cmd_issue_status() {
+  local project_path="$1"
+  local iid="$2"
+  local agent="$3"
+  local status="$4"
+
+  validate_agent "$agent" || return 1
+  [[ -z "$status" ]] && { echo "[ERROR] Status required" >&2; return 1; }
+
+  local valid_states="opened closed"
+  [[ ! " $valid_states " =~ " $status " ]] && { echo "[ERROR] Invalid status '$status'. Use: opened or closed" >&2; return 1; }
+
+  local encoded_path
+  encoded_path=$(url_encode_path "$project_path")
+
+  local data
+  data=$(python3 -c "import json; print(json.dumps({'state_event': '$status'}))")
+
+  local pat
+  pat=$(get_pat "$agent")
+  api_post "/projects/$encoded_path/issues/$iid" "$pat" "$data"
+
+  if [[ "$_API_STATUS" -ge 200 && "$_API_STATUS" -lt 300 ]]; then
+    echo "[OK] Issue #$iid status set to $status by $agent"
+  else
+    echo "[ERROR] Failed to set issue status (HTTP $_API_STATUS)" >&2
+    echo "$_API_RESPONSE" >&2
+    return 1
+  fi
+}
+
 cmd_worktree_create() {
   local agent="$1"
   local branch="$2"
@@ -976,6 +1007,10 @@ COMMANDS:
     Post a comment on an issue as the specified agent.
     Example: oelite-gitlab.sh issue-comment uranus/origin-auth 42 grace "LGTM"
 
+  issue-status <project-path> <iid> <agent> <status>
+    Update issue status (opened or closed) as the specified agent.
+    Example: oelite-gitlab.sh issue-status uranus/origin-auth 42 emma closed
+
   worktree-create <agent> <branch> [base-branch] [--owner <team-member>]
     Create a git worktree for an agent with per-worktree identity.
     Default base-branch is develop.
@@ -1059,6 +1094,7 @@ case "$command" in
   issues)         cmd_issues "$@" ;;
   issue-assign)   cmd_issue_assign "$@" ;;
   issue-comment)  cmd_issue_comment "$@" ;;
+  issue-status)   cmd_issue_status "$@" ;;
   worktree-create) cmd_worktree_create "$@" ;;
   worktree-list)  cmd_worktree_list "$@" ;;
   worktree-remove) cmd_worktree_remove "$@" ;;
