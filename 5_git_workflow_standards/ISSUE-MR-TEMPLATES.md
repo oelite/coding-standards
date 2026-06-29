@@ -1,0 +1,325 @@
+# OElite GitLab Issue & Merge Request Templates
+
+> **Repository**: coding-standards  
+> **Last Updated**: 2026-06-29  
+> **Maintained by**: Emma (Product & Delivery Coordinator) & Isabella (Business Analyst)  
+> **Status**: Active  > **Version**: 1.0.0
+
+---
+
+## Overview
+
+This document defines the standard GitLab issue and merge request templates for all OElite repositories. These templates MUST be installed in every active repository under `<repo>/.gitlab/`.
+
+The templates enforce consistent, detailed, and verifiable task information so that agents can execute work without re-clarification.
+
+---
+
+## Table of Contents
+
+1. [Installation](#1-installation)
+2. [Issue Template: Feature](#2-issue-template-feature)
+3. [Issue Template: Bug](#3-issue-template-bug)
+4. [Issue Template: Task](#4-issue-template-task)
+5. [Merge Request Template](#5-merge-request-template)
+6. [Required Labels Reference](#6-required-labels-reference)
+
+---
+
+## 1. Installation
+
+Every active OElite repository MUST contain the following files:
+
+```
+<repo>/
+└── .gitlab/
+    ├── issue_templates/
+    │   ├── Feature.md
+    │   ├── Bug.md
+    │   └── Task.md
+    └── merge_request_templates/
+        └── Default.md
+```
+
+To install:
+1. Copy the templates below into the corresponding files.
+2. Customize only the repo-specific sections (e.g., component list, health endpoint port).
+3. Commit and push to `develop` via MR.
+
+---
+
+## 2. Issue Template: Feature
+
+**File**: `.gitlab/issue_templates/Feature.md`
+
+```markdown
+## Title
+[US-XXX] <Short, actionable feature title>
+
+## User Story
+**As a** <role/persona>, **I want** <goal>, **So that** <benefit>.
+
+## Context
+<Why this feature exists. Link to BRD/SRS/user story.>
+
+## Acceptance Criteria
+- [ ] **AC-001**: GIVEN <context> WHEN <action> THEN <observable outcome>
+- [ ] **AC-002**: GIVEN <context> WHEN <action> THEN <observable outcome>
+- [ ] **AC-003**: GIVEN <context> WHEN <action> THEN <observable outcome>
+
+## Source References
+- User Story: `docs/business/user-stories/US-<NNN>-<feature>.md`
+- BRD: FR-<NNN>
+- SRS: Section <X.X>
+- Design Spec: <link>
+- Related Issues: #<NNN>, #<NNN>
+
+## Area / Component
+- [ ] Backend (.NET)
+- [ ] Frontend (Next.js / Angular / MAUI)
+- [ ] Infrastructure / DevOps
+- [ ] Security
+- [ ] Data / Performance
+- [ ] Documentation
+- [ ] UX / Design
+
+## Dependencies
+- [ ] <US-XXX or issue that must complete first>
+- [ ] <API endpoint availability>
+- [ ] <Design spec approval>
+- [ ] <Infrastructure readiness>
+
+## Story Points
+<Fibonacci estimate>
+
+## Priority
+- [ ] Critical
+- [ ] High
+- [ ] Medium
+- [ ] Low
+
+## Estimated Effort
+<X hours / days>
+
+## Verification Approach
+<How will the assignee prove completion? Build, tests, health check, screenshots.>
+
+## Documentation Impact
+- [ ] No documentation changes needed
+- [ ] BRD/SRS update needed
+- [ ] API docs update needed
+- [ ] User guide update needed
+- [ ] README update needed
+
+/label ~"To Do"
+/milestone %"Sprint-<X>"
+```
+
+---
+
+## 3. Issue Template: Bug
+
+**File**: `.gitlab/issue_templates/Bug.md`
+
+```markdown
+## Title
+[BUG-XXX] <Short description of the bug>
+
+## Severity
+- [ ] Critical — production outage, data loss, security breach
+- [ ] High — major feature broken, no workaround
+- [ ] Medium — feature impaired, workaround exists
+- [ ] Low — cosmetic, edge case, or minor inconvenience
+
+## Environment
+- [ ] Development
+- [ ] UAT / Staging
+- [ ] Production
+
+## Affected Component
+<Backend service, frontend page, API endpoint, infrastructure, etc.>
+
+## Steps to Reproduce
+1. <Step 1>
+2. <Step 2>
+3. <Step 3>
+
+## Expected Behavior
+<What should happen>
+
+## Actual Behavior
+<What actually happens. Include error messages, stack traces, screenshots.>
+
+## Root Cause Analysis
+<To be filled by assignee after investigation>
+
+## Proposed Fix
+<To be filled by assignee>
+
+## Regression Risk
+- [ ] Low — isolated change
+- [ ] Medium — touches shared component
+- [ ] High — affects critical path
+
+## Verification
+- [ ] Bug no longer reproducible with steps above
+- [ ] Unit test added
+- [ ] Integration test added (if data-layer related)
+- [ ] E2E test added (if user-facing)
+- [ ] No regressions in related functionality
+
+## Related Issues
+- Caused by: #<NNN>
+- Related to: #<NNN>
+
+/label ~"To Do" ~"Bug"
+```
+
+---
+
+## 4. Issue Template: Task
+
+**File**: `.gitlab/issue_templates/Task.md`
+
+```markdown
+## Title
+[TASK-XXX] <Short, actionable task title>
+
+## Context
+<Why this task exists. Reference user story, BRD, SRS, or technical requirement.>
+
+## Objective
+<What must be accomplished>
+
+## Acceptance Criteria
+- [ ] <Criterion 1>
+- [ ] <Criterion 2>
+- [ ] <Criterion 3>
+
+## Source References
+- User Story: `docs/business/user-stories/US-<NNN>-<feature>.md`
+- Related Issue: #<NNN>
+- Related MR: !<NNN>
+
+## Area / Component
+- [ ] Backend (.NET)
+- [ ] Frontend (Next.js / Angular / MAUI)
+- [ ] Infrastructure / DevOps
+- [ ] Security
+- [ ] Data / Performance
+- [ ] Documentation
+- [ ] UX / Design
+
+## Dependencies
+- [ ] <Issue or system dependency>
+
+## Story Points
+<Fibonacci estimate>
+
+## Priority
+- [ ] Critical
+- [ ] High
+- [ ] Medium
+- [ ] Low
+
+## Verification
+<How will completion be verified?>
+
+/label ~"To Do"
+/milestone %"Sprint-<X>"
+```
+
+---
+
+## 5. Merge Request Template
+
+**File**: `.gitlab/merge_request_templates/Default.md`
+
+```markdown
+## Related Issue
+Closes #<issue-iid>
+
+## Summary
+<What changed and why. Keep to 3-5 bullet points.>
+
+## Changes
+- <Change 1>
+- <Change 2>
+- <Change 3>
+
+## Verification
+- [ ] Build passes (`dotnet build` / `npm run build` / `ng build`)
+- [ ] Unit tests pass
+- [ ] Integration tests pass against real Docker infrastructure
+- [ ] E2E tests pass against running dev server (if user-facing)
+- [ ] No placeholder/mock/TODO/hard-coded data in changed files
+- [ ] Code follows OElite coding standards
+- [ ] Directory scope respected (no changes outside assigned scope)
+- [ ] Commit messages follow convention (title + bulleted body)
+- [ ] No secrets, PATs, or credentials in committed files
+- [ ] No `as any`, `@ts-ignore`, or type-error suppression (frontend)
+- [ ] No raw `MongoDB.Driver`, `BsonDocument`, or manual DI (backend)
+- [ ] Health endpoint verified if service is runnable
+
+## Commands Executed
+```bash
+# Build
+<command>
+
+# Tests
+<command>
+
+# Health check
+curl -f http://localhost:<port>/health
+```
+
+## Screenshots (if UI changes)
+<Before/After screenshots or Playwright evidence>
+
+## Documentation Impact
+- [ ] No documentation changes needed
+- [ ] BRD/SRS updated
+- [ ] API docs updated
+- [ ] User guide updated
+- [ ] README updated
+
+## Reviewer
+<Per workflow chain: Grace (backend), Felix (frontend), Maya (security), Marcus (architecture)>
+
+/label ~"PR Review"
+```
+
+---
+
+## 6. Required Labels Reference
+
+Every OElite GitLab project MUST have the following labels:
+
+| Label | Color | Meaning | Who Sets |
+|-------|-------|---------|----------|
+| `To Do` | `#666666` | Issue created, not yet started | Emma (on creation) |
+| `In Progress` | `#0075CA` | Agent actively working | Assignee |
+| `PR Review` | `#FCA326` | MR created, awaiting review | Assignee |
+| `Ready to Merge` | `#009966` | MR approved + CI green | Reviewer |
+| `Done` | `#3CB371` | MR merged + business validation passed | Emma |
+| `Blocked` | `#FF0000` | External dependency blocking progress | Assignee |
+| `Bug` | `#DC3545` | Defect or regression | Emma / Reporter |
+| `Priority::Critical` | `#FF0000` | Must be resolved immediately | Emma |
+| `Priority::High` | `#FF8C00` | Significant business impact | Emma |
+| `Priority::Medium` | `#FFD700` | Normal priority | Emma |
+| `Priority::Low` | `#90EE90` | Can be deferred | Emma |
+
+---
+
+## Related Documentation
+
+- `AGENTS.md` — OElite team roles and workflow chains
+- [GIT-WORKFLOW-STANDARDS.md](./GIT-WORKFLOW-STANDARDS.md) — GitLab workflow and issue lifecycle
+- [TASK-TEMPLATES.md](./TASK-TEMPLATES.md) — Task, bug, and sprint templates
+- [DOC-STANDARDS.md](../6_documentation_standards/DOC-STANDARDS.md) — Documentation templates
+
+## Change History
+
+| Date | Author | Version | Changes |
+|------|--------|---------|---------|
+| 2026-06-29 | Emma / Isabella | 1.0.0 | Created dedicated ISSUE-MR-TEMPLATES.md for GitLab issue and MR templates |
