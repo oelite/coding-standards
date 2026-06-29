@@ -13,7 +13,7 @@ Copy the `.gitlab/issue_templates/` and `.gitlab/merge_request_templates/` direc
 - `Task.md` — Technical tasks, refactors, documentation work, and tooling changes
 - `Default.md` (in `merge_request_templates/`) — Standard MR template
 
-For the detailed specification of each template, see [`5_git_workflow_standards/ISSUE-MR-TEMPLATES.md`](../../5_git_workflow_standards/ISSUE-MR-TEMPLATES.md).
+For the detailed specification of each template, see `coding-standards/5_git_workflow_standards/ISSUE-MR-TEMPLATES.md` in the `oelite/coding-standards` repository.
 
 ## Target Branch
 
