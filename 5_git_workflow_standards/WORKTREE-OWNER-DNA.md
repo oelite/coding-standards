@@ -1,16 +1,16 @@
 # Worktree-Owner DNA — Commit Attribution Protocol
 
 > **Created**: 2026-06-20  
-> **Last Updated**: 2026-06-20  
+> **Last Updated**: 2026-06-22  
 > **Maintained by**: Engineering Team  
 > **Status**: Active  
-> **Version**: 1.0.0
+> **Version**: 1.1.0
 
 ---
 
 ## Overview
 
-This document defines the **worktree-owner DNA** protocol — the rules governing how commit authorship is attributed when AI agents implement work in isolated worktrees. The protocol ensures that every commit carries the correct team member's GitLab identity, preserving ownership attribution through the entire Git lifecycle (worktree → commits → local merge → remote push).
+This document defines the **worktree-owner DNA** protocol — the rules governing how commit authorship is attributed when AI agents implement work in isolated worktrees. The protocol ensures that every commit carries the correct team member's GitLab identity, preserving ownership attribution through the entire Git lifecycle (worktree → commits → MR → merge → remote).
 
 ---
 
@@ -79,19 +79,19 @@ Date:   2026-06-20 14:30:00 +0800
     - Closes #42
 ```
 
-### 3. Local Merge
+### 3. MR Creation & Review
 
-When the worktree is merged into local `develop`, the commits retain their original author attribution:
+When the agent creates an MR, the commits retain their original author attribution:
 
 ```bash
-git checkout develop
-git merge daniel/feature/US-001-auth --no-edit
-# Commits show Author: Daniel <daniel@phanes.ltd>
+git push origin feature/US-001-auth
+scripts/oelite-gitlab.sh mr-create <project> daniel feature/US-001-auth develop "Add auth endpoint"
+# MR shows Author: Daniel <daniel@phanes.ltd>
 ```
 
-### 4. Remote Push
+### 4. Merge & Remote Push
 
-When a human developer pushes to `origin/develop`, GitLab displays the original author attribution — Daniel gets credit in GitLab's commit history.
+When the MR is approved and CI passes, GitLab auto-merges and displays the original author attribution — Daniel gets credit in GitLab's commit history.
 
 ---
 
@@ -216,3 +216,4 @@ scripts/oelite-gitlab.sh worktree-create daniel feature/xxx
 | Date | Author | Version | Changes |
 |------|--------|---------|---------|
 | 2026-06-20 | Engineering Team | 1.0.0 | Initial document |
+| 2026-06-22 | Engineering Team | 1.1.0 | Updated workflow references from Local Merge to MR-Centric Model. Owner DNA protocol unchanged — commits still attributed to team member regardless of merge mechanism. |

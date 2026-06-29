@@ -987,9 +987,10 @@ COMMANDS:
   worktree-list
     List all active agent worktrees with branch, last commit, and sync status.
 
-  worktree-remove <agent> [--delete-branch]
-    Remove an agent's worktree. Use --delete-branch to also delete the branch.
-    Example: oelite-gitlab.sh worktree-remove daniel --delete-branch
+   worktree-remove <agent> [--delete-branch]
+     Remove an agent's worktree. Use --delete-branch to also delete the branch.
+     Note: MR source branch is auto-deleted by GitLab upon merge.
+     Example: oelite-gitlab.sh worktree-remove daniel --delete-branch
 
   worktree-owner <agent> [new-owner]
     View or update worktree owner DNA (commit attribution).
@@ -998,9 +999,10 @@ COMMANDS:
     Example: oelite-gitlab.sh worktree-owner daniel
     Example: oelite-gitlab.sh worktree-owner daniel emma
 
-  mr-create <project-path> <agent> <source> <target> <title> [description]
-    Create a merge request using the agent's PAT.
-    Example: oelite-gitlab.sh mr-create uranus/origin-auth daniel feature/auth develop "feat: JWT refresh" "Closes #42"
+   mr-create <project-path> <agent> <source> <target> <title> [description]
+     Create a merge request using the agent's PAT.
+     Push your feature branch first, then run this to create MR.
+     Example: oelite-gitlab.sh mr-create uranus/origin-auth daniel feature/auth develop "feat: JWT refresh" "Closes #42"
 
   mr-list <project-path>
     List open merge requests for a project.
@@ -1018,13 +1020,15 @@ COMMANDS:
     Check which open MRs meet auto-approval criteria (CI green, no conflicts, not WIP, not manual-review flagged, age ≥10min).
     Example: oelite-gitlab.sh mr-check-eligible oelite/helios/core
 
-  mr-auto-approve <project-path>
-    Auto-approve all MRs that meet eligibility criteria. Uses emma's PAT for approval attribution.
-    Example: oelite-gitlab.sh mr-auto-approve oelite/helios/core
+mr-auto-approve <project-path>
+     Auto-approve all MRs that meet eligibility criteria. Uses caller's PAT for approval attribution.
+     Note: Security-sensitive MRs must be reviewed manually by Maya; architecture-critical by Marcus.
+     Example: oelite-gitlab.sh mr-auto-approve oelite/helios/core
 
-  sync <agent>
-    Rebase the agent's worktree on the latest origin/develop.
-    Example: oelite-gitlab.sh sync daniel
+sync <agent>
+     Rebase the agent's feature branch on the latest origin/develop.
+     Use this to resolve conflicts before creating/updating an MR.
+     Example: oelite-gitlab.sh sync daniel
 
   status
     Show overall status: all worktrees, ahead/behind develop, stale detection.

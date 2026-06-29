@@ -290,6 +290,436 @@ Need a UI component?
 - **Icons → Lucide React** — Use `lucide-react` for all icons. Never inline SVGs, use emoji, or import other icon libraries.
 - **Accessibility by default** — Shadcn/Radix components ship with ARIA attributes, keyboard navigation, and screen reader support. Custom implementations frequently miss these — using Shadcn avoids that risk entirely.
 
+### Design System & Theme Configuration (MANDATORY)
+
+Shadcn/ui components rely on CSS custom properties (design tokens) for colors, radii, shadows, and typography. Without these tokens configured, components render with default/unstyled appearance. Every Next.js app MUST configure the full Shadcn theme layer.
+
+**Reference implementation**: `venus/stela` has the cleanest Shadcn adoption in the platform (10 components, zero raw HTML in pages). Use it as the reference when setting up a new app.
+
+#### Required CSS Variables
+
+Every app MUST define these CSS variables in `globals.css` (or `src/app/globals.css`). All color values MUST use HSL format (not hex) to support dark mode switching.
+
+```css
+/* ✅ CORRECT — src/app/globals.css */
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --background: 0 0% 100%;
+    --foreground: 222.2 84% 4.9%;
+    --card: 0 0% 100%;
+    --card-foreground: 222.2 84% 4.9%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 222.2 84% 4.9%;
+    --primary: 222.2 47.4% 11.2%;
+    --primary-foreground: 210 40% 98%;
+    --secondary: 210 40% 96.1%;
+    --secondary-foreground: 222.2 47.4% 11.2%;
+    --muted: 210 40% 96.1%;
+    --muted-foreground: 215.4 16.3% 46.9%;
+    --accent: 210 40% 96.1%;
+    --accent-foreground: 222.2 47.4% 11.2%;
+    --destructive: 0 84.2% 60.2%;
+    --destructive-foreground: 210 40% 98%;
+    --border: 214.3 31.8% 91.4%;
+    --input: 214.3 31.8% 91.4%;
+    --ring: 222.2 84% 4.9%;
+    --radius: 0.5rem;
+    --chart-1: 12 76% 61%;
+    --chart-2: 173 58% 39%;
+    --chart-3: 197 37% 24%;
+    --chart-4: 43 74% 66%;
+    --chart-5: 27 87% 67%;
+  }
+
+  .dark {
+    --background: 222.2 84% 4.9%;
+    --foreground: 210 40% 98%;
+    --card: 222.2 84% 4.9%;
+    --card-foreground: 210 40% 98%;
+    --popover: 222.2 84% 4.9%;
+    --popover-foreground: 210 40% 98%;
+    --primary: 210 40% 98%;
+    --primary-foreground: 222.2 47.4% 11.2%;
+    --secondary: 217.2 32.6% 17.5%;
+    --secondary-foreground: 210 40% 98%;
+    --muted: 217.2 32.6% 17.5%;
+    --muted-foreground: 215 20.2% 65.1%;
+    --accent: 217.2 32.6% 17.5%;
+    --accent-foreground: 210 40% 98%;
+    --destructive: 0 62.8% 30.6%;
+    --destructive-foreground: 210 40% 98%;
+    --border: 217.2 32.6% 17.5%;
+    --input: 217.2 32.6% 17.5%;
+    --ring: 212.7 26.8% 83.9%;
+    --chart-1: 220 70% 50%;
+    --chart-2: 160 60% 45%;
+    --chart-3: 30 80% 55%;
+    --chart-4: 280 65% 60%;
+    --chart-5: 340 75% 55%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  body {
+    @apply bg-background text-foreground;
+  }
+}
+```
+
+#### Rules
+
+- All colors MUST use HSL values. Hex colors (`#fff`, `#1a1a1a`) in CSS variables break dark mode interpolation.
+- No hard-coded hex colors in component `className` strings. Use semantic tokens (`text-primary`, `bg-muted`, `border-border`) instead of `text-[#333]` or `bg-[rgb(255,0,0)]`.
+- The `--radius` variable controls Shadcn component border radius. Set it once, all components inherit it.
+- `--chart-1` through `--chart-5` are for data visualization components (Recharts, ApexCharts). Define them even if charts are not yet used.
+- Reference: https://ui.shadcn.com/docs/theming
+
+#### ❌ Forbidden
+
+```tsx
+// ❌ BAD — Hard-coded hex color in className
+<div className="bg-[#1a1a1a] text-[#f5f5f5]">
+
+// ❌ BAD — Hard-coded rgb in className
+<span className="text-[rgb(255,0,0)]">
+
+// ❌ BAD — Missing CSS variables, components render unstyled
+// globals.css is empty or has only @tailwind directives
+```
+
+#### ✅ Required
+
+```tsx
+// ✅ CORRECT — Use semantic tokens
+<div className="bg-background text-foreground">
+<span className="text-destructive">
+```
+
+### Tailwind Config Standard (MANDATORY)
+
+Every app MUST extend `tailwind.config.ts` with CSS variable mappings. This connects the design tokens in `globals.css` to Tailwind utility classes.
+
+```typescript
+// ✅ CORRECT — tailwind.config.ts
+import type { Config } from 'tailwindcss';
+
+const config: Config = {
+  darkMode: ['class'],
+  content: [
+    './src/pages/**/*.{js,ts,jsx,tsx,mdx}',
+    './src/components/**/*.{js,ts,jsx,tsx,mdx}',
+    './src/app/**/*.{js,ts,jsx,tsx,mdx}',
+  ],
+  theme: {
+    extend: {
+      colors: {
+        background: 'hsl(var(--background))',
+        foreground: 'hsl(var(--foreground))',
+        card: {
+          DEFAULT: 'hsl(var(--card))',
+          foreground: 'hsl(var(--card-foreground))',
+        },
+        popover: {
+          DEFAULT: 'hsl(var(--popover))',
+          foreground: 'hsl(var(--popover-foreground))',
+        },
+        primary: {
+          DEFAULT: 'hsl(var(--primary))',
+          foreground: 'hsl(var(--primary-foreground))',
+        },
+        secondary: {
+          DEFAULT: 'hsl(var(--secondary))',
+          foreground: 'hsl(var(--secondary-foreground))',
+        },
+        muted: {
+          DEFAULT: 'hsl(var(--muted))',
+          foreground: 'hsl(var(--muted-foreground))',
+        },
+        accent: {
+          DEFAULT: 'hsl(var(--accent))',
+          foreground: 'hsl(var(--accent-foreground))',
+        },
+        destructive: {
+          DEFAULT: 'hsl(var(--destructive))',
+          foreground: 'hsl(var(--destructive-foreground))',
+        },
+        border: 'hsl(var(--border))',
+        input: 'hsl(var(--input))',
+        ring: 'hsl(var(--ring))',
+        chart: {
+          '1': 'hsl(var(--chart-1))',
+          '2': 'hsl(var(--chart-2))',
+          '3': 'hsl(var(--chart-3))',
+          '4': 'hsl(var(--chart-4))',
+          '5': 'hsl(var(--chart-5))',
+        },
+      },
+      borderRadius: {
+        lg: 'var(--radius)',
+        md: 'calc(var(--radius) - 2px)',
+        sm: 'calc(var(--radius) - 4px)',
+      },
+      fontFamily: {
+        sans: ['var(--font-sans)'],
+        mono: ['var(--font-mono)'],
+      },
+    },
+  },
+  plugins: [require('tailwindcss-animate')],
+};
+export default config;
+```
+
+#### Forbidden Arbitrary Values
+
+Arbitrary Tailwind values in production JSX are forbidden. They bypass the design token system and create visual inconsistency.
+
+```tsx
+// ❌ FORBIDDEN — Arbitrary values in production code
+<div className="rounded-[12px]">
+<span className="text-[#1a1a1a]">
+<div className="text-[15px]">
+<div className="bg-[rgb(255,0,0)]">
+<div className="w-[347px]">
+
+// ✅ CORRECT — Use design tokens
+<div className="rounded-lg">
+<span className="text-foreground">
+<div className="text-base">
+<div className="bg-destructive">
+<div className="w-full">  {/* or use a defined size token */}
+```
+
+**Exception**: Arbitrary values are permitted during prototyping and in one-off layout calculations where no token exists. They MUST be replaced with tokens before merge.
+
+### Typography System (MANDATORY)
+
+Every app MUST use `next/font` with a defined type scale. Font loading via `next/font` is optimized (no layout shift, self-hosted). Bare heading elements without consistent styling produce visual inconsistency across pages.
+
+#### Font Setup
+
+```typescript
+// ✅ CORRECT — src/app/layout.tsx
+import { Inter, JetBrains_Mono } from 'next/font/google';
+import { cn } from '@/lib/utils';
+
+const fontSans = Inter({
+  subsets: ['latin'],
+  variable: '--font-sans',
+  display: 'swap',
+});
+
+const fontMono = JetBrains_Mono({
+  subsets: ['latin'],
+  variable: '--font-mono',
+  display: 'swap',
+});
+
+export default function RootLayout({ children }: { children: React.ReactNode }) {
+  return (
+    <html lang="en" suppressHydrationWarning>
+      <body className={cn(
+        'min-h-screen bg-background font-sans antialiased',
+        fontSans.variable,
+        fontMono.variable,
+      )}>
+        {children}
+      </body>
+    </html>
+  );
+}
+```
+
+#### Semantic Type Scale
+
+Every app MUST define and consistently apply this type scale. Create a `Typography` component or use these exact class combinations throughout the app.
+
+| Token | Tailwind Classes | Usage |
+|-------|-----------------|-------|
+| Display | `text-4xl font-bold tracking-tight` | Marketing hero, H1 on landing pages |
+| H1 | `text-3xl font-semibold tracking-tight` | Page titles |
+| H2 | `text-2xl font-semibold tracking-tight` | Section headings |
+| H3 | `text-xl font-semibold` | Subsection headings |
+| H4 | `text-lg font-semibold` | Card titles, group headings |
+| Body | `text-base font-normal leading-relaxed` | Default paragraph text |
+| Body Small | `text-sm leading-normal` | Secondary text, descriptions |
+| Caption | `text-sm text-muted-foreground` | Labels, timestamps, helper text |
+| Overline | `text-xs font-medium uppercase tracking-wider text-muted-foreground` | Category labels, breadcrumbs |
+
+#### Typography Component
+
+```tsx
+// ✅ CORRECT — src/components/typography.tsx
+import { cn } from '@/lib/utils';
+
+interface TypographyProps {
+  variant: 'display' | 'h1' | 'h2' | 'h3' | 'h4' | 'body' | 'body-sm' | 'caption' | 'overline';
+  children: React.ReactNode;
+  className?: string;
+  as?: React.ElementType;
+}
+
+const variantStyles: Record<TypographyProps['variant'], string> = {
+  display: 'text-4xl font-bold tracking-tight',
+  h1: 'text-3xl font-semibold tracking-tight',
+  h2: 'text-2xl font-semibold tracking-tight',
+  h3: 'text-xl font-semibold',
+  h4: 'text-lg font-semibold',
+  body: 'text-base font-normal leading-relaxed',
+  'body-sm': 'text-sm leading-normal',
+  caption: 'text-sm text-muted-foreground',
+  overline: 'text-xs font-medium uppercase tracking-wider text-muted-foreground',
+};
+
+const defaultElements: Record<TypographyProps['variant'], React.ElementType> = {
+  display: 'h1',
+  h1: 'h1',
+  h2: 'h2',
+  h3: 'h3',
+  h4: 'h4',
+  body: 'p',
+  'body-sm': 'p',
+  caption: 'span',
+  overline: 'span',
+};
+
+export function Typography({ variant, children, className, as: Component }: TypographyProps) {
+  const Element = Component || defaultElements[variant];
+  return (
+    <Element className={cn(variantStyles[variant], className)}>
+      {children}
+    </Element>
+  );
+}
+```
+
+#### ❌ Forbidden
+
+```tsx
+// ❌ BAD — Bare heading without consistent style
+<h1 className="text-2xl font-bold">Page Title</h1>
+
+// ❌ BAD — Inconsistent heading styles across pages
+<h2 className="text-xl font-bold mb-2">Section</h2>  // one page
+<h2 className="text-2xl font-semibold">Section</h2>   // another page
+
+// ❌ BAD — No font configured, system font fallback
+// layout.tsx has no next/font setup
+```
+
+### cn() Utility (MANDATORY)
+
+Every app MUST have a `cn()` utility that combines `clsx` and `tailwind-merge`. ALL className composition MUST use `cn()`. No string concatenation, no template literals for class names.
+
+```typescript
+// ✅ CORRECT — src/lib/utils.ts
+import { type ClassValue, clsx } from 'clsx';
+import { twMerge } from 'tailwind-merge';
+
+export function cn(...inputs: ClassValue[]) {
+  return twMerge(clsx(inputs));
+}
+```
+
+#### Usage
+
+```tsx
+// ✅ CORRECT — Use cn() for all className composition
+import { cn } from '@/lib/utils';
+
+<div className={cn('base-class', isActive && 'active-class', className)} />
+<Button className={cn('custom-override', variant === 'outline' && 'border-2')} />
+
+// ❌ FORBIDDEN — String concatenation
+<div className={`base-class ${isActive ? 'active-class' : ''} ${className}`} />
+
+// ❌ FORBIDDEN — Template literals
+<div className={`px-4 py-2 ${large ? 'text-lg' : 'text-sm'}`} />
+```
+
+**Why**: `twMerge` resolves conflicting Tailwind classes (e.g., `px-4 px-6` becomes `px-6`). String concatenation does not resolve conflicts, producing unpredictable styling.
+
+### Dark Mode (RECOMMENDED)
+
+Every app SHOULD support dark mode. Use `next-themes` with the class strategy.
+
+```typescript
+// ✅ CORRECT — src/components/theme-provider.tsx
+'use client';
+
+import { ThemeProvider as NextThemesProvider } from 'next-themes';
+import { type ThemeProviderProps } from 'next-themes/dist/types';
+
+export function ThemeProvider({ children, ...props }: ThemeProviderProps) {
+  return <NextThemesProvider {...props}>{children}</NextThemesProvider>;
+}
+```
+
+```tsx
+// ✅ CORRECT — src/components/theme-toggle.tsx
+'use client';
+
+import { Moon, Sun } from 'lucide-react';
+import { useTheme } from 'next-themes';
+import { Button } from '@/components/ui/button';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
+
+export function ThemeToggle() {
+  const { setTheme } = useTheme();
+
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button variant="outline" size="icon">
+          <Sun className="h-[1.2rem] w-[1.2rem] rotate-0 scale-100 transition-all dark:-rotate-90 dark:scale-0" />
+          <Moon className="absolute h-[1.2rem] w-[1.2rem] rotate-90 scale-0 transition-all dark:rotate-0 dark:scale-100" />
+          <span className="sr-only">Toggle theme</span>
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end">
+        <DropdownMenuItem onClick={() => setTheme('light')}>Light</DropdownMenuItem>
+        <DropdownMenuItem onClick={() => setTheme('dark')}>Dark</DropdownMenuItem>
+        <DropdownMenuItem onClick={() => setTheme('system')}>System</DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+}
+```
+
+```tsx
+// ✅ CORRECT — Wrap app with ThemeProvider in layout.tsx
+import { ThemeProvider } from '@/components/theme-provider';
+
+export default function RootLayout({ children }: { children: React.ReactNode }) {
+  return (
+    <html lang="en" suppressHydrationWarning>
+      <body>
+        <ThemeProvider
+          attribute="class"
+          defaultTheme="system"
+          enableSystem
+          disableTransitionOnChange
+        >
+          {children}
+        </ThemeProvider>
+      </body>
+    </html>
+  );
+}
+```
+
 ## 🚨 **MANDATORY: No-Mock-Data Policy**
 
 ### **Strict Prohibition of Fake/Mock Data**
