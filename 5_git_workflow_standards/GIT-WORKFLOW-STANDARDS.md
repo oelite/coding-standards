@@ -927,8 +927,41 @@ git checkout develop && git pull origin develop
 ### 12.1 PAT Storage
 
 - PATs are stored in **macOS Keychain** only. Never in files. Never committed.
-- Each PAT is stored as a generic password with service name `oelite-gitlab-<agent>` and account `oelite`.
+- Each PAT is stored as a generic password with **service name `oelite-gitlab-<agent>`** and **account `oelite`**.
 - The bootstrap script reads from Keychain at runtime.
+
+**CRITICAL: Correct Keychain Service Name Format**
+
+The service name MUST follow this exact pattern:
+```
+oelite-gitlab-<agent-name>
+```
+
+**Correct examples:**
+```bash
+# ✅ CORRECT - Service name format: oelite-gitlab-<agent>
+security add-generic-password -s "oelite-gitlab-daniel" -a "oelite" -w "glpat-xxxxxxxxxxxx" -U
+security add-generic-password -s "oelite-gitlab-emma" -a "oelite" -w "glpat-xxxxxxxxxxxx" -U
+security add-generic-password -s "oelite-gitlab-sophia" -a "oelite" -w "glpat-xxxxxxxxxxxx" -U
+```
+
+**WRONG examples (will cause 401 errors):**
+```bash
+# ❌ WRONG - Using "GitLab-PAT" as service name (does NOT match script expectation)
+security add-generic-password -s "GitLab-PAT" -a "daniel.phanes" -w "glpat-xxxxxxxxxxxx" -U
+
+# ❌ WRONG - Using email as account instead of "oelite"
+security add-generic-password -s "oelite-gitlab-daniel" -a "daniel.phanes" -w "glpat-xxxxxxxxxxxx" -U
+
+# ❌ WRONG - Using personal name as service
+security add-generic-password -s "MyGitLab" -a "daniel" -w "glpat-xxxxxxxxxxxx" -U
+```
+
+**Retrieving a PAT (for verification only):**
+```bash
+# ✅ CORRECT - Matches the service name format used when adding
+security find-generic-password -s "oelite-gitlab-daniel" -a "oelite" -w
+```
 
 **Adding a PAT to Keychain:**
 
@@ -956,6 +989,74 @@ security delete-generic-password -s "oelite-gitlab-<agent>" -a "oelite"
 - Never commit PATs, API keys, passwords, or connection strings.
 - Use environment variables or Keychain references.
 - If a secret is accidentally committed, revoke it immediately and force-push to remove it from history.
+
+### 12.5 Troubleshooting 401 Authentication Errors
+
+If you see `401 Unauthorized` errors from GitLab API calls:
+
+**Step 1: Verify PAT exists in Keychain**
+```bash
+# Check if PAT is stored (replace 'daniel' with your agent name)
+security find-generic-password -s "oelite-gitlab-daniel" -a "oelite" -w
+
+# If this returns nothing, the PAT is missing from Keychain
+```
+
+**Step 2: Verify PAT is valid**
+```bash
+# Test the PAT against GitLab API
+source scripts/oelite-gitlab-env.sh
+curl -s --header "PRIVATE-TOKEN: $OELITE_PAT_DANIEL" "https://code.phanes.ltd/api/v4/user"
+
+# If this returns user info, PAT is valid. If 401, the PAT is expired/revoked.
+```
+
+**Step 3: Re-add PAT to Keychain (if missing or invalid)**
+```bash
+# Remove old PAT (if exists)
+security delete-generic-password -s "oelite-gitlab-daniel" -a "oelite"
+
+# Add new PAT (replace with actual token)
+security add-generic-password -s "oelite-gitlab-daniel" -a "oelite" -w "glpat-xxxxxxxxxxxx" -U
+```
+
+**Common causes of 401 errors:**
+- ❌ PAT stored with wrong service name (e.g., `GitLab-PAT` instead of `oelite-gitlab-daniel`)
+- ❌ PAT stored with wrong account (e.g., `daniel.phanes` instead of `oelite`)
+- ❌ PAT expired or revoked in GitLab
+- ❌ PAT doesn't have required scopes (api, read_user, read_api)
+
+**Step 4: Run setup to verify all PATs**
+```bash
+scripts/oelite-gitlab.sh setup
+```
+
+This will show which agents have valid PATs and which are failing.
+
+---
+
+### 12.6 Using the GitLab CLI Tool
+
+**ALWAYS use the provided scripts** instead of manual curl commands:
+
+```bash
+# ✅ CORRECT - Use the official tool
+scripts/oelite-gitlab.sh mr-list oelite/uranus/origin-auth
+scripts/oelite-gitlab.sh issues oelite/helios/core --assignee daniel
+scripts/oelite-gitlab.sh worktree-create daniel feature/US-001-auth
+
+# ❌ WRONG - Manual curl commands with incorrect PAT retrieval
+PAT=$(security find-generic-password -s GitLab-PAT -a daniel.phanes -w)  # Wrong service name!
+curl --header "PRIVATE-TOKEN: $PAT" ...  # Will fail with 401
+```
+
+The scripts handle authentication correctly. If you need to query GitLab API directly, always source the env file first:
+
+```bash
+# ✅ CORRECT - Source env file to load PATs
+source scripts/oelite-gitlab-env.sh
+curl --header "PRIVATE-TOKEN: $OELITE_PAT_DANIEL" "https://code.phanes.ltd/api/v4/projects/102/merge_requests"
+```
 
 ---
 

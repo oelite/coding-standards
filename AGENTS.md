@@ -1491,7 +1491,53 @@ After all technical reviews, tests, and deployment succeed:
 
 All development work is coordinated through GitLab (https://code.phanes.ltd). Each team member has a unique GitLab identity with their own PAT stored in macOS Keychain.
 
+### ⚠️ CRITICAL: PAT Storage Format
+
+**The PAT MUST be stored in Keychain with the exact service name format:**
+
+```bash
+# ✅ CORRECT - This is the ONLY format the scripts recognize
+security add-generic-password -s "oelite-gitlab-daniel" -a "oelite" -w "glpat-xxxxxxxxxxxx" -U
+
+# ❌ WRONG - These will cause 401 authentication errors
+security add-generic-password -s "GitLab-PAT" -a "daniel.phanes" -w "glpat-xxxxxxxxxxxx" -U  # Wrong!
+security add-generic-password -s "my-gitlab-token" -a "daniel" -w "glpat-xxxxxxxxxxxx" -U   # Wrong!
+```
+
+**Service name pattern: `oelite-gitlab-<agent-name>`**
+- Service: `oelite-gitlab-daniel`, `oelite-gitlab-emma`, `oelite-gitlab-sophia`, etc.
+- Account: `oelite` (always this value)
+
+**If you see 401 Unauthorized errors:**
+1. Check PAT exists: `security find-generic-password -s "oelite-gitlab-daniel" -a "oelite" -w`
+2. Verify with: `scripts/oelite-gitlab.sh setup`
+3. Re-add PAT if missing or expired
+
 ### CLI Tool
+
+**ALWAYS use the provided scripts** instead of manual curl commands. The scripts handle authentication correctly.
+
+```bash
+# ✅ CORRECT - Use the official tool (handles PAT retrieval automatically)
+scripts/oelite-gitlab.sh mr-list oelite/uranus/origin-auth
+scripts/oelite-gitlab.sh issues oelite/helios/core --assignee daniel
+scripts/oelite-gitlab.sh worktree-create daniel feature/US-001-auth
+
+# ❌ WRONG - Manual curl commands with incorrect PAT retrieval (will fail)
+PAT=$(security find-generic-password -s GitLab-PAT -a daniel.phanes -w)  # Wrong service name!
+curl --header "PRIVATE-TOKEN: $PAT" "https://code.phanes.ltd/api/v4/..."  # 401 error!
+
+# ❌ WRONG - Even with correct service name, bypassing scripts is discouraged
+source scripts/oelite-gitlab-env.sh
+curl --header "PRIVATE-TOKEN: $OELITE_PAT_DANIEL" "https://code.phanes.ltd/api/v4/..."  # Use scripts instead!
+```
+
+**If you MUST query GitLab API directly:**
+```bash
+# ✅ CORRECT - Source env file first, then use the loaded PAT
+source scripts/oelite-gitlab-env.sh
+curl --header "PRIVATE-TOKEN: $OELITE_PAT_DANIEL" "https://code.phanes.ltd/api/v4/projects/102/merge_requests/102"
+```
 
 The `scripts/oelite-gitlab.sh` tool provides all GitLab and worktree operations:
 
