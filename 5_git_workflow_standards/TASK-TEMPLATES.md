@@ -53,12 +53,22 @@ An issue is **Done** when ALL of the following are true. Only Emma may mark an i
 - [ ] Integration tests pass against real Docker infrastructure (if applicable)
 - [ ] E2E tests pass against running dev server (if user-facing)
 - [ ] Code review approved by required reviewer(s) (Grace/Felix/Marcus/Maya)
+- [ ] **NO stub/fake/simplified implementations detected**: Reviewer explicitly verified full implementation
 - [ ] Security review completed (if auth/security/CRUD-sensitive)
 - [ ] Performance review completed (if queries/denormalization/caching changed)
 - [ ] Business validation passed (Isabella confirms deliverable matches requirements)
 - [ ] Documentation updated per [Documentation Triggers](../6_documentation_standards/DOC-STANDARDS.md#9-documentation-triggers)
 - [ ] No `Blocked` label remaining
 - [ ] Issue status updated through the lifecycle: `In Progress` → `PR Review` → `Ready to Merge` → `Done`
+
+### CRITICAL: Reviewer Accountability
+**Code reviewers (Grace, Felix, Marcus, Maya) MUST explicitly verify and confirm:**
+- [ ] **No stub implementations**: Every method/endpoint has complete production logic
+- [ ] **No simplified implementations**: All AC covered with full business logic, error handling, validation
+- [ ] **No temporary quick-fixes**: No "for now", "quick fix", "workaround", "hack" code or comments
+- [ ] **No mock/fake data**: All data from real sources, no hardcoded test data
+
+**Approving an MR with stub/fake/simplified/temporary implementations is a CODE REVIEW FAILURE and violates OElite standards.**
 
 ---
 
@@ -94,9 +104,62 @@ An issue is **Done** when ALL of the following are true. Only Emma may mark an i
 - <Explicitly excluded item 2>
 
 ## Acceptance Criteria
-- [ ] **AC-001**: GIVEN <context> WHEN <action> THEN <observable outcome>
-- [ ] **AC-002**: GIVEN <context> WHEN <action> THEN <observable outcome>
-- [ ] **AC-003**: GIVEN <context> WHEN <action> THEN <observable outcome>
+- [ ] **AC-001**: GIVEN <context> WHEN <action> THEN <observable outcome> — **FULL IMPLEMENTATION REQUIRED**: No stub, simplified, or temporary code allowed
+- [ ] **AC-002**: GIVEN <context> WHEN <action> THEN <observable outcome> — **FULL IMPLEMENTATION REQUIRED**: All business logic, error handling, validation implemented
+- [ ] **AC-003**: GIVEN <context> WHEN <action> THEN <observable outcome> — **FULL IMPLEMENTATION REQUIRED**: No "happy path only" or "for now" implementations
+
+### Implementation Quality Requirements
+- [ ] **NO stub implementations**: Every method has complete logic (no `NotImplementedException`, empty bodies, or `// TODO` placeholders)
+- [ ] **NO simplified implementations**: All edge cases, error flows, validation, and business rules implemented per AC
+- [ ] **NO temporary quick-fixes**: All solutions are production-ready and permanent (no "quick fix", "workaround", "hack" comments)
+- [ ] **NO mock/fake/placeholder data**: All data from real APIs/databases (no hardcoded test data in production code)
+- [ ] **Full test coverage**: Unit + integration + E2E tests verify all acceptance criteria
+- [ ] **Production-ready**: Code meets all OElite standards, no technical debt introduced
+
+### E2E Test Requirements (For UI Features - MANDATORY)
+
+**E2E tests MUST validate the following areas. All items must be covered:**
+
+#### API Integration Validation
+- [ ] **Request payload verification**: E2E tests verify API request bodies match expected schema
+- [ ] **Response data mapping**: E2E tests verify API response data correctly renders in UI elements
+- [ ] **API error handling**: E2E tests verify API error responses display user-friendly error messages
+- [ ] **Loading states**: E2E tests verify loading indicators appear during API calls
+- [ ] **Retry logic**: E2E tests verify retry mechanism works on API failures
+- [ ] **Network verification**: E2E tests capture and validate actual network requests (Playwright `page.route()`)
+
+#### UI Layout & Design Compliance
+- [ ] **Responsive breakpoints**: E2E tests verify layout at mobile (375px), tablet (768px), desktop (1024px+)
+- [ ] **Design token compliance**: E2E tests verify colors, spacing, typography use semantic tokens (no arbitrary values)
+- [ ] **Shadcn component usage**: E2E tests verify Shadcn/ui components are used (no reinvented buttons, modals, tables, etc.)
+- [ ] **Accessibility attributes**: E2E tests verify ARIA labels, roles, and focus states are present
+- [ ] **Visual consistency**: E2E tests verify UI matches Jonathan's design spec (screenshots captured)
+- [ ] **Theme compliance**: E2E tests verify globals.css CSS variables and tailwind.config tokens are applied
+
+#### Interactive Element Validation
+- [ ] **Button/link actions**: E2E tests verify all clickable elements trigger expected actions
+- [ ] **Form validation**: E2E tests verify client-side validation errors display correctly
+- [ ] **Server-side errors**: E2E tests verify server validation errors display in UI
+- [ ] **Keyboard navigation**: E2E tests verify Tab/Enter/Escape keyboard interactions work
+- [ ] **Focus management**: E2E tests verify focus traps in modals, proper focus order in forms
+- [ ] **State transitions**: E2E tests verify loading → success/error → empty state transitions
+
+#### Full-Stack Integration
+- [ ] **Data persistence**: E2E tests verify data persists across page refreshes
+- [ ] **Authentication/authorization**: E2E tests verify role-based access control (RBAC) enforcement
+- [ ] **Multi-step workflows**: E2E tests verify complete user journeys (e.g., create → edit → delete)
+- [ ] **Cross-page navigation**: E2E tests verify state maintains across page navigation
+- [ ] **Database reflection**: E2E tests verify UI changes reflect in database after API calls
+- [ ] **Session management**: E2E tests verify login/logout/session timeout behaviors
+
+#### E2E Test Evidence Requirements
+- [ ] **Playwright execution output**: Test run output captured showing all tests pass
+- [ ] **Screenshots/videos**: Critical user journeys have visual evidence (screenshots or video recordings)
+- [ ] **Network logs**: API calls verified via Playwright network inspection
+- [ ] **Console logs**: No JavaScript errors or warnings in browser console
+- [ ] **Coverage mapping**: Each E2E test maps to specific user story acceptance criteria (US-XXX/AC-YYY)
+
+**Failure Condition**: If ANY E2E requirement above is not met, the UI implementation is **INCOMPLETE** and the MR MUST be rejected.
 
 ## Source References
 - <Link to design spec, Figma, architecture diagram, related issue, or external doc>

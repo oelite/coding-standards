@@ -783,13 +783,18 @@ Any test file that fails this check is rejected and must be fixed before it's co
   - **Deterministic execution**: Tests must be repeatable and not depend on external state or timing
   - Screenshot/video capture: `page.screenshot()`, `testInfo.attach()` for evidence (automatic on failure)
   - **Note**: `--headed` and `--ui` modes are for debugging ONLY — production tests run headlessly in CI/CD
+  - **API integration validation**: Use `page.route()` to intercept and verify API requests/responses
+  - **Responsive testing**: Test at mobile (375px), tablet (768px), desktop (1024px+) breakpoints
+  - **Accessibility testing**: Verify ARIA labels, keyboard navigation, focus management
+  - **Full-stack validation**: Verify data persistence across page refreshes, authentication/authorization
 - **User story reading**: Ability to read user stories (US-XXX format) and extract acceptance criteria (GIVEN/WHEN/THEN) to create test scenarios.
 - **Test scenario design**: Map each acceptance criterion (AC-001, AC-002, etc.) to one or more test cases. Ensure positive, negative, and edge-case scenarios are covered. Create tests at appropriate levels (unit for logic, integration for APIs, E2E for user journeys).
+- **E2E coverage requirements**: Must validate API integration, UI layout/design compliance, interactive elements, and full-stack data flow per [TASK-TEMPLATES.md](./5_git_workflow_standards/TASK-TEMPLATES.md) E2E Test Requirements section.
 - Tenant-scoping checks: confirm queries/handlers respect `Region`/owner scoping (`IOwnedEntity`); attempt cross-tenant access and confirm it is denied.
 - Health verification: `curl -f http://localhost:<port>/health` (or `/healthz`).
 - Awareness that `mercury/runners` CI is currently disabled (`SKIP_BUILD=true`) — runner testing is not yet automated and must be validated manually.
 
-**Standards/Tools to Load**: `coding-standards/1_dotNet_coding_standards/02` (acceptance flow), `playwright` skill (MANDATORY for web apps), target repo test docs, **user stories from `docs/business/user-stories/`** (source of truth for test scenarios).
+**Standards/Tools to Load**: `coding-standards/1_dotNet_coding_standards/02` (acceptance flow), `playwright` skill (MANDATORY for web apps), target repo test docs, **user stories from `docs/business/user-stories/`** (source of truth for test scenarios), `5_git_workflow_standards/TASK-TEMPLATES.md` (E2E requirements), `5_git_workflow_standards/PROHIBITED-PATTERNS.md` (Insufficient E2E Coverage section).
 
 **Mandatory Verification**
 - **Execute ALL tests and capture output**: Provide executed command output (build/test/E2E/health) as evidence. No claim is accepted without execution.
@@ -802,8 +807,14 @@ Any test file that fails this check is rejected and must be fixed before it's co
 - **Browser-level validation**: For any user-facing feature, E2E Playwright tests MUST exist and pass. Unit tests alone are NOT sufficient.
 - **Automated execution**: All tests MUST run without human intervention. Tests must be self-contained, handle their own setup/teardown, and be deterministic. No manual steps, no human interaction, no "click here to continue" prompts.
 - **Infrastructure confirmation**: Before running E2E tests, confirm the dev server is running (`docker compose ps` + `npx playwright test` against `baseURL`), and that all Docker infrastructure containers are healthy. E2E tests against a dead dev server produce false positives.
+- **E2E Coverage Verification**: Confirm all E2E test requirements are met:
+  - [ ] API integration tests verify request/response/data mapping
+  - [ ] UI layout tests verify responsive design + design tokens
+  - [ ] Interactive element tests verify all user actions + accessibility
+  - [ ] Full-stack tests verify end-to-end data flow + persistence
+  - [ ] Playwright evidence captured (screenshots/videos/network logs)
 
-**Definition of Done**: All targeted tests pass on a clean build with **captured execution evidence** (test logs, screenshots, CI/CD results); **ALL user story acceptance criteria are covered by test scenarios at appropriate levels** (unit for logic, integration for APIs, E2E for user journeys); tenant-scoping and error flows validated; failures returned with reproductions and screenshots. **No feature is considered "tested" unless its user stories are fully covered AND all tests (unit + integration + E2E) are executed and pass.** **All tests MUST be fully automated and runnable in CI/CD without human intervention.**
+**Definition of Done**: All targeted tests pass on a clean build with **captured execution evidence** (test logs, screenshots, CI/CD results); **ALL user story acceptance criteria are covered by test scenarios at appropriate levels** (unit for logic, integration for APIs, E2E for user journeys); tenant-scoping and error flows validated; failures returned with reproductions and screenshots. **No feature is considered "tested" unless its user stories are fully covered AND all tests (unit + integration + E2E) are executed and pass.** **All tests MUST be fully automated and runnable in CI/CD without human intervention.** **Insufficient E2E coverage (missing API/layout/interactive/full-stack validation) is REJECTED.**
 
 ---
 
@@ -926,17 +937,30 @@ Any test file that fails this check is rejected and must be fixed before it's co
 **Required Skills & Knowledge**
 - Full OElite Framework Primer (Part I §3) and naming conventions (snake_case DB / PascalCase C#).
 - Ability to detect: bypassing auto-discovery without justification, hand-built responses instead of `OEliteApiOutputFormatter`/`TransformedResponse`, duplicate logic across Services/Repositories, business logic leaking into repositories, raw MongoDB driver usage.
+- **Prohibited Patterns Detection**: Ability to identify stub implementations, simplified implementations, temporary quick-fixes, and mock/fake data per [PROHIBITED-PATTERNS.md](./5_git_workflow_standards/PROHIBITED-PATTERNS.md).
 
-**Standards/Tools to Load**: `coding-standards/1_dotNet_coding_standards/*`, `coding-standards/rulespec_checklist.md`, `ai-slop-remover` skill (to flag placeholder/mock/AI-smell code).
+**Standards/Tools to Load**: `coding-standards/1_dotNet_coding_standards/*`, `coding-standards/rulespec_checklist.md`, `ai-slop-remover` skill (to flag placeholder/mock/AI-smell code), `5_git_workflow_standards/PROHIBITED-PATTERNS.md`.
 
 **May Reject**
 - Code bypassing OElite auto-discovery without justification.
 - Manually constructed response objects instead of `TransformedResponse`.
 - Duplicate logic across Services/Repositories; any mock/placeholder/TODO remnants.
+- **Stub implementations**: Methods with `NotImplementedException`, empty bodies, or `// TODO` placeholders.
+- **Simplified implementations**: Happy-path-only code missing validation, error handling, or edge cases.
+- **Temporary quick-fixes**: Code with "hack", "workaround", "temporary", "for now" comments or logic.
+- **Mock/fake data**: Hardcoded sample data in production code.
 
-**Mandatory Verification**: Confirm `dotnet build` is clean, tests exist/pass for new behavior, naming/structure compliant, and no forbidden patterns remain.
+**Mandatory Verification**: 
+- [ ] `dotnet build` is clean
+- [ ] Tests exist/pass for new behavior
+- [ ] Naming/structure compliant
+- [ ] No forbidden patterns remain
+- [ ] **NO stub implementations**: Every method has complete logic
+- [ ] **NO simplified implementations**: All AC covered with full business logic, error handling, validation
+- [ ] **NO temporary quick-fixes**: No "for now", "hack", "workaround" code
+- [ ] **NO mock/fake data**: All data from real sources
 
-**Definition of Done**: Change is pattern-compliant, free of AI/code smells, adequately tested, and consistent with the surrounding code; rejections include actionable fixes.
+**Definition of Done**: Change is pattern-compliant, free of AI/code smells, adequately tested, and consistent with the surrounding code; rejections include actionable fixes. **Approving MRs with prohibited implementations is a CODE REVIEW FAILURE.**
 
 ---
 
@@ -964,8 +988,9 @@ Any test file that fails this check is rejected and must be fixed before it's co
 - **Accessibility**: Semantic HTML, ARIA roles/labels, keyboard navigation, focus trapping, screen reader testing, color contrast (WCAG AA).
 - **Performance**: Bundle analysis, code splitting, lazy loading, tree shaking, image optimization (next/image), memoization (useMemo, useCallback, React.memo).
 - **Testing**: Playwright E2E patterns, component testing, accessibility audits (axe-core, Lighthouse).
+- **Prohibited Patterns Detection**: Ability to identify stub implementations, simplified implementations, temporary quick-fixes, and mock/fake data per [PROHIBITED-PATTERNS.md](./5_git_workflow_standards/PROHIBITED-PATTERNS.md).
 
-**Standards/Tools to Load**: `coding-standards/4_react_nextjs_coding_standards/12-NEXTJS-CODING-STANDARDS.md`, `coding-standards/3_angular_coding_standards/11-ANGULAR-CODING-STANDARDS.md`, `coding-standards/2_general_web_coding_standards/README.md`, `frontend-ui-ux` skill, `playwright` skill.
+**Standards/Tools to Load**: `coding-standards/4_react_nextjs_coding_standards/12-NEXTJS-CODING-STANDARDS.md`, `coding-standards/3_angular_coding_standards/11-ANGULAR-CODING-STANDARDS.md`, `coding-standards/2_general_web_coding_standards/README.md`, `frontend-ui-ux` skill, `playwright` skill, `5_git_workflow_standards/PROHIBITED-PATTERNS.md`.
 
 **May Reject**
 - Mock/fake/placeholder/hard-coded data (No-Mock-Data Policy violation).
@@ -981,20 +1006,26 @@ Any test file that fails this check is rejected and must be fixed before it's co
 - **Hard-coded colors**: Any hex color (`#fff`, `#1a1a1a`) or `rgb()` in `className` instead of semantic tokens.
 - **Missing typography system**: No `next/font` setup, no type scale, bare heading HTML elements.
 - **Arbitrary Tailwind values**: Production code with `rounded-[12px]`, `text-[15px]`, `bg-[rgb(...)]` instead of design tokens.
+- **Stub implementations**: Components/functions with incomplete logic, TODO comments, or placeholder content.
+- **Simplified implementations**: Happy-path-only UI missing error states, validation, or edge cases.
+- **Temporary quick-fixes**: Code with "hack", "workaround", "temporary", "for now" comments or logic.
 
 **Mandatory Verification**
-- `npx next build` / `ng build` succeeds with 0 errors.
-- `npm run lint` passes (no TypeScript errors, no ESLint violations).
-- Component uses existing theme system (Tailwind tokens, Shadcn components, SCSS variables) — no duplicated style code.
-- All interactive states implemented (hover, focus, active, disabled, loading, empty, error).
-- Accessibility audit passes (axe-core, Lighthouse ≥ 90).
-- No mock/placeholder data; all data loaded from API with proper error handling.
-- **Shadcn component usage verified**: All UI components use Shadcn/ui components from `components/ui/` where applicable; no reinvented buttons, modals, tables, cards, selects, badges, alerts, tabs, forms, etc.
-- **Theme tokens configured**: `globals.css` CSS variables and `tailwind.config.ts` extension are present and consistent.
-- **Typography system verified**: `next/font` is configured with semantic type scale, `Typography` component or equivalent pattern is used.
-- **`cn()` utility used**: All `className` composition uses `cn()` — no string concatenation or template literals.
+- [ ] `npx next build` / `ng build` succeeds with 0 errors.
+- [ ] `npm run lint` passes (no TypeScript errors, no ESLint violations).
+- [ ] Component uses existing theme system (Tailwind tokens, Shadcn components, SCSS variables) — no duplicated style code.
+- [ ] All interactive states implemented (hover, focus, active, disabled, loading, empty, error).
+- [ ] Accessibility audit passes (axe-core, Lighthouse ≥ 90).
+- [ ] No mock/placeholder data; all data loaded from API with proper error handling.
+- [ ] **Shadcn component usage verified**: All UI components use Shadcn/ui components from `components/ui/` where applicable; no reinvented buttons, modals, tables, cards, selects, badges, alerts, tabs, forms, etc.
+- [ ] **Theme tokens configured**: `globals.css` CSS variables and `tailwind.config.ts` extension are present and consistent.
+- [ ] **Typography system verified**: `next/font` is configured with semantic type scale, `Typography` component or equivalent pattern is used.
+- [ ] **`cn()` utility used**: All `className` composition uses `cn()` — no string concatenation or template literals.
+- [ ] **NO stub implementations**: No TODO comments, placeholder content, or incomplete logic
+- [ ] **NO simplified implementations**: All error states, validation, and edge cases implemented
+- [ ] **NO temporary quick-fixes**: No "for now", "hack", "workaround" code or comments
 
-**Definition of Done**: Frontend code is type-safe, theme-compliant, accessible, performant, matches the design spec, and is free of mock data; rejections include specific fixes and references to the relevant standard.
+**Definition of Done**: Frontend code is type-safe, theme-compliant, accessible, performant, matches the design spec, and is free of mock data; rejections include specific fixes and references to the relevant standard. **Approving MRs with stub/fake/simplified implementations is a CODE REVIEW FAILURE.**
 
 ---
 

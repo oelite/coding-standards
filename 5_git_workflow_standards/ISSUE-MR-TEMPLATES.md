@@ -252,7 +252,10 @@ Closes #<issue-iid>
 - [ ] Unit tests pass
 - [ ] Integration tests pass against real Docker infrastructure
 - [ ] E2E tests pass against running dev server (if user-facing)
-- [ ] No placeholder/mock/TODO/hard-coded data in changed files
+- [ ] **NO stub implementations**: Every method/endpoint/component has full production-ready logic (no `throw new NotImplementedException()`, no empty method bodies, no `// TODO: implement later` comments)
+- [ ] **NO simplified implementations**: All business logic, error handling, validation, and edge cases are implemented per acceptance criteria (no "happy path only", no "basic version for now")
+- [ ] **NO temporary quick-fixes**: All solutions are permanent and production-ready (no "quick fix", "temporary workaround", "hack", "for now" comments or code)
+- [ ] **NO placeholder/fake/mock data**: All data comes from real APIs/databases (no hardcoded strings, no mock objects in production code, no sample/test data)
 - [ ] Code follows OElite coding standards
 - [ ] Directory scope respected (no changes outside assigned scope)
 - [ ] Commit messages follow convention (title + bulleted body)
@@ -260,6 +263,19 @@ Closes #<issue-iid>
 - [ ] No `as any`, `@ts-ignore`, or type-error suppression (frontend)
 - [ ] No raw `MongoDB.Driver`, `BsonDocument`, or manual DI (backend)
 - [ ] Health endpoint verified if service is runnable
+
+### E2E Test Coverage Verification (For UI Features - Olivia Mandate)
+- [ ] **API integration tests**: Verify request payloads, response data mapping, error handling, loading states
+- [ ] **UI layout tests**: Verify responsive breakpoints, design token compliance, Shadcn component usage
+- [ ] **Interactive element tests**: Verify all buttons/links, form validation, keyboard navigation, focus management
+- [ ] **Full-stack tests**: Verify data persistence, authentication/authorization, multi-step workflows
+- [ ] **Accessibility tests**: Verify WCAG 2.1 AA compliance (ARIA labels, keyboard navigation, focus states)
+- [ ] **Playwright evidence captured**: Screenshots/videos for critical journeys, network logs, console verification
+- [ ] **Coverage mapping**: Each E2E test maps to user story acceptance criteria (US-XXX/AC-YYY)
+
+**REVIEWER MANDATE**: If ANY stub/fake/simplified/temporary implementation is detected, the MR MUST be rejected with specific citations. Approval without verifying full implementation is a code review failure.
+
+**E2E MANDATE**: If UI feature lacks comprehensive E2E coverage (API + layout + interactive + full-stack validation), the MR MUST be rejected. "Unit tests pass" is NOT sufficient for user-facing features.
 
 ## Commands Executed
 ```bash
