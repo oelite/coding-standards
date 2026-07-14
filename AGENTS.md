@@ -1,7 +1,7 @@
 # OElite Platform — Agent Navigator
 
 > **Loaded every request. Read completely.**
-> **Source of Truth**: `/coding-standards/` — all standards, templates, workflows live there.
+> **Source of Truth**: `coding-standards/` — all standards, templates, workflows live there.
 > **Per-Repo Context**: `<repo>/AGENTS.md` + `<repo>/.ai/standards/`
 
 ---
