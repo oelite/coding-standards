@@ -1,6 +1,7 @@
 # OElite Core Principles — Universal Foundation
 
 > **Loaded by EVERY agent, EVERY request.** Contains all shared standards, workflows, and non-negotiables.
+> **Role/task taxonomy, repo map, and handoff chains** live in `AGENTS.md` (navigator) and `workflow.md` respectively — not duplicated here.
 
 ---
 
@@ -82,6 +83,9 @@
 - Shared `Typography` component
 - `cn()` utility in `lib/utils.ts` (`clsx` + `tailwind-merge`) — use for ALL `className` composition
 
+### No-Mock-Data Policy (ZERO tolerance)
+Start empty, load from API, render explicit loading/empty/error states. If an API is missing, mark the task **BLOCKED** and document the required endpoints — never fall back to fake data.
+
 ---
 
 ## 🧪 TESTING POLICY (Zero Tolerance for Mocks)
@@ -160,6 +164,37 @@ Closes #<issue>
 ```
 **Never**: AI references, emojis, co-authors.
 
+### Branch Strategy & Packaging
+- **main**: production releases → NuGet `nuget.org`; Docker `registry.phanes.ltd/oelite`.
+- **develop**: development pre-releases → `packages.phanes.ltd`.
+- **uat**: UAT pre-releases → `packages.phanes.ltd`.
+- K8s namespaces: `oelite-dev` / `oelite-uat` / `oelite-prod`; production deploys are `when: manual`.
+
+---
+
+## 🔒 SECURITY & BEST PRACTICES
+
+### Authentication & Authorization
+- Central IAM is **`uranus/origin-auth`**: JWT **RS256** issuance/validation/introspection/revocation (`Origin.Services/Authentication/TokenService.cs`), RSA key generation & rotation with key material encrypted at rest via **AES-GCM** (`RsaKeyManager.cs`).
+- App-client credentials + customer bearer-token model. **Server-side access control for every data operation.**
+- Edge auth/proxy via **Kortex** (`[Authorize(Roles=…)]`, versioned routes).
+
+### Data Protection
+- Passwords: **Argon2id** (`Security/PasswordHashingService.cs`). Field-level encryption: **AES-256** with 90-day rotation and PII/PHI/Financial/Credential classification (`Security/DataProtectionService.cs`, `EncryptionService.cs`).
+- Never commit secrets or API keys (use K8s secrets / CI variables). Validate tenant access (`Region` / `IOwnedEntity`) for all data requests. Implement proper error handling and structured logging (Serilog); do not log secrets.
+
+---
+
+## ✅ VERIFICATION COMMANDS (Per Stack)
+
+- **.NET**: `dotnet build <project> --configuration Release`; `dotnet test --configuration Release --logger trx`. Rebuild referencing projects too.
+- **Health**: `curl -f http://localhost:50018/health` (Nexus); `/healthz` (Tesseract); per-service health controllers elsewhere.
+- **Next.js**: run inside the app folder (e.g. `jupiter/occ`): `npx next build`, `npm run lint`, `npx playwright test`.
+- **Angular**: `npm run build` / `build:ssr` (ec-std-01), `npm run test` (Karma); `ng build` + `ng test` (bizsmart).
+- **Docker**: `docker build -f <Dockerfile> .`; `docker compose -f docker-compose.dev.yml up` where compose files exist (helios/core, stella, lattice, hermes, quantrix, obelisk, kortex, oesterling).
+- **K8s**: `kubectl rollout status deployment/<name> -n oelite-<env>`.
+- Note: `mercury/runners` CI is currently disabled (`SKIP_BUILD=true`) — validate runners manually.
+
 ---
 
 ## 📦 DOCUMENTATION STRUCTURE (All Repos)
@@ -197,98 +232,9 @@ docs/
 
 ---
 
-## 👥 ROLE TAXONOMY (12 Roles)
-
-| Role | Code | Primary Domain |
-|------|------|----------------|
-| Emma | `emma` | Product & Delivery Coordination |
-| Marcus | `marcus` | Principal Architecture |
-| Daniel | `daniel` | Backend Implementation |
-| Sophia | `sophia` | Frontend Implementation |
-| Jonathan | `jonathan` | UX Design |
-| Olivia | `olivia` | QA & Test Automation |
-| Ethan | `ethan` | DevOps & Reliability |
-| Maya | `maya` | Security |
-| Victor | `victor` | Data & Performance |
-| Grace | `grace` | Backend Code Review |
-| Felix | `felix` | Frontend Code Review |
-| Isabella | `isabella` | Business Analysis & Documentation |
-
----
-
-## 🎯 TASK TYPE TAXONOMY (10 Types)
-
-| Type | Code | Trigger Keywords |
-|------|------|------------------|
-| Planning | `planning` | plan, decompose, estimate, design spec, break down |
-| Backend Implementation | `backend-impl` | implement/add/create/build + entity/service/controller/API/repository/migration |
-| Backend Review | `backend-review` | review/audit/check + backend code |
-| Frontend Implementation | `frontend-impl` | implement/add/create/build + component/page/UI/Next.js/Angular/Shadcn |
-| Frontend Review | `frontend-review` | review/audit/check + frontend code |
-| Testing | `testing` | test/validate/verify/E2E/Playwright/integration |
-| Infrastructure | `infrastructure` | Docker/K8s/deploy/CI/CD/pipeline/compose |
-| Security | `security` | auth/JWT/encryption/secrets/vulnerability/penetration |
-| Documentation | `documentation` | document/README/user guide/API docs/changelog |
-| Architecture | `architecture` | design/architecture/Marcus/system design/cross-system |
-
----
-
-## ⛓️ AUTONOMOUS HANDOFF CHAINS
-
-### Backend Chain
-```
-Emma (plan) → Isabella (docs if reqs changed) → Marcus (arch review) → 
-Daniel (impl) → Maya (auth/CRUD) + Victor (perf) [parallel] → 
-Grace (code review) → Olivia (API/integ/E2E tests) → 
-Ethan (deploy) → Isabella (final biz validation + docs + release notes)
-```
-
-### Frontend Chain
-```
-Emma+Marcus (brief Jonathan) → Isabella (docs if reqs changed) → 
-Jonathan (design spec) → Emma+Marcus (approve) → 
-Sophia (impl) → Jonathan (UX review) + Felix (code review) [parallel] → 
-Build verify → Olivia (E2E) → Ethan (deploy) → Isabella (biz validation + screenshots + docs)
-```
-
-### Infrastructure Chain
-```
-Isabella (docs if reqs changed) → Implement → Marcus (review) → 
-Olivia (container health) + Maya (secrets) [parallel] → 
-Ethan (deploy validate) → Isabella (infra docs + biz validation)
-```
-
-### Failure Escalation
-- 2 fix attempts → escalate to Marcus (arch) / Emma (reqs) / Maya (sec) / Victor (perf)
-- Olivia enforces ALL 8 E2E gates — any violation = immediate rejection
-
----
-
-## 🏷️ REPOSITORY MAP (Active Only)
-
-| Family | Repos |
-|--------|-------|
-| **Helios** | `core/`, `kortex/`, `oesterling/`, `compass/`, `k8s/` |
-| **Jupiter** | `ec-std-01`, `ec-nx-01`, `occ`, `bizsmart`, `apex/`, `apps-ec-store`, `apps-biz-suite` |
-| **Mercury** | `runners/Backplane`, `DataSync`, `LoadBalanceHealthCheckker`, `SubscriptionBilling` |
-| **Uranus** | `origin-auth/`, `restme/`, `restme-dapper/`, `orion/`, `stella/`, `hermes/`, `lattice/`, `quantrix/`, `slate/`, `arc-cli/`, `arc-agents/` |
-| **Venus** | `obelisk/`, `sip/`, `stela/` |
-
-**Deprecated (do not touch)**: `pluto/`, `*-legacy`, `helios/sites`, `helios/app-config-server`, `jupiter/oes`, `jupiter/gemni-dev`, `jupiter/ec-std-03`, `mercury/runners/Legacy`, `mercury/workflows`, `uranus/restme-wildduck`, `venus/wildduck-*`, `venus/mail-quarantine`, `venus/runners`, `helios/kortex/web/kortex-dashboard-archived`
-
----
-
-## 📐 STANDARDS AUTHORITY
-
-1. **Global**: `coding-standards/` (1_dotNet_*, 3_angular_*, 4_react_nextjs_*, 0_project_planning_*, 2_general_web_*)
-2. **Repo Override**: `<repo>/.ai/standards/*` — extends, never contradicts
-3. **Mirror (may drift)**: `uranus/arc-agents/standards/` — never treat as source
-
----
-
 ## 📝 DOCUMENTATION SELF-MAINTENANCE PROTOCOL
 
-The documentation in this monorepo (root `AGENTS.md`, `CLAUDE.md`, `GEMINI.md`, `REPOS.md`, and per-repo `AGENTS.md` stubs) is a **living system**. It must stay in sync with the codebase. Every agentic coding session is responsible for keeping it current — not just the code it touches.
+The documentation in this monorepo (root `AGENTS.md`, `GEMINI.md`, `REPOS.md`, and per-repo `AGENTS.md` stubs) is a **living system**. It must stay in sync with the codebase. Every agentic coding session is responsible for keeping it current — not just the code it touches.
 
 ### Mandatory Pre-Completion Documentation Check
 
@@ -296,15 +242,15 @@ Before declaring **any** task complete, run this checklist. If any item applies,
 
 | Trigger | Action |
 |---------|--------|
-| **New repo added** | Add row to `REPOS.md`. Create per-repo `AGENTS.md` stub. Add to topology table in root `AGENTS.md` and `CLAUDE.md` ignore list if deprecated. Isabella creates full `docs/` structure. |
-| **Repo deprecated / retired** | Update `REPOS.md` status → `Deprecated`. Move to deprecated list in root `AGENTS.md` and `CLAUDE.md` ignore list. Delete/archive per-repo `AGENTS.md`. |
-| **Stack change** | Update per-repo `AGENTS.md` Tech Stack and `REPOS.md`. If platform-wide, update root `AGENTS.md` and `CLAUDE.md`. Isabella updates `docs/technical/architecture/`. |
+| **New repo added** | Add row to `REPOS.md`. Create per-repo `AGENTS.md` stub. Add to topology table in root `AGENTS.md` if deprecated. Isabella creates full `docs/` structure. |
+| **Repo deprecated / retired** | Update `REPOS.md` status → `Deprecated`. Move to deprecated list in root `AGENTS.md`. Delete/archive per-repo `AGENTS.md`. |
+| **Stack change** | Update per-repo `AGENTS.md` Tech Stack and `REPOS.md`. If platform-wide, update root `AGENTS.md`. Isabella updates `docs/technical/architecture/`. |
 | **Build / test / health command changes** | Update per-repo `AGENTS.md` and `REPOS.md` columns. Isabella updates `docs/technical/deployment/`. |
-| **New OElite framework pattern introduced** | Update OElite Framework Primer in root `AGENTS.md` and `CLAUDE.md`. Update per-repo `AGENTS.md` as needed. Isabella updates `docs/technical/architecture/` and `docs/technical/data/`. |
+| **New OElite framework pattern introduced** | Update OElite Framework Primer in `principles.md` (this file). Update per-repo `AGENTS.md` as needed. Isabella updates `docs/technical/architecture/` and `docs/technical/data/`. |
 | **Repo starts/stops using OElite patterns** | Update per-repo `AGENTS.md` `OElite-Specific Patterns`. Update root `AGENTS.md` OElite-compliant list. Isabella updates migration guides. |
 | **New coding standard added** | Reference it in relevant role/pack files. Isabella updates onboarding docs. |
 | **Per-repo `.ai/standards/` added or changed** | Note it in per-repo `AGENTS.md` `Standards & Overrides`. Create/update `.ai/standards/` for deviations. Isabella ensures `docs/technical/architecture/` reflects them. |
-| **Health endpoint path/port changes** | Update per-repo `AGENTS.md` and `REPOS.md`. Update `CLAUDE.md` verification examples if common service. Isabella updates `docs/technical/deployment/`. |
+| **Health endpoint path/port changes** | Update per-repo `AGENTS.md` and `REPOS.md`. Update verification commands in this file if common service. Isabella updates `docs/technical/deployment/`. |
 | **New feature implemented** | Isabella updates user stories, API endpoints, user guides, CHANGELOG. Captures Playwright screenshots. |
 | **New release deployed** | Isabella creates release notes, updates CHANGELOG, creates migration guide if needed. |
 
@@ -313,8 +259,8 @@ Before declaring **any** task complete, run this checklist. If any item applies,
 - [ ] Does the per-repo `AGENTS.md` still accurately describe this repo's stack, commands, and patterns?
 - [ ] Does `REPOS.md` still list this repo with the correct status, stack, and commands?
 - [ ] If I changed a build/test/health command, did I update both the per-repo `AGENTS.md` and `REPOS.md`?
-- [ ] If I added or removed a repo, did I update `REPOS.md`, root `AGENTS.md` topology, and `CLAUDE.md` ignore list?
-- [ ] If I introduced a new OElite pattern, did I update the Framework Primer in root `AGENTS.md` and `CLAUDE.md`?
+- [ ] If I added or removed a repo, did I update `REPOS.md`, root `AGENTS.md` topology?
+- [ ] If I introduced a new OElite pattern, did I update the Framework Primer in this file (`principles.md`)?
 - [ ] If I migrated a repo toward/away from OElite patterns, did I update the per-repo `AGENTS.md` `OElite-Specific Patterns` section?
 - [ ] If this repo has `.ai/standards/`, did I update those files to reflect any pattern/command/architecture changes? If this repo deviates from platform standards but has no `.ai/standards/` yet, did I create one documenting the deviation?
 - [ ] **Did my changes impact user-facing behavior, APIs, configuration, architecture, or business requirements?** If YES, did I notify Isabella with specific details about what changed and what documentation needs updating?
@@ -324,7 +270,7 @@ Before declaring **any** task complete, run this checklist. If any item applies,
 When asked to "audit docs" or "check doc consistency":
 
 1. **Cross-reference `REPOS.md` against the filesystem**: every active sub-repo should have a row in `REPOS.md` and a per-repo `AGENTS.md` (except `origin-auth` which has its own full guide).
-2. **Cross-reference deprecated lists**: root `AGENTS.md` deprecated list, `CLAUDE.md` ignore list, and `REPOS.md` Deprecated rows must match exactly.
+2. **Cross-reference deprecated lists**: root `AGENTS.md` deprecated list and `REPOS.md` Deprecated rows must match exactly.
 3. **Spot-check 3 random per-repo stubs**: verify stack/commands match actual `package.json` / `.csproj` / `Program.cs`.
 4. **Check for drift in `uranus/arc-agents/standards/`**: compare against `coding-standards/`. If drifted, note it (do not auto-sync — mirror maintained separately).
 5. **Report findings** with specific file paths and what needs updating.

@@ -1,26 +1,7 @@
 # Workflow Details — Agent Collaboration, Handoffs, GitLab Integration
 
 > **Loaded by ALL agents as part of bootstrap** (referenced from principles.md). Contains detailed workflow chains, handoff format, failure escalation, and GitLab integration specifics.
-
----
-
-## 🚀 MANDATORY TASK INITIALIZATION PROTOCOL
-
-**EVERY task MUST start with this sequence — no exceptions:**
-
-1. **Read `AGENTS.md`** — understand your role, responsibilities, and the workflow chain
-2. **Read the TL;DR** (top of `AGENTS.md`) — anchors you if context is lost mid-task
-3. **Read `coding-standards/`** — authoritative coding standards. Specifically:
-   - `coding-standards/5_git_workflow_standards/GIT-WORKFLOW-STANDARDS.md`
-   - `coding-standards/5_git_workflow_standards/TASK-TEMPLATES.md`
-   - `coding-standards/5_git_workflow_standards/ISSUE-MR-TEMPLATES.md`
-   - `coding-standards/6_documentation_standards/DOC-STANDARDS.md`
-4. **Read target repo's `README.md`, `AGENTS.md`, `.ai/standards/`**
-5. **Read actual code patterns** in the files you're about to change
-6. **Sync Local `develop`**: `source scripts/oelite-gitlab-env.sh` → `git checkout develop && git pull origin develop`
-7. **Create worktree**: `scripts/oelite-gitlab.sh worktree-create <agent> <branch>`
-
-**If context is lost mid-task** — re-read the TL;DR and the relevant workflow chain before continuing.
+> **Task initialization** (bootstrap steps, sync, worktree creation) is defined in `AGENTS.md` navigator — not duplicated here.
 
 ---
 
