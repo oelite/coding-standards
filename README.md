@@ -92,13 +92,13 @@ workflow chains, and mandatory verification steps.
 
 ### For OpenCode Users
 
-The OElite standards are automatically loaded via `.opencode/` configuration in the project root.
+The OElite standards are automatically loaded via `AGENTS.md` (symlink to `coding-standards/AGENTS.md`) in the project root.
 
 **To use**: Simply reference "OElite coding standards" in your prompts.
 
 ### For Claude Code Users
 
-The OElite standards are automatically applied via `.cursor/rules/oelite-standards.mdc` rule.
+The OElite standards are automatically applied via `AGENTS.md` at the project root and per-repo `CLAUDE.md` files.
 
 **To use**: Simply reference "OElite coding standards" or "coding standards" in your prompts.
 
@@ -185,8 +185,8 @@ The OElite standards are automatically applied via `.cursor/rules/oelite-standar
 
 ## 🔗 Related Documentation
 
-- **CLAUDE.md** - Project-specific AI instructions
-- **.cursor/rules/oelite-standards.mdc** - Claude Code rules
+- **CLAUDE.md** - Repo-specific AI instructions (per-repo)
+- **AGENTS.md** - Platform navigator (symlink: root → `coding-standards/AGENTS.md`)
 - **.opencode/** - OpenCode configuration
 - **uranus/arc-agents/standards/** - Mirror copy for backward compatibility
 
