@@ -10,6 +10,19 @@
 
 **Before ANY tool call, complete these 4 steps IN ORDER:**
 
+### STEP 0: SELECT TARGET REPOSITORY (Hard Gate)
+**You MUST be inside a sub-repository (e.g., `helios/core/`, `uranus/origin-auth/`, `jupiter/ec-nx-01/`) before running bootstrap.**
+The root `oelite/` folder is NOT a git repository — it is a monorepo container.
+
+```bash
+# Navigate to your assigned repo FIRST (check ACTIVE REPOS table below)
+cd <target-repo-path>   # e.g., cd helios/core
+
+# Verify you're in a git repo
+git rev-parse --show-toplevel
+# Must output your repo path, NOT "fatal: not a git repository"
+```
+
 ### STEP 1: DECLARE IDENTITY
 ```markdown
 MY_ROLE = "<emma|marcus|daniel|sophia|jonathan|olivia|ethan|maya|victor|grace|felix|isabella>"
@@ -19,9 +32,10 @@ MY_SESSION_TYPE = "<primary|subagent|continued>"
 
 ### STEP 2: SYNC & WORKTREE (Hard Gate)
 ```bash
-source coding-standards/scripts/oelite-gitlab-env.sh
+# From INSIDE the target repo (after Step 0 cd):
+source ../../coding-standards/scripts/oelite-gitlab-env.sh
 git checkout develop && git pull origin develop
-scripts/oelite-gitlab.sh worktree-create "$MY_ROLE" "feature/<branch>"
+../../coding-standards/scripts/oelite-gitlab.sh worktree-create "$MY_ROLE" "feature/<branch>"
 # Verify owner DNA (see coding-standards/5_git_workflow_standards/WORKTREE-OWNER-DNA.md)
 git -C ".worktrees/$MY_ROLE" config user.email  # Must be "$MY_ROLE@phanes.ltd"
 ```
