@@ -7,28 +7,54 @@
 OELITE_GITLAB_HOST="https://code.phanes.ltd"
 OELITE_GITLAB_API="$OELITE_GITLAB_HOST/api/v4"
 
+# Toggle PAT validation. Skipping is faster but lets stale tokens through.
+_validate_pats="${OELITE_VALIDATE_PATS:-true}"
+
 _agents=(emma marcus daniel sophia jonathan olivia ethan maya victor grace felix isabella)
 _loaded=0
-_failed=0
+_invalid=0
+_missing=0
 
 for agent in $_agents; do
   var_name="OELITE_PAT_${agent:u}"
   pat=$(security find-generic-password -s "oelite-gitlab-$agent" -a "oelite" -w 2>/dev/null)
-  if [[ -n "$pat" ]]; then
-    export "${var_name}=$pat"
+  if [[ -z "$pat" ]]; then
+    echo "[WARN] PAT not found in Keychain for: $agent (service: oelite-gitlab-$agent, account: oelite)" >&2
+    ((_missing++))
+    continue
+  fi
+
+  export "${var_name}=$pat"
+
+  local alias_name="OELITE_PAT_${agent[1]:u}${agent[2,-1]:l}"
+  export "${alias_name}=$pat"
+
+  _valid=true
+
+  if [[ "$_validate_pats" == "true" ]]; then
+    # Validate token by calling /user. GitLab returns 401 for invalid tokens.
+    _status=$(curl -s -o /dev/null -w "%{http_code}" --header "PRIVATE-TOKEN: $pat" "$OELITE_GITLAB_API/user" 2>/dev/null)
+    if [[ "$_status" != "200" ]]; then
+      echo "[FAIL] PAT for $agent is invalid or expired (HTTP $_status on /api/v4/user). Remove from Keychain and re-add." >&2
+      unset "$var_name"
+      _valid=false
+      ((_invalid++))
+    fi
+    unset _status
+  fi
+
+  if $_valid; then
     ((_loaded++))
-  else
-    echo "[WARN] PAT not found in Keychain for: $agent (service: oelite-gitlab-$agent)" >&2
-    ((_failed++))
   fi
 done
 
 export OELITE_GITLAB_HOST OELITE_GITLAB_API
 
-if [[ $_failed -gt 0 ]]; then
-  echo "[WARN] $_failed PAT(s) missing from Keychain. $_loaded loaded successfully." >&2
+if [[ $_missing -gt 0 || $_invalid -gt 0 ]]; then
+  echo "[WARN] PAT load summary — loaded: $_loaded, missing: $_missing, invalid: $_invalid" >&2
+  echo "Run 'security find-generic-password -s oelite-gitlab-<agent> -a oelite -w' to inspect a PAT." >&2
 else
-  echo "[OK] $_loaded GitLab PATs loaded from Keychain."
+  echo "[OK] $_loaded GitLab PATs loaded and validated."
 fi
 
-unset _agents _loaded _failed agent var_name pat
+unset _agents _loaded _invalid _missing _validate_pats _valid agent var_name pat

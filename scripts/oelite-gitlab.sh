@@ -32,8 +32,14 @@ url_encode_path() {
 }
 
 get_pat() {
-  local var_name="OELITE_PAT_${1:u}"
-  echo "${(P)var_name}"
+  local agent="$1"
+  local var_name="OELITE_PAT_${agent:u}"
+  local pat="${(P)var_name}"
+  if [[ -z "$pat" ]]; then
+    local alias_name="OELITE_PAT_${agent[1]:u}${agent[2,-1]:l}"
+    pat="${(P)alias_name}"
+  fi
+  echo "$pat"
 }
 
 get_agent_id() {
@@ -95,6 +101,25 @@ api_post() {
 
 api_put() {
   api_call "PUT" "$1" "$2" "$3"
+}
+
+api_error_hint() {
+  local http_status="$1"
+  local project_path="${2:-}"
+
+  case "$http_status" in
+    401)
+      echo "[HINT] 401 means the PAT is missing, invalid, or expired. Run 'oelite-gitlab.sh setup' to verify." >&2
+      ;;
+    404)
+      echo "[HINT] 404 usually means the resource is private/inaccessible with this PAT, or the path is wrong." >&2
+      [[ -n "$project_path" ]] && echo "       Project path used: $project_path" >&2
+      echo "       Verify: (1) PAT validity with 'oelite-gitlab.sh setup', (2) project membership, (3) full namespace is 'oelite/<family>/<repo>'." >&2
+      ;;
+    403)
+      echo "[HINT] 403 means the PAT is valid but the user lacks permission for this action." >&2
+      ;;
+  esac
 }
 
 repo_root() {
@@ -201,29 +226,30 @@ cmd_issues() {
 
   if [[ "$_API_STATUS" != "200" ]]; then
     echo "[ERROR] Failed to fetch issues (HTTP $_API_STATUS)" >&2
+    api_error_hint "$_API_STATUS" "$project_path"
     echo "$_API_RESPONSE" >&2
     return 1
   fi
 
-  echo "$_API_RESPONSE" | python3 -c "
+  printf '%s\n' "$_API_RESPONSE" | python3 -c '
 import sys, json
 issues = json.load(sys.stdin)
 if not issues:
-    print('No open issues found.')
+    print("No open issues found.")
     sys.exit(0)
-print(f'{\"IID\":<6} │ {\"Title\":<50} │ {\"Labels\":<20} │ {\"Assignee\":<18} │ {\"Created\":<10}')
-print('─' * 115)
+print("{:<6} | {:<50} | {:<20} | {:<18} | {:<10}".format("IID", "Title", "Labels", "Assignee", "Created"))
+print("-" * 115)
 for i in issues:
-    iid = str(i.get('iid', ''))
-    title = i.get('title', '')[:50]
-    labels = ','.join(i.get('labels', []))[:20]
-    assignee = i.get('assignee', {})
-    assignee_name = assignee.get('username', '') if assignee else ''
-    created = i.get('created_at', '')[:10]
-    print(f'{iid:<6} │ {title:<50} │ {labels:<20} │ {assignee_name:<18} │ {created:<10}')
+    iid = str(i.get("iid", ""))
+    title = i.get("title", "")[:50]
+    labels = ",".join(i.get("labels", []))[:20]
+    assignee = i.get("assignee", {})
+    assignee_name = assignee.get("username", "") if assignee else ""
+    created = i.get("created_at", "")[:10]
+    print("{:<6} | {:<50} | {:<20} | {:<18} | {:<10}".format(iid, title, labels, assignee_name, created))
 print()
-print(f'Total: {len(issues)} open issue(s)')
-"
+print("Total: " + str(len(issues)) + " open issue(s)")
+'
 }
 
 cmd_issue_assign() {
@@ -252,6 +278,7 @@ cmd_issue_assign() {
     echo "  Title: $title"
   else
     echo "[ERROR] Failed to assign issue #$iid (HTTP $_API_STATUS)" >&2
+    api_error_hint "$_API_STATUS" "$project_path"
     echo "$_API_RESPONSE" >&2
     return 1
   fi
@@ -281,6 +308,7 @@ cmd_issue_comment() {
     echo "[OK] Comment posted on issue #$iid by $agent (note_id: $note_id)"
   else
     echo "[ERROR] Failed to post comment (HTTP $_API_STATUS)" >&2
+    api_error_hint "$_API_STATUS" "$project_path"
     echo "$_API_RESPONSE" >&2
     return 1
   fi
@@ -312,6 +340,7 @@ cmd_issue_status() {
     echo "[OK] Issue #$iid status set to $status by $agent"
   else
     echo "[ERROR] Failed to set issue status (HTTP $_API_STATUS)" >&2
+    api_error_hint "$_API_STATUS" "$project_path"
     echo "$_API_RESPONSE" >&2
     return 1
   fi
@@ -533,6 +562,7 @@ print(json.dumps(mr))
     echo "  $source_branch → $target_branch"
   else
     echo "[ERROR] Failed to create MR (HTTP $_API_STATUS)" >&2
+    api_error_hint "$_API_STATUS" "$project_path"
     echo "$_API_RESPONSE" >&2
     return 1
   fi
@@ -550,32 +580,33 @@ cmd_mr_list() {
 
   if [[ "$_API_STATUS" != "200" ]]; then
     echo "[ERROR] Failed to fetch MRs (HTTP $_API_STATUS)" >&2
+    api_error_hint "$_API_STATUS" "$project_path"
     echo "$_API_RESPONSE" >&2
     return 1
   fi
 
-  echo "$_API_RESPONSE" | python3 -c "
+  printf '%s\n' "$_API_RESPONSE" | python3 -c '
 import sys, json
 mrs = json.load(sys.stdin)
 if not mrs:
-    print('No open merge requests found.')
+    print("No open merge requests found.")
     sys.exit(0)
-print(f'{\"IID\":<6} │ {\"Title\":<45} │ {\"Author\":<18} │ {\"Source → Target\":<35} │ {\"Status\":<12} │ Reviewers')
-print('─' * 140)
+print("{:<6} | {:<45} | {:<18} | {:<35} | {:<12} | Reviewers".format("IID", "Title", "Author", "Source -> Target", "Status"))
+print("-" * 140)
 for mr in mrs:
-    iid = str(mr.get('iid', ''))
-    title = mr.get('title', '')[:45]
-    author = mr.get('author', {}).get('username', '')[:18]
-    source = mr.get('source_branch', '')
-    target = mr.get('target_branch', '')
-    branch_info = f'{source} → {target}'
-    status = mr.get('merge_status', '') or mr.get('state', '')
-    reviewers = mr.get('reviewers', [])
-    reviewer_names = ','.join([r.get('username', '') for r in reviewers])[:30] if reviewers else ''
-    print(f'{iid:<6} │ {title:<45} │ {author:<18} │ {branch_info:<35} │ {status:<12} │ {reviewer_names}')
+    iid = str(mr.get("iid", ""))
+    title = mr.get("title", "")[:45]
+    author = mr.get("author", {}).get("username", "")[:18]
+    source = mr.get("source_branch", "")
+    target = mr.get("target_branch", "")
+    branch_info = source + " -> " + target
+    status = mr.get("merge_status", "") or mr.get("state", "")
+    reviewers = mr.get("reviewers", [])
+    reviewer_names = ",".join([r.get("username", "") for r in reviewers])[:30] if reviewers else ""
+    print("{:<6} | {:<45} | {:<18} | {:<35} | {:<12} | {}".format(iid, title, author, branch_info, status, reviewer_names))
 print()
-print(f'Total: {len(mrs)} open MR(s)')
-"
+print("Total: " + str(len(mrs)) + " open MR(s)")
+'
 }
 
 cmd_mr_comment() {
@@ -602,6 +633,7 @@ cmd_mr_comment() {
     echo "[OK] Comment posted on MR !$mr_iid by $agent (note_id: $note_id)"
   else
     echo "[ERROR] Failed to post comment (HTTP $_API_STATUS)" >&2
+    api_error_hint "$_API_STATUS" "$project_path"
     echo "$_API_RESPONSE" >&2
     return 1
   fi
@@ -625,6 +657,7 @@ cmd_mr_approve() {
     echo "[OK] MR !$mr_iid approved by $agent (${AGENT_USERNAMES[$agent]})"
   else
     echo "[ERROR] Failed to approve MR !$mr_iid (HTTP $_API_STATUS)" >&2
+    api_error_hint "$_API_STATUS" "$project_path"
     echo "$_API_RESPONSE" >&2
     return 1
   fi
@@ -642,77 +675,72 @@ cmd_mr_check_eligible() {
 
   if [[ "$_API_STATUS" != "200" ]]; then
     echo "[ERROR] Failed to fetch MRs (HTTP $_API_STATUS)" >&2
+    api_error_hint "$_API_STATUS" "$project_path"
     echo "$_API_RESPONSE" >&2
     return 1
   fi
 
-  echo "$_API_RESPONSE" | python3 -c "
+  printf '%s\n' "$_API_RESPONSE" | python3 -c '
 import sys, json
 from datetime import datetime, timezone
 
 mrs = json.load(sys.stdin)
 if not mrs:
-    print('No open merge requests found.')
+    print("No open merge requests found.")
     sys.exit(0)
 
-print(f'{\"IID\":<6} │ {\"Title\":<40} │ {\"Author\":<16} │ {\"Status\":<12} │ ELIGIBLE │ REASONS')
-print('─' * 130)
+print("{:<6} | {:<40} | {:<16} | {:<12} | ELIGIBLE | REASONS".format("IID", "Title", "Author", "Status"))
+print("-" * 130)
 
 for mr in mrs:
-    iid = str(mr.get('iid', ''))
-    title = mr.get('title', '')[:40]
-    author = mr.get('author', {}).get('username', '')[:16]
-    merge_status = mr.get('merge_status', '')
-    state = mr.get('state', '')
-    created_at = mr.get('created_at', '')
-    labels = mr.get('labels', [])
-    review_changes = mr.get('user_notes_count', 0)
-    
-    # Check eligibility criteria
+    iid = str(mr.get("iid", ""))
+    title = mr.get("title", "")[:40]
+    author = mr.get("author", {}).get("username", "")[:16]
+    merge_status = mr.get("merge_status", "")
+    state = mr.get("state", "")
+    created_at = mr.get("created_at", "")
+    labels = mr.get("labels", [])
+
     reasons = []
     eligible = True
-    
-    # 1. CI Pipeline Passed
-    if merge_status not in ('can_be_merged', 'merge_status_can_be_merged'):
+
+    if merge_status not in ("can_be_merged", "merge_status_can_be_merged"):
         eligible = False
-        reasons.append('CI not green')
-    
-    # 2. No Requested Changes (check notes for reject comments)
-    if mr.get('has_conflicts', False):
+        reasons.append("CI not green")
+
+    if mr.get("has_conflicts", False):
         eligible = False
-        reasons.append('Has conflicts')
-    
-    # 3. Not WIP
-    if title.startswith('WIP:'):
+        reasons.append("Has conflicts")
+
+    if title.startswith("WIP:"):
         eligible = False
-        reasons.append('WIP flag')
-    
-    # 4. Not marked requires-manual-review
-    if 'requires-manual-review' in labels:
+        reasons.append("WIP flag")
+
+    if "requires-manual-review" in labels:
         eligible = False
-        reasons.append('Manual review flag')
-    
-    # 5. Review window (10 min)
+        reasons.append("Manual review flag")
+
     if created_at:
         try:
-            created_dt = datetime.fromisoformat(created_at.replace('Z', '+00:00'))
+            created_dt = datetime.fromisoformat(created_at.replace("Z", "+00:00"))
             now_dt = datetime.now(timezone.utc)
             age_minutes = (now_dt - created_dt).total_seconds() / 60
             if age_minutes < 10:
                 eligible = False
-                reasons.append(f'Age <10m ({age_minutes:.0f}m)')
+                reasons.append("Age <10m ({:.0f}m)".format(age_minutes))
         except (ValueError, TypeError):
             pass
-    
-    status_str = 'ELIGIBLE' if eligible else 'INELIGIBLE'
-    reasons_str = ', '.join(reasons) if reasons else '—'
-    color_marker = '✓' if eligible else '✗'
-    
-    print(f'{iid:<6} │ {title:<40} │ {author:<16} │ {merge_status or state:<12} │ {color_marker} {status_str:<11} │ {reasons_str}')
+
+    status_str = "ELIGIBLE" if eligible else "INELIGIBLE"
+    reasons_str = ", ".join(reasons) if reasons else "-"
+    color_marker = "OK" if eligible else "XX"
+
+    print("{:<6} | {:<40} | {:<16} | {:<12} | {} {:<11} | {}".format(
+        iid, title, author, merge_status or state, color_marker, status_str, reasons_str))
 
 print()
-print(f'Total: {len(mrs)} open MR(s)')
-"
+print("Total: " + str(len(mrs)) + " open MR(s)")
+'
 }
 
 cmd_mr_auto_approve() {
@@ -727,6 +755,7 @@ cmd_mr_auto_approve() {
 
   if [[ "$_API_STATUS" != "200" ]]; then
     echo "[ERROR] Failed to fetch MRs (HTTP $_API_STATUS)" >&2
+    api_error_hint "$_API_STATUS" "$project_path"
     echo "$_API_RESPONSE" >&2
     return 1
   fi
@@ -735,7 +764,7 @@ cmd_mr_auto_approve() {
   echo ""
   
   local eligible_mrs
-  eligible_mrs=$(echo "$_API_RESPONSE" | python3 -c "
+  eligible_mrs=$(printf '%s\n' "$_API_RESPONSE" | python3 -c '
 import sys, json
 from datetime import datetime, timezone
 
@@ -743,51 +772,43 @@ mrs = json.load(sys.stdin)
 eligible = []
 
 for mr in mrs:
-    iid = mr.get('iid')
-    title = mr.get('title', '')
-    merge_status = mr.get('merge_status', '')
-    labels = mr.get('labels', [])
-    created_at = mr.get('created_at', '')
-    has_conflicts = mr.get('has_conflicts', False)
-    
-    # Check eligibility criteria
-    reasons = []
+    iid = mr.get("iid")
+    title = mr.get("title", "")
+    merge_status = mr.get("merge_status", "")
+    labels = mr.get("labels", [])
+    created_at = mr.get("created_at", "")
+    has_conflicts = mr.get("has_conflicts", False)
+
     is_eligible = True
-    
-    # 1. CI Pipeline Passed
-    if merge_status not in ('can_be_merged', 'merge_status_can_be_merged'):
+
+    if merge_status not in ("can_be_merged", "merge_status_can_be_merged"):
         is_eligible = False
-    
-    # 2. Has conflicts
+
     if has_conflicts:
         is_eligible = False
-    
-    # 3. Not WIP
-    if title.startswith('WIP:'):
+
+    if title.startswith("WIP:"):
         is_eligible = False
-    
-    # 4. Not marked requires-manual-review
-    if 'requires-manual-review' in labels:
+
+    if "requires-manual-review" in labels:
         is_eligible = False
-    
-    # 5. Review window (10 min)
+
     if created_at and is_eligible:
         try:
-            created_dt = datetime.fromisoformat(created_at.replace('Z', '+00:00'))
+            created_dt = datetime.fromisoformat(created_at.replace("Z", "+00:00"))
             now_dt = datetime.now(timezone.utc)
             age_minutes = (now_dt - created_dt).total_seconds() / 60
             if age_minutes < 10:
                 is_eligible = False
         except (ValueError, TypeError):
             pass
-    
+
     if is_eligible:
         eligible.append(iid)
 
-# Output eligible IIDs as newline-separated list
 for iid in eligible:
     print(iid)
-")
+')
 
   if [[ -z "$eligible_mrs" ]]; then
     echo "[INFO] No eligible MRs found for auto-approval."

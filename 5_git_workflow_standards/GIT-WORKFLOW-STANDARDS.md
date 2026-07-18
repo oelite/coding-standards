@@ -1035,27 +1035,83 @@ This will show which agents have valid PATs and which are failing.
 
 ---
 
-### 12.6 Using the GitLab CLI Tool
+### 12.6 Troubleshooting 404 Project Not Found
+
+If you see `404 Project Not Found` from GitLab API calls:
+
+**Important:** GitLab returns `404` (not `401` or `403`) when a project is private and the PAT's user cannot access it. This is intentional — it prevents leaking which projects exist. Therefore, **404 usually means an access or token problem**, not a wrong URL.
+
+**Step 1: Verify the PAT is valid**
+```bash
+source scripts/oelite-gitlab-env.sh
+# This now validates each PAT against /api/v4/user. Look for [FAIL] lines.
+```
+
+If a PAT is invalid/expired:
+```bash
+# Remove old PAT
+security delete-generic-password -s "oelite-gitlab-daniel" -a "oelite"
+
+# Add new PAT
+security add-generic-password -s "oelite-gitlab-daniel" -a "oelite" -w "glpat-xxxxxxxxxxxx" -U
+```
+
+**Step 2: Verify the project namespace**
+The full project path must match GitLab's `path_with_namespace`:
+```text
+https://code.phanes.ltd/oelite/<family>/<repo>
+                      ^^^^^^ full top-level group
+```
+
+Examples:
+- ✅ `oelite/uranus/origin-auth`
+- ✅ `oelite/helios/core`
+- ❌ `uranus/origin-auth` (missing top group)
+- ❌ `oelite%2Furanus%2Forigin-auth` (already URL-encoded — only encode slashes when building API URLs)
+
+**Step 3: Verify project membership**
+The agent user must be a member of the project or inherit access via the `oelite/<family>` group. Check in GitLab:
+- Project Settings > Members
+- Group `oelite/<family>` > Members
+
+**Step 4: Run setup to verify all PATs and project access**
+```bash
+scripts/oelite-gitlab.sh setup
+scripts/oelite-gitlab.sh issues oelite/uranus/origin-auth
+```
+
+**Common causes of 404 errors:**
+- ❌ PAT in Keychain is stale, expired, or revoked (most common)
+- ❌ Agent user is not a member of the project/group
+- ❌ Project path is missing the `oelite/` top-level group
+- ❌ Project was moved/renamed in GitLab
+
+---
+
+### 12.7 Using the GitLab CLI Tool
 
 **ALWAYS use the provided scripts** instead of manual curl commands:
 
 ```bash
-# ✅ CORRECT - Use the official tool
+# ✅ CORRECT - Use the official tool (project path = oelite/<family>/<repo>)
 scripts/oelite-gitlab.sh mr-list oelite/uranus/origin-auth
 scripts/oelite-gitlab.sh issues oelite/helios/core --assignee daniel
 scripts/oelite-gitlab.sh worktree-create daniel feature/US-001-auth
 
 # ❌ WRONG - Manual curl commands with incorrect PAT retrieval
 PAT=$(security find-generic-password -s GitLab-PAT -a daniel.phanes -w)  # Wrong service name!
-curl --header "PRIVATE-TOKEN: $PAT" ...  # Will fail with 401
+curl --header "PRIVATE-TOKEN: $PAT" ...  # Will fail with 401/404
 ```
 
-The scripts handle authentication correctly. If you need to query GitLab API directly, always source the env file first:
+The scripts handle authentication and URL encoding correctly. If you need to query GitLab API directly, always source the env file first and use the **full namespace**:
 
 ```bash
 # ✅ CORRECT - Source env file to load PATs
 source scripts/oelite-gitlab-env.sh
-curl --header "PRIVATE-TOKEN: $OELITE_PAT_DANIEL" "https://code.phanes.ltd/api/v4/projects/102/merge_requests"
+
+# Use project ID (numeric) or URL-encoded path
+curl --header "PRIVATE-TOKEN: $OELITE_PAT_DANIEL" \
+  "https://code.phanes.ltd/api/v4/projects/oelite%2Furanus%2Forigin-auth/issues?per_page=1"
 ```
 
 ---

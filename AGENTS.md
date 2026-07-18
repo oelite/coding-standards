@@ -186,6 +186,19 @@ Re-run Steps 1-4 (abbreviated: confirm role/task, re-read role file if context l
 
 **Deprecated (do not touch)**: `pluto/`, `*-legacy`, `helios/sites`, `helios/app-config-server`, `jupiter/oes`, `jupiter/gemni-dev`, `jupiter/ec-std-03`, `mercury/runners/Legacy`, `mercury/workflows`, `uranus/restme-wildduck`, `venus/wildduck-*`, `venus/mail-quarantine`, `venus/runners`, `helios/kortex/web/kortex-dashboard-archived`
 
+### GitLab Project Path Convention
+
+The table above lists **local sub-repository folders** inside the monorepo container. In GitLab, every project lives under the top-level group `oelite/`:
+
+| Local Folder | GitLab Project Path |
+|--------------|---------------------|
+| `helios/core/` | `oelite/helios/core` |
+| `uranus/origin-auth/` | `oelite/uranus/origin-auth` |
+| `jupiter/ec-nx-01/` | `oelite/jupiter/ec-nx-01` |
+| `mercury/runners/Backplane/` | `oelite/mercury/runners/Backplane` |
+
+Always pass the full GitLab project path (`oelite/<family>/<repo>`) to `scripts/oelite-gitlab.sh`.
+
 ---
 
 ## ⚠️ AGENT INVOCATION CONVENTION
