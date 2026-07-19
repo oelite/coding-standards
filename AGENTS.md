@@ -199,6 +199,26 @@ The table above lists **local sub-repository folders** inside the monorepo conta
 
 Always pass the full GitLab project path (`oelite/<family>/<repo>`) to `scripts/oelite-gitlab.sh`.
 
+### CLI Tool Reference
+
+| Command | Purpose |
+|---------|---------|
+| `setup` | Verify all 12 agent PATs against GitLab |
+| `issues <project>` | List open issues (GitLab path: `oelite/<family>/<repo>`) |
+| `issue-create <project> <agent> <title> [desc]` | Create a new issue as agent |
+| `issue-assign <project> <iid> <agent>` | Assign issue to agent |
+| `issue-comment <project> <iid> <agent> <msg>` | Comment on issue as agent |
+| `issue-status <project> <iid> <agent> <opened|closed>` | Open or close issue as agent |
+| `worktree-create <agent> <branch> [base]` | Create worktree with agent identity |
+| `worktree-list` | List active worktrees |
+| `worktree-remove <agent>` | Remove worktree after MR merged |
+| `mr-create <project> <agent> <src> <tgt> <title> [desc]` | Create MR as agent |
+| `mr-list <project>` | List open MRs |
+| `mr-comment <project> <iid> <agent> <msg>` | Comment on MR as agent |
+| `mr-approve <project> <iid> <agent>` | Approve MR as agent |
+| `sync <agent>` | Rebase worktree on latest `origin/develop` |
+| `status` | Show worktree status (ahead/behind `origin/develop`) |
+
 ---
 
 ## ⚠️ AGENT INVOCATION CONVENTION
