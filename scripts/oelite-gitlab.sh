@@ -455,14 +455,17 @@ cmd_worktree_create() {
   echo "Creating worktree at $wt_path..."
   git worktree add "$wt_path" "$branch"
 
+  # Ensure per-worktree git config isolation so each worktree retains its own identity
+  git config extensions.worktreeConfig true
+
   local owner_name
   owner_name=$(get_agent_name "$owner")
   local owner_email
   owner_email=$(get_agent_email "$owner")
 
-  # Owner DNA: git identity = owner, not agent
-  git -C "$wt_path" config --local user.name "$owner_name"
-  git -C "$wt_path" config --local user.email "$owner_email"
+  # Owner DNA: git identity = owner, not agent (written to the worktree's private config)
+  git -C "$wt_path" config --worktree user.name "$owner_name"
+  git -C "$wt_path" config --worktree user.email "$owner_email"
 
   # Store ownership metadata for workflow tracking
   echo "$owner" > "$wt_path/.git-worktree-owner"
@@ -1043,8 +1046,8 @@ cmd_worktree_owner() {
     new_owner_email=$(get_agent_email "$new_owner")
 
     echo "$new_owner" > "$owner_file"
-    git -C "$wt_path" config --local user.name "$new_owner_name"
-    git -C "$wt_path" config --local user.email "$new_owner_email"
+    git -C "$wt_path" config --worktree user.name "$new_owner_name"
+    git -C "$wt_path" config --worktree user.email "$new_owner_email"
 
     echo "[OK] Owner DNA updated for $agent:"
     echo "  Path:   $wt_path"
