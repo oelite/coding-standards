@@ -235,8 +235,10 @@ scripts/oelite-gitlab.sh worktree-create daniel feature/US-001-auth
 |---------|---------|
 | `setup` | Verify all 12 agent PATs against GitLab |
 | `issues <project>` | List open issues |
+| `issue-create <project> <agent> <title> [desc]` | Create a new issue |
 | `issue-assign <project> <iid> <agent>` | Assign issue |
 | `issue-comment <project> <iid> <agent> <msg>` | Comment on issue |
+| `issue-status <project> <iid> <agent> <opened\|closed>` | Open or close issue |
 | `worktree-create <agent> <branch> [base]` | Create worktree with agent identity |
 | `worktree-list` | List active worktrees |
 | `worktree-remove <agent>` | Remove worktree after MR merged |

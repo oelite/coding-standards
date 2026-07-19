@@ -252,6 +252,49 @@ print("Total: " + str(len(issues)) + " open issue(s)")
 '
 }
 
+cmd_issue_create() {
+  local project_path="$1"
+  local agent="$2"
+  local title="$3"
+  local description="${4:-}"
+
+  validate_agent "$agent" || return 1
+  [[ -z "$title" ]] && { echo "[ERROR] Title required" >&2; return 1; }
+
+  local encoded_path
+  encoded_path=$(url_encode_path "$project_path")
+
+  local data
+  data=$(python3 -c "
+import json, sys
+payload = {'title': $(json_encode_value "$title")}
+desc = $(json_encode_value "$description")
+if desc:
+    payload['description'] = desc
+print(json.dumps(payload))
+")
+
+  local pat
+  pat=$(get_pat "$agent")
+  api_post "/projects/$encoded_path/issues" "$pat" "$data"
+
+  if [[ "$_API_STATUS" == "201" ]]; then
+    local iid issue_url issue_title
+    iid=$(echo "$_API_RESPONSE" | json_get "iid" "")
+    issue_url=$(echo "$_API_RESPONSE" | json_get "web_url" "")
+    issue_title=$(echo "$_API_RESPONSE" | json_get "title" "")
+    echo "[OK] Issue created by $agent"
+    echo "  IID:    #$iid"
+    echo "  URL:    $issue_url"
+    echo "  Title:  $issue_title"
+  else
+    echo "[ERROR] Failed to create issue (HTTP $_API_STATUS)" >&2
+    api_error_hint "$_API_STATUS" "$project_path"
+    echo "$_API_RESPONSE" >&2
+    return 1
+  fi
+}
+
 cmd_issue_assign() {
   local project_path="$1"
   local iid="$2"
@@ -318,26 +361,32 @@ cmd_issue_status() {
   local project_path="$1"
   local iid="$2"
   local agent="$3"
-  local status="$4"
+  local new_status="$4"
 
   validate_agent "$agent" || return 1
-  [[ -z "$status" ]] && { echo "[ERROR] Status required" >&2; return 1; }
+  [[ -z "$new_status" ]] && { echo "[ERROR] Status required" >&2; return 1; }
 
   local valid_states="opened closed"
-  [[ ! " $valid_states " =~ " $status " ]] && { echo "[ERROR] Invalid status '$status'. Use: opened or closed" >&2; return 1; }
+  [[ ! " $valid_states " =~ " $new_status " ]] && { echo "[ERROR] Invalid status '$new_status'. Use: opened or closed" >&2; return 1; }
+
+  local state_event
+  case "$new_status" in
+    opened) state_event="reopen" ;;
+    closed) state_event="close" ;;
+  esac
 
   local encoded_path
   encoded_path=$(url_encode_path "$project_path")
 
   local data
-  data=$(python3 -c "import json; print(json.dumps({'state_event': '$status'}))")
+  data=$(python3 -c "import json; print(json.dumps({'state_event': '$state_event'}))")
 
   local pat
   pat=$(get_pat "$agent")
-  api_post "/projects/$encoded_path/issues/$iid" "$pat" "$data"
+  api_put "/projects/$encoded_path/issues/$iid" "$pat" "$data"
 
   if [[ "$_API_STATUS" -ge 200 && "$_API_STATUS" -lt 300 ]]; then
-    echo "[OK] Issue #$iid status set to $status by $agent"
+    echo "[OK] Issue #$iid status set to $new_status by $agent"
   else
     echo "[ERROR] Failed to set issue status (HTTP $_API_STATUS)" >&2
     api_error_hint "$_API_STATUS" "$project_path"
@@ -1020,6 +1069,10 @@ COMMANDS:
     List open issues for a project.
     Example: oelite-gitlab.sh issues uranus/origin-auth --label backend
 
+  issue-create <project-path> <agent> <title> [description]
+    Create a new issue as the specified agent.
+    Example: oelite-gitlab.sh issue-create oelite/uranus/origin-auth emma "feat: add tenant export" "Closes #7"
+
   issue-assign <project-path> <iid> <agent>
     Assign an issue to an agent.
     Example: oelite-gitlab.sh issue-assign uranus/origin-auth 42 daniel
@@ -1113,6 +1166,7 @@ shift
 case "$command" in
   setup)          cmd_setup "$@" ;;
   issues)         cmd_issues "$@" ;;
+  issue-create)   cmd_issue_create "$@" ;;
   issue-assign)   cmd_issue_assign "$@" ;;
   issue-comment)  cmd_issue_comment "$@" ;;
   issue-status)   cmd_issue_status "$@" ;;

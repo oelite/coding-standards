@@ -657,6 +657,7 @@ Blocked by: [specific dependency or issue]
 
 | Command | Description | When to Use |
 |---------|-------------|-------------|
+| `issue-create <project> <agent> <title> [description]` | Create a new issue | Emma or any agent: task intake, bugs, feature requests |
 | `issue-assign <project> <iid> <agent>` | Assign issue to agent | Emma: during sprint planning or task assignment |
 | `issue-comment <project> <iid> <agent> <message>` | Post comment on issue | Any agent: status updates, progress reports, blockers |
 | `issue-status <project> <iid> <agent> <opened\|closed>` | Open or close issue | Emma: close after Done; reopen if regression found |
@@ -682,6 +683,7 @@ Verifies all PATs are present in Keychain and accessible. Run this at the start 
 | Command | Description |
 |---------|-------------|
 | `scripts/oelite-gitlab.sh issues <project>` | Fetch open issues for a project |
+| `scripts/oelite-gitlab.sh issue-create <project> <agent> <title> [description]` | Create a new issue as an agent |
 | `scripts/oelite-gitlab.sh issue-assign <project> <iid> <agent>` | Assign issue to an agent |
 | `scripts/oelite-gitlab.sh issue-comment <project> <iid> <agent> <message>` | Comment on an issue as an agent |
 | `scripts/oelite-gitlab.sh issue-status <project> <iid> <agent> <opened\|closed>` | Open or close an issue as an agent |
@@ -689,14 +691,17 @@ Verifies all PATs are present in Keychain and accessible. Run this at the start 
 **Parameters:**
 
 - `<project>`: GitLab project path (e.g., `oelite/helios/core`)
-- `<iid>`: Issue internal ID (the number shown in GitLab UI)
 - `<agent>`: Agent name from the Team Identity Registry (e.g., `daniel`, `sophia`)
+- `<title>`: Issue title (quote if it contains spaces)
+- `<description>`: Optional issue description (markdown supported; quote multi-word text)
+- `<iid>`: Issue internal ID (the number shown in GitLab UI)
 - `<message>`: Comment text (quote if it contains spaces)
 
 **Examples:**
 
 ```bash
 scripts/oelite-gitlab.sh issues oelite/helios/core
+scripts/oelite-gitlab.sh issue-create oelite/helios/core emma "feat: add tenant export" "Closes #7"
 scripts/oelite-gitlab.sh issue-assign oelite/helios/core 42 daniel
 scripts/oelite-gitlab.sh issue-comment oelite/helios/core 42 daniel "Implementation started. Working on token refresh logic."
 ```
@@ -749,8 +754,10 @@ GitLab operations are available to both agents and humans. **Agents perform thei
 | Command | Description | Who Uses |
 |---------|-------------|----------|
 | `scripts/oelite-gitlab.sh issues <project>` | Fetch open issues | Emma (planning) |
+| `scripts/oelite-gitlab.sh issue-create <project> <agent> <title> [description]` | Create a new issue | Emma or any agent |
 | `scripts/oelite-gitlab.sh issue-assign <project> <iid> <agent>` | Assign issue to agent | Emma |
 | `scripts/oelite-gitlab.sh issue-comment <project> <iid> <agent> <message>` | Comment on an issue as agent | Any agent |
+| `scripts/oelite-gitlab.sh issue-status <project> <iid> <agent> <opened|closed>` | Open or close an issue | Emma |
 | `scripts/oelite-gitlab.sh mr-create <project> <agent> <source> <target> <title> [desc]` | Create MR | Implementing agent |
 | `scripts/oelite-gitlab.sh mr-list <project>` | List open MRs | Anyone |
 | `scripts/oelite-gitlab.sh mr-comment <project> <iid> <agent> <message>` | Comment on an MR | Reviewer |
