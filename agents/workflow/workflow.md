@@ -100,12 +100,19 @@ Every completed task MUST include:
 | Agent creates worktree and starts implementation | `To Do`/`Blocked` → `In Progress` | Assignee |
 | Agent creates MR targeting develop | `In Progress` → `PR Review` | Assignee |
 | Reviewer approves MR and CI is green | `PR Review` → `Ready to Merge` | Reviewer |
-| MR merged into develop | `Ready to Merge` → `Done` | Emma |
+| **MR merge verified** (`mr-status` confirms `merged`) | `Ready to Merge` → `Done` | Reviewer or Emma |
+| **Issue closed in GitLab** (`issue-status closed`) | `Done` (label) → **Closed** (state) | Emma — same session as merge verification |
 | Isabella's business validation fails | `Done` → `In Progress` | Emma |
 | External blocker encountered | `In Progress` → `Blocked` | Assignee |
 | External blocker resolved | `Blocked` → `In Progress` | Assignee |
 
-**Closure rule:** Only Emma may close an issue, and only after MR merge + Isabella's business validation.
+**Closure rule:** Only Emma may close an issue, and only after:
+1. MR merge is **verified** via `mr-status` (not assumed)
+2. Isabella's business validation passes
+3. Issue is labeled `Done`
+4. Issue is **closed** via `issue-status closed` in the same session
+
+**Post-merge audit:** Isabella (or designated reviewer) MUST run `issue-audit <project>` periodically to catch any issues left open after their linked MRs were merged. Orphaned open issues are escalated to Emma for immediate closure.
 
 ### Requirements Change Triggers
 - **Stakeholder or Emma specifies new business requirements** → triggers Isabella immediately. Isabella updates BRD, SRS, technical documentation, configuration documentation, and user guides BEFORE development begins. Once complete, she triggers Emma to proceed.

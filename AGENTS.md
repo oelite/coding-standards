@@ -23,6 +23,26 @@ git rev-parse --show-toplevel
 # Must output your repo path, NOT "fatal: not a git repository"
 ```
 
+### STEP 0.5: VERIFY ISSUE TICKET EXISTS (Hard Gate — Issue-First)
+**No work begins until a GitLab issue ticket exists with full task elaboration.**
+
+```bash
+# Verify the issue exists in GitLab before proceeding
+# Replace <project> with GitLab path (e.g., oelite/uranus/origin-auth)
+# Replace <iid> with the issue number
+../../coding-standards/scripts/oelite-gitlab.sh issues <project>
+```
+
+**The issue MUST meet Definition of Ready** (see `TASK-TEMPLATES.md` §1):
+- Title with issue reference (US-XXX, BUG-XXX, TASK-XXX)
+- Acceptance criteria in GIVEN/WHEN/THEN format
+- Owner assigned
+- Priority labeled
+- Dependencies identified (not blocking)
+
+**If no issue exists → STOP. Create one via `issue-create` using `ISSUE-MR-TEMPLATES.md` before any further work.**
+**If the issue exists but lacks acceptance criteria or owner → STOP. Ask Emma to elaborate before proceeding.**
+
 ### STEP 1: DECLARE IDENTITY
 ```markdown
 MY_ROLE = "<emma|marcus|daniel|sophia|jonathan|olivia|ethan|maya|victor|grace|felix|isabella>"
@@ -58,6 +78,7 @@ Read in this exact order:
 ROLE: <role>
 SESSION: <primary|subagent|continued>
 TASK: <task-type>
+ISSUE: #<iid> — <issue title> (verified exists, has AC + owner)
 LOADED:
   - coding-standards/agents/core/principles.md
   - coding-standards/agents/workflow/workflow.md
@@ -163,12 +184,16 @@ Re-run Steps 1-4 (abbreviated: confirm role/task, re-read role file if context l
 
 ## 🛡️ HARD GATES (Non-Negotiable)
 
+- ✅ **Issue-First**: No work begins (no worktree, no code, no exploration) until a GitLab issue ticket exists with full task elaboration (goals, acceptance criteria, scope, dependencies, assigned owner) per `ISSUE-MR-TEMPLATES.md`. Bootstrap refuses to proceed without an issue IID.
 - ✅ Worktree identity via `scripts/oelite-gitlab.sh worktree-create`
 - ✅ `develop` sync before worktree creation
 - ✅ Zero mock data
 - ✅ Zero mock persistence — real Docker infra for tests
 - ✅ No `as any`, `@ts-ignore`, `@ts-expect-error`
 - ✅ Build + test + health check before "done"
+- ✅ **Merge verification**: After reviewer approves, the reviewer (or Emma) MUST verify the MR status is `merged` in GitLab (via `mr-status` CLI) before transitioning the linked issue to `Done`
+- ✅ **Issue closure enforcement**: Every merged MR's linked issue MUST be closed in GitLab via `issue-status closed` — not just labeled `Done`. Closure happens in the same session as merge verification.
+- ✅ **Post-merge issue audit**: Isabella (or designated reviewer) MUST run `issue-audit <project>` periodically to catch any issues left open after their linked MRs were merged.
 - ✅ Autonomous handoff to next role per workflow chain
 - ✅ Bootstrap verification block as first output
 
@@ -216,6 +241,8 @@ Always pass the full GitLab project path (`oelite/<family>/<repo>`) to `scripts/
 | `mr-list <project>` | List open MRs |
 | `mr-comment <project> <iid> <agent> <msg>` | Comment on MR as agent |
 | `mr-approve <project> <iid> <agent>` | Approve MR as agent |
+| `mr-status <project> <iid>` | Check MR merge status (open/merged/closed/cannot_merge) — used for merge verification |
+| `issue-audit <project>` | List issues still open whose linked MRs are merged — used for post-merge audit |
 | `sync <agent>` | Rebase worktree on latest `origin/develop` |
 | `status` | Show worktree status (ahead/behind `origin/develop`) |
 

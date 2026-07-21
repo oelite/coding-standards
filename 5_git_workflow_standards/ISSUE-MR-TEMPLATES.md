@@ -44,7 +44,8 @@ Every active OElite repository MUST contain the following files:
 To install:
 1. Copy the templates below into the corresponding files.
 2. Customize only the repo-specific sections (e.g., component list, health endpoint port).
-3. Commit and push to `develop` via MR.
+3. **Enable GitLab auto-close**: In each project, go to Settings → General → Merge requests → check "Close issues automatically when merged from MR". This ensures issues referenced via `Closes #<iid>` are auto-closed when the MR merges, providing a safety net alongside the manual closure enforcement in the workflow.
+4. Commit and push to `develop` via MR.
 
 ---
 
@@ -301,6 +302,11 @@ curl -f http://localhost:<port>/health
 
 ## Reviewer
 <Per workflow chain: Grace (backend), Felix (frontend), Maya (security), Marcus (architecture)>
+
+### Post-Approval Actions (Reviewer or Emma)
+- [ ] **Merge verified**: `mr-status <project> <mr-iid>` confirms `merged` state
+- [ ] **Issue labeled `Done`** (after Isabella business validation)
+- [ ] **Issue closed in GitLab**: `issue-status <project> <issue-iid> emma closed` — in same session as merge verification
 
 /label ~"PR Review"
 ```

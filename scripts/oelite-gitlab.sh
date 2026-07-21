@@ -902,6 +902,203 @@ for iid in eligible:
   fi
 }
 
+cmd_mr_status() {
+  local project_path="${1:-}"
+  local mr_iid="${2:-}"
+
+  [[ -z "$project_path" ]] && { echo "[ERROR] Project path required" >&2; return 1; }
+  [[ -z "$mr_iid" ]] && { echo "[ERROR] MR IID required" >&2; return 1; }
+
+  local encoded_path
+  encoded_path=$(url_encode_path "$project_path")
+
+  local pat
+  pat=$(get_pat "emma")
+  api_get "/projects/$encoded_path/merge_requests/$mr_iid" "$pat"
+
+  if [[ "$_API_STATUS" != "200" ]]; then
+    echo "[ERROR] Failed to fetch MR !$mr_iid (HTTP $_API_STATUS)" >&2
+    api_error_hint "$_API_STATUS" "$project_path"
+    echo "$_API_RESPONSE" >&2
+    return 1
+  fi
+
+  printf '%s\n' "$_API_RESPONSE" | python3 -c '
+import sys, json
+
+mr = json.load(sys.stdin)
+iid = mr.get("iid", "")
+title = mr.get("title", "")
+state = mr.get("state", "")
+merge_status = mr.get("merge_status", "")
+merged_at = mr.get("merged_at", "")
+merged_by = mr.get("merged_by", {}).get("username", "") if mr.get("merged_by") else ""
+source_branch = mr.get("source_branch", "")
+target_branch = mr.get("target_branch", "")
+web_url = mr.get("web_url", "")
+
+# Normalize merge_status for display
+if merge_status in ("can_be_merged", "merge_status_can_be_merged"):
+    can_merge = "yes"
+else:
+    can_merge = "no"
+
+print("=== MR Status ===")
+print(f"  IID:           !{iid}")
+print(f"  Title:         {title}")
+print(f"  State:         {state}")
+print(f"  Merge Status:  {merge_status}")
+print(f"  Can Merge:     {can_merge}")
+if merged_at:
+    print(f"  Merged At:     {merged_at}")
+    print(f"  Merged By:     {merged_by}")
+print(f"  Source Branch: {source_branch}")
+print(f"  Target Branch: {target_branch}")
+print(f"  URL:           {web_url}")
+print()
+
+# Summary line for scripting
+if state == "merged":
+    print(f"[OK] MR !{iid} is MERGED")
+elif state == "open":
+    if can_merge == "yes":
+        print(f"[INFO] MR !{iid} is OPEN and can be merged (auto-merge pending)")
+    else:
+        print(f"[WARN] MR !{iid} is OPEN but CANNOT be merged — resolve conflicts first")
+elif state == "closed":
+    print(f"[WARN] MR !{iid} is CLOSED (not merged) — may need a new MR")
+else:
+    print(f"[WARN] MR !{iid} state: {state}")
+'
+}
+
+cmd_issue_audit() {
+  local project_path="${1:-}"
+
+  [[ -z "$project_path" ]] && { echo "[ERROR] Project path required" >&2; return 1; }
+
+  local encoded_path
+  encoded_path=$(url_encode_path "$project_path")
+
+  local pat
+  pat=$(get_pat "emma")
+
+  # Fetch all open issues
+  api_get "/projects/$encoded_path/issues?state=opened&per_page=100" "$pat"
+
+  if [[ "$_API_STATUS" != "200" ]]; then
+    echo "[ERROR] Failed to fetch issues (HTTP $_API_STATUS)" >&2
+    api_error_hint "$_API_STATUS" "$project_path"
+    echo "$_API_RESPONSE" >&2
+    return 1
+  fi
+
+  local open_issues_response="$_API_RESPONSE"
+
+  # Fetch all merged MRs
+  api_get "/projects/$encoded_path/merge_requests?state=merged&per_page=100" "$pat"
+
+  if [[ "$_API_STATUS" != "200" ]]; then
+    echo "[ERROR] Failed to fetch merged MRs (HTTP $_API_STATUS)" >&2
+    api_error_hint "$_API_STATUS" "$project_path"
+    echo "$_API_RESPONSE" >&2
+    return 1
+  fi
+
+  local merged_mrs_response="$_API_RESPONSE"
+
+  local tmp_issues tmp_mrs
+  tmp_issues=$(mktemp)
+  tmp_mrs=$(mktemp)
+  printf '%s' "$open_issues_response" > "$tmp_issues"
+  printf '%s' "$merged_mrs_response" > "$tmp_mrs"
+
+  python3 -c "
+import json, re, sys
+
+with open('$tmp_issues') as f:
+    open_issues = json.load(f)
+with open('$tmp_mrs') as f:
+    merged_mrs = json.load(f)
+
+# Build a set of issue IIDs that were closed by merged MRs
+# GitLab MRs store closing issue references in 'description' (Closes #NNN) and
+# the API also provides 'closed_by' (issues) but we work from MR side here.
+closed_by_mr = set()
+mr_titles = {}
+
+for mr in merged_mrs:
+    desc = mr.get('description', '') or ''
+    iid = mr.get('iid', '')
+    title = mr.get('title', '')
+    # Find 'Closes #NNN' patterns
+    matches = re.findall(r'[Cc]loses\s+#?(\d+)', desc)
+    for m in matches:
+        closed_by_mr.add(int(m))
+        mr_titles[int(m)] = f'!{iid} {title}'
+
+# Also check MR title for 'Closes #NNN'
+    matches2 = re.findall(r'[Cc]loses\s+#?(\d+)', title)
+    for m in matches2:
+        closed_by_mr.add(int(m))
+        mr_titles[int(m)] = f'!{iid} {title}'
+
+# Find open issues that should have been closed
+orphans = []
+done_label_issues = []
+
+for issue in open_issues:
+    iid = issue.get('iid', 0)
+    title = issue.get('title', '')
+    labels = issue.get('labels', [])
+    state = issue.get('state', '')
+
+    if iid in closed_by_mr:
+        orphans.append((iid, title, labels, mr_titles.get(iid, '')))
+    elif 'Done' in labels:
+        done_label_issues.append((iid, title, labels))
+
+print('=== Post-Merge Issue Audit ===')
+print(f'Project: $project_path')
+print(f'Open issues: {len(open_issues)}')
+print(f'Merged MRs: {len(merged_mrs)}')
+print()
+
+if orphans:
+    print(f'[ACTION] {len(orphans)} issue(s) still OPEN but linked MR was MERGED — close them:')
+    print(f'{\"IID\":<6} | {\"Title\":<45} | {\"Labels\":<25} | Closed By MR')
+    print('-' * 110)
+    for iid, title, labels, mr_info in orphans:
+        label_str = ','.join(labels)[:25]
+        print(f'{iid:<6} | {title[:45]:<45} | {label_str:<25} | {mr_info}')
+    print()
+else:
+    print('[OK] No orphaned open issues found (all linked MRs have their issues closed).')
+    print()
+
+if done_label_issues:
+    print(f'[ACTION] {len(done_label_issues)} issue(s) with Done label but still OPEN — close them:')
+    print(f'{\"IID\":<6} | {\"Title\":<45} | {\"Labels\":<25}')
+    print('-' * 85)
+    for iid, title, labels in done_label_issues:
+        label_str = ','.join(labels)[:25]
+        print(f'{iid:<6} | {title[:45]:<45} | {label_str:<25}')
+    print()
+
+total_action = len(orphans) + len(done_label_issues)
+if total_action > 0:
+    print(f'[SUMMARY] {total_action} issue(s) need closure. Run:')
+    for iid, _, _, _ in orphans:
+        print(f'  oelite-gitlab.sh issue-status $project_path {iid} emma closed')
+    for iid, _, _ in done_label_issues:
+        print(f'  oelite-gitlab.sh issue-status $project_path {iid} emma closed')
+else:
+    print('[SUMMARY] All clear — no action needed.')
+"
+
+  rm -f "$tmp_issues" "$tmp_mrs"
+}
+
 cmd_sync() {
   local agent="$1"
 
@@ -1128,6 +1325,16 @@ COMMANDS:
     Approve a merge request as the specified agent.
     Example: oelite-gitlab.sh mr-approve uranus/origin-auth 15 grace
 
+  mr-status <project-path> <mr-iid>
+    Check MR merge status (open/merged/closed/cannot_merge).
+    Used for merge verification before labeling an issue Done.
+    Example: oelite-gitlab.sh mr-status uranus/origin-auth 15
+
+  issue-audit <project-path>
+    List issues still open whose linked MRs were merged.
+    Used for post-merge audit to catch orphaned open issues.
+    Example: oelite-gitlab.sh issue-audit oelite/uranus/origin-auth
+
   mr-check-eligible <project-path>
     Check which open MRs meet auto-approval criteria (CI green, no conflicts, not WIP, not manual-review flagged, age ≥10min).
     Example: oelite-gitlab.sh mr-check-eligible oelite/helios/core
@@ -1180,8 +1387,10 @@ case "$command" in
   mr-list)        cmd_mr_list "$@" ;;
   mr-comment)     cmd_mr_comment "$@" ;;
   mr-approve)     cmd_mr_approve "$@" ;;
+  mr-status)      cmd_mr_status "$@" ;;
   mr-check-eligible) cmd_mr_check_eligible "$@" ;;
   mr-auto-approve)  cmd_mr_auto_approve "$@" ;;
+  issue-audit)    cmd_issue_audit "$@" ;;
   sync)           cmd_sync "$@" ;;
   status)         cmd_status "$@" ;;
   worktree-owner) cmd_worktree_owner "$@" ;;

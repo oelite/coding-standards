@@ -15,7 +15,10 @@
 | **Zero Mock Persistence** | Integration/E2E tests use REAL Docker infra (`docker-compose.dev.yml`) | CI skips via `[Trait("Category","Integration")]` + `@skipCI` |
 | **No Type Suppression** | `as any`, `@ts-ignore`, `@ts-expect-error` = blocked | LSP diagnostics + code review |
 | **Verification Mandatory** | Build + tests + health check = required before "done" | Role-specific verification checklists |
+| **Issue-First** | No work begins (no worktree, no code, no exploration) until a GitLab issue ticket exists and meets Definition of Ready (`TASK-TEMPLATES.md` §1), created using `ISSUE-MR-TEMPLATES.md` | Bootstrap refuses to proceed without issue IID; reviewers reject MRs with no linked issue |
 | **Autonomous Handoff** | Complete task → trigger next role per workflow chain | Handoff format mandatory |
+| **Merge Verification** | After reviewer approves, the reviewer (or Emma) MUST verify the MR status is `merged` in GitLab before transitioning the linked issue to `Done` | `mr-status` CLI check; no issue closed as `Done` without confirmed merge |
+| **Issue Closure Enforcement** | Every merged MR's linked issue MUST be closed in GitLab via `issue-status closed` — not just labeled `Done`. Closure happens in the same session as merge verification. | Post-merge audit flags any issue still open after MR merged |
 
 ---
 
@@ -148,9 +151,11 @@ git checkout develop && git pull origin develop
 ```
 
 ### Issue Lifecycle (Mandatory Labels + Comments)
-`To Do` → `In Progress` (Emma assigns) → `PR Review` (MR created) → `Ready to Merge` (approved + CI green) → `Done` (Emma closes after Isabella validation)
+`To Do` → `In Progress` (Emma assigns) → `PR Review` (MR created) → `Ready to Merge` (approved + CI green) → `Done` (Emma labels after merge verified + Isabella validation) → **Issue closed** (Emma runs `issue-status closed` immediately after labeling `Done`)
 
 **Only Emma closes issues.** Reopening requires stakeholder/Emma approval.
+
+**Closure enforcement:** Labeling an issue `Done` is NOT sufficient — the issue MUST be closed in GitLab via `scripts/oelite-gitlab.sh issue-status <project> <iid> emma closed`. Emma MUST perform this in the same session as verifying the MR merge. A post-merge audit MUST be run periodically to catch any issues left open after their linked MRs were merged.
 
 ### Commit Format
 ```

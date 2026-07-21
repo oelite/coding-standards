@@ -83,6 +83,46 @@ scripts/oelite-gitlab.sh sync <agent>
 
 ---
 
+## 1.7 Issue-First (Hard Gate — No Work Without an Issue)
+
+**This is a non-negotiable gate. No work begins until a GitLab issue ticket exists with full task elaboration.**
+
+Before ANY work — including exploration, planning, code review, or worktree creation — a GitLab issue MUST exist in the target project and meet the **Definition of Ready** (see `TASK-TEMPLATES.md` §1 for the full checklist). In summary, the issue must have:
+
+- Title with issue reference (US-XXX, BUG-XXX, TASK-XXX)
+- Acceptance criteria in GIVEN/WHEN/THEN format
+- Owner assigned
+- Priority labeled
+- Dependencies identified (not blocking)
+
+Issue creation MUST follow the templates in `ISSUE-MR-TEMPLATES.md` (Feature, Bug, or Task template as appropriate).
+
+### Why This Exists
+
+Without issue-first enforcement:
+- Work happens without traceability — no way to track what was done or why
+- MRs are submitted with no linked issue, making review and closure haphazard
+- Issues are left open after MRs merge because nobody owns the closure step
+- Sprint planning has no visibility into in-flight work
+
+### Enforcement
+
+| Scenario | Action |
+|----------|--------|
+| Agent asked to start a task with no issue | STOP. Ask Emma to create the issue via `issue-create` using `ISSUE-MR-TEMPLATES.md` |
+| Issue exists but doesn't meet Definition of Ready | STOP. Ask Emma to elaborate before proceeding |
+| MR submitted with no `Closes #<issue>` reference | Reviewer MUST reject and request issue linkage |
+| Issue created but not yet assigned | Do not start work — wait for Emma to assign via `issue-assign` |
+
+```bash
+# Verify the issue exists before starting work
+scripts/oelite-gitlab.sh issues <project>
+```
+
+**Only after the issue is verified (exists, meets Definition of Ready) may the agent proceed to sync, worktree creation, and implementation.**
+
+---
+
 ## 2. Team Identity Registry
 
 Every team member has a unique GitLab identity. AI agents commit under the team member's GitLab identity configured in their worktree — **never under the AI executor's own name**. All GitLab operations (comments, MRs, approvals) use the configured team member's personal access token (PAT).
@@ -563,19 +603,82 @@ Every status change MUST be accompanied by:
 | Emma assigns issue to agent | `To Do` | `In Progress` | Emma + Assignee | `issue-assign` + comment "Assigned to @agent. Starting work." |
 | Agent creates worktree and begins implementation | `To Do` or unlabeled | `In Progress` | Assignee | Comment: "Implementation started. Branch: `feature/US-XXX-description`" |
 | Agent creates MR | `In Progress` | `PR Review` | Assignee | Comment: "MR !N created. Link: [MR URL]. Ready for review by @reviewer." |
-| Reviewer approves MR + CI green | `PR Review` | `Ready to Merge` | Reviewer | Comment: "Approved. CI green. Auto-merge pending." |
-| MR merged into develop | `Ready to Merge` | `Done` | Emma | Comment: "Merged into develop. Business validation: @isabella." + `issue-status closed` |
+| Reviewer approves MR + CI green | `PR Review` | `Ready to Merge` | Reviewer | Comment: "Approved. CI green. Awaiting merge." |
+| **MR merged into develop (verified)** | `Ready to Merge` | `Done` | Reviewer or Emma | Comment: "Merged into develop. Business validation: @isabella." + `mr-status` verification |
+| **Issue closed in GitLab** | `Done` (label) | **Closed** (state) | Emma | Comment: "Issue complete. Closing." + `issue-status closed` — MUST happen in same session as merge verification |
 | Blocker encountered | `In Progress` | `Blocked` | Assignee | Comment: "Blocked by: [reason]. Needs: [dependency]." |
 | Blocker resolved | `Blocked` | `In Progress` | Assignee | Comment: "Blocker resolved. Resuming work." |
+
+### 8.2.1 Merge Verification (Mandatory Step)
+
+**Before transitioning an issue to `Done`, the reviewer (or Emma) MUST verify that the MR has actually merged.** Auto-merge is assumed but NOT guaranteed — protected branch rules, pipeline failures, or GitLab configuration issues can prevent merging silently.
+
+```bash
+# Check the MR's actual merge status
+scripts/oelite-gitlab.sh mr-status <project> <mr-iid>
+```
+
+Output shows one of: `open`, `merged`, `closed`, `cannot_merge`.
+
+| MR Status | Action |
+|-----------|--------|
+| `merged` | Proceed to label issue `Done` and close (see §8.2.2) |
+| `open` | Do NOT label `Done` — investigate why auto-merge hasn't occurred; may need manual merge or pipeline fix |
+| `cannot_merge` | Rebase the branch: `scripts/oelite-gitlab.sh sync <agent>`, push, then re-check |
+| `closed` (unmerged) | MR was closed without merging — create a new MR or investigate |
+
+**The reviewer who approves the MR is responsible for verifying the merge.** If the reviewer cannot verify (session ended), Emma MUST verify before closing the issue.
+
+### 8.2.2 Issue Closure Enforcement (Mandatory Final Step)
+
+**Labeling an issue `Done` is NOT sufficient — the issue MUST be closed in GitLab.**
+
+Emma MUST close the issue in the **same session** as verifying the MR merge:
+
+```bash
+# 1. Verify MR is merged
+scripts/oelite-gitlab.sh mr-status <project> <mr-iid>
+# Must show: merged
+
+# 2. Label the issue Done (via GitLab UI/API)
+
+# 3. Close the issue
+scripts/oelite-gitlab.sh issue-status <project> <iid> emma closed
+```
+
+**Why this matters**: Issues labeled `Done` but left `opened` in GitLab accumulate indefinitely. The `Done` label indicates completion; the `closed` state removes the issue from active boards and queries. Both are required.
+
+### 8.2.3 Post-Merge Issue Audit
+
+Isabella (or designated reviewer) MUST run a periodic audit to catch issues left open after their linked MRs were merged:
+
+```bash
+# List issues still open whose linked MRs are merged
+scripts/oelite-gitlab.sh issue-audit <project>
+```
+
+This flags:
+- Issues with `Done` label but still in `opened` state → close them
+- Issues where the linked MR (via `Closes #<iid>`) is `merged` but the issue is still `opened` → close them
+
+**Audit cadence**: At minimum, run after every sprint review. Ideally, run at the end of each work session before closing out the day.
+
+| Audit Finding | Action |
+|---------------|--------|
+| Issue `Done` but `opened` | Close via `issue-status closed` |
+| Issue linked to merged MR but still `opened` | Close via `issue-status closed` |
+| Issue `opened` with no MR and no activity for >7 days | Escalate to Emma — reassign or close as won't-do |
 
 ### 8.3 Agent Responsibilities by Role
 
 #### Emma (Product & Delivery Coordinator)
-- Creates issues with `To Do` label, clear acceptance criteria, and story points
+- Creates issues with `To Do` label, clear acceptance criteria, and story points using `ISSUE-MR-TEMPLATES.md`
 - Assigns issues to the correct owner based on domain expertise
 - Updates status to `In Progress` when assigning
-- Updates status to `Done` after MR merge + Isabella's business validation
-- Closes the issue via `issue-status closed` when fully complete
+- **Verifies MR merge** via `mr-status` before labeling `Done` (if reviewer hasn't already)
+- Updates status to `Done` after MR merge verified + Isabella's business validation
+- **Closes the issue via `issue-status closed`** in the same session as verifying merge — labeling `Done` is not sufficient
+- Runs or delegates `issue-audit` periodically to catch orphaned open issues
 
 #### Assignee (Implementing Agent: Daniel/Sophia/Jonathan/Ethan/etc.)
 - Sets `In Progress` label when starting work (after worktree creation)
@@ -586,11 +689,15 @@ Every status change MUST be accompanied by:
 #### Reviewer (Grace/Felix/Maya/Marcus/Victor)
 - Reviews MR within the workflow chain
 - Sets `Ready to Merge` label after approval + CI green
+- **Verifies MR merge** via `mr-status` after approval — confirms GitLab actually merged the MR
+- If merge verified: transitions issue to `Done` (if Emma delegates) or notifies Emma to close
 - If changes requested: comment with specific fixes, assignee returns to `In Progress`
 
 #### Isabella (Business Analyst)
 - Validates deliverable against business requirements after MR merge
 - Confirms `Done` status with Emma or requests changes (return to `In Progress`)
+- **Runs `issue-audit <project>` periodically** to catch issues left open after their linked MRs were merged
+- Escalates orphaned open issues to Emma for closure
 
 ### 8.4 SCRUM Integration
 
@@ -611,7 +718,7 @@ Every status change MUST be accompanied by:
 
 #### Definition of Done (Issue Level)
 An issue is only `Done` when ALL are true:
-- [ ] MR merged into `develop`
+- [ ] MR merged into `develop` (**verified via `mr-status` CLI**)
 - [ ] CI pipeline green (build + unit tests)
 - [ ] Integration tests pass (local Docker infrastructure)
 - [ ] E2E tests pass (if user-facing)
@@ -619,6 +726,8 @@ An issue is only `Done` when ALL are true:
 - [ ] Business validation passed (Isabella confirms)
 - [ ] Documentation updated (per Part IV Self-Maintenance Protocol)
 - [ ] No `Blocked` label remaining
+- [ ] **Issue closed in GitLab** via `issue-status closed` (not just labeled `Done`)
+- [ ] **Post-merge audit passed**: `issue-audit` confirms no orphaned open issues for this MR
 
 ### 8.5 Issue Comment Templates
 
@@ -762,6 +871,8 @@ GitLab operations are available to both agents and humans. **Agents perform thei
 | `scripts/oelite-gitlab.sh mr-list <project>` | List open MRs | Anyone |
 | `scripts/oelite-gitlab.sh mr-comment <project> <iid> <agent> <message>` | Comment on an MR | Reviewer |
 | `scripts/oelite-gitlab.sh mr-approve <project> <iid> <agent>` | Approve an MR | Assigned reviewer |
+| `scripts/oelite-gitlab.sh mr-status <project> <iid>` | Check MR merge status (open/merged/closed/cannot_merge) | Reviewer or Emma — merge verification |
+| `scripts/oelite-gitlab.sh issue-audit <project>` | List issues still open whose linked MRs are merged | Isabella or Emma — post-merge audit |
 | `scripts/oelite-gitlab.sh mr-check-eligible <project>` | List MRs meeting auto-approval criteria | Emma or reviewer |
 | `scripts/oelite-gitlab.sh mr-auto-approve <project>` | Auto-approve all eligible MRs | Emma or reviewer |
 
@@ -1185,11 +1296,16 @@ Before creating an MR, the agent **MUST** verify every item below. No MR should 
 ### Post-MR Actions
 
 - [ ] MR created targeting `develop` with descriptive title
+- [ ] MR description references the linked issue (`Closes #<issue-iid>`)
 - [ ] Reviewer assigned based on change type (Grace for backend, Felix for frontend, Maya for security, Marcus for architecture)
 - [ ] Reviewer notified via GitLab
-- [ ] After approval + CI green: MR auto-merges
+- [ ] After approval + CI green: MR auto-merges (or manual merge if auto-merge disabled)
+- [ ] **Merge verified**: `mr-status <project> <mr-iid>` confirms `merged` state
+- [ ] **Issue labeled `Done`** (after Isabella business validation)
+- [ ] **Issue closed in GitLab**: `issue-status <project> <iid> emma closed` — in same session as merge verification
 - [ ] Worktree removed after MR merged: `scripts/oelite-gitlab.sh worktree-remove <agent>`
 - [ ] Local develop synced: `git checkout develop && git pull origin develop`
+- [ ] **Post-merge audit**: `issue-audit <project>` run to confirm no orphaned open issues
 
 ---
 
@@ -1318,6 +1434,7 @@ GitLab will re-evaluate mergeability automatically.
 | Jun 21 2026 | **Workflow Enhancement**: Added mandatory pre-task sync (hard gate) at §1.5, periodic sync responsibilities at §1.6, and stale `develop` detection via `status`. Added MR auto-approval eligibility criteria at §10 and CLI commands (`mr-check-eligible`, `mr-auto-approve`) at §9.5. Agents MUST sync `git pull origin develop` before every task. Reviewers can auto-approve eligible MRs via CLI. |
 | Jun 22 2026 | **Major Update**: Reverted to **MR-Centric Model**. Local Merge Model proved inconsistent for agentic teams — agents frequently skipped steps or performed them out of order, leading to stale local `develop` branches and unreviewed code accumulation. New workflow: agents push feature branches → create MRs → reviewers approve → GitLab auto-merges + auto-deletes branch. All code enters `develop` through reviewed MRs. Review is a gate, not an afterthought. |
 | Jun 29 2026 | **SCRUM/Dev Workflow Enhancement**: Added explicit GitLab issue lifecycle protocol at §8. Defined mandatory status labels (`To Do`, `In Progress`, `PR Review`, `Ready to Merge`, `Done`, `Blocked`), status transition rules, role responsibilities, SCRUM integration, issue comment templates, and definition-of-done checklist. Added `issue-status` CLI command. Emma owns issue assignment and closure; assignees update labels during workflow; reviewers set `Ready to Merge`; Isabella validates before `Done`. |
+| Jul 21 2026 | **Issue-First & Closure Enforcement**: Added §1.7 Issue-First hard gate — no work begins without a GitLab issue with full elaboration. Added §8.2.1 Merge Verification (mandatory `mr-status` check before labeling `Done`). Added §8.2.2 Issue Closure Enforcement (`issue-status closed` in same session as merge verification). Added §8.2.3 Post-Merge Issue Audit (`issue-audit` CLI). Updated §8.3 role responsibilities (Emma verifies merge + closes; Reviewer verifies merge; Isabella runs audit). Updated §8.4 Definition of Done with closure + audit checkboxes. Updated §14 Post-MR checklist with merge verification + closure steps. Added `mr-status` and `issue-audit` CLI commands. |
 
 ---
 

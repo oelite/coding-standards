@@ -27,8 +27,9 @@ This document provides the standard templates for creating tasks, issues, bugs, 
 
 ## 1. Definition of Ready
 
-An issue is **Ready** when ALL of the following are true. Emma MUST NOT assign an issue that is not Ready.
+An issue is **Ready** when ALL of the following are true. Emma MUST NOT assign an issue that is not Ready. **No work may begin until an issue meets Definition of Ready (Issue-First Hard Gate).**
 
+- [ ] **GitLab issue ticket exists** in the project (not just a plan or todo item)
 - [ ] **User story exists** in `docs/business/user-stories/US-<NNN>-<feature>.md` using the [User Story Template](../6_documentation_standards/DOC-STANDARDS.md#4-user-story-template)
 - [ ] **Acceptance criteria** are written in GIVEN/WHEN/THEN format and are verifiable
 - [ ] **Owner assigned** based on workflow chain and domain expertise
@@ -40,15 +41,15 @@ An issue is **Ready** when ALL of the following are true. Emma MUST NOT assign a
 - [ ] **No `Blocked` label**
 - [ ] **Source references** provided (BRD/SRS section, related issues, external docs)
 
-If any item is missing, the assignee MUST ask Emma to clarify before starting work.
+If any item is missing, the assignee MUST ask Emma to clarify before starting work. **No worktree creation, no code changes, no exploration until the issue is Ready.**
 
 ---
 
 ## 2. Definition of Done (Issue Level)
 
-An issue is **Done** when ALL of the following are true. Only Emma may mark an issue Done after MR merge + Isabella's business validation.
+An issue is **Done** when ALL of the following are true. Only Emma may mark an issue Done after MR merge verification + Isabella's business validation.
 
-- [ ] MR merged into `develop` via GitLab
+- [ ] MR merged into `develop` via GitLab (**verified via `mr-status` CLI — not assumed**)
 - [ ] CI pipeline green (build + unit tests)
 - [ ] Integration tests pass against real Docker infrastructure (if applicable)
 - [ ] E2E tests pass against running dev server (if user-facing)
@@ -60,6 +61,8 @@ An issue is **Done** when ALL of the following are true. Only Emma may mark an i
 - [ ] Documentation updated per [Documentation Triggers](../6_documentation_standards/DOC-STANDARDS.md#9-documentation-triggers)
 - [ ] No `Blocked` label remaining
 - [ ] Issue status updated through the lifecycle: `In Progress` → `PR Review` → `Ready to Merge` → `Done`
+- [ ] **Issue closed in GitLab** via `issue-status closed` — labeling `Done` is NOT sufficient; Emma MUST close the issue in the same session as verifying the MR merge
+- [ ] **Post-merge audit passed**: `issue-audit <project>` confirms no orphaned open issues for this MR
 
 ### CRITICAL: Reviewer Accountability
 **Code reviewers (Grace, Felix, Marcus, Maya) MUST explicitly verify and confirm:**
