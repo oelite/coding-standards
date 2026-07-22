@@ -105,6 +105,13 @@ To install:
 ## Verification Approach
 <How will the assignee prove completion? Build, tests, health check, screenshots.>
 
+## AC Verification
+All acceptance criteria MUST be verified against source code per [AC-VERIFICATION-PROCESS.md](./AC-VERIFICATION-PROCESS.md):
+- [ ] Each AC has corresponding implementation artifact (controller, service, component)
+- [ ] Each AC has passing test coverage
+- [ ] Edge cases implemented (not just happy path)
+- [ ] Story status updated in catalog and inventory after completion
+
 ## Documentation Impact
 - [ ] No documentation changes needed
 - [ ] BRD/SRS update needed
@@ -226,6 +233,13 @@ To install:
 ## Verification
 <How will completion be verified?>
 
+## AC Verification
+All acceptance criteria MUST be verified against source code per [AC-VERIFICATION-PROCESS.md](./AC-VERIFICATION-PROCESS.md):
+- [ ] Each AC has corresponding implementation artifact
+- [ ] Each AC has passing test coverage
+- [ ] Edge cases implemented (not just happy path)
+- [ ] Story status updated in catalog and inventory after completion
+
 /label ~"To Do"
 /milestone %"Sprint-<X>"
 ```
@@ -253,6 +267,7 @@ Closes #<issue-iid>
 - [ ] Unit tests pass
 - [ ] Integration tests pass against real Docker infrastructure
 - [ ] E2E tests pass against running dev server (if user-facing)
+- [ ] **AC Verification**: All acceptance criteria verified per [AC-VERIFICATION-PROCESS.md](./AC-VERIFICATION-PROCESS.md)
 - [ ] **NO stub implementations**: Every method/endpoint/component has full production-ready logic (no `throw new NotImplementedException()`, no empty method bodies, no `// TODO: implement later` comments)
 - [ ] **NO simplified implementations**: All business logic, error handling, validation, and edge cases are implemented per acceptance criteria (no "happy path only", no "basic version for now")
 - [ ] **NO temporary quick-fixes**: All solutions are permanent and production-ready (no "quick fix", "temporary workaround", "hack", "for now" comments or code)
@@ -344,4 +359,5 @@ Every OElite GitLab project MUST have the following labels:
 
 | Date | Author | Version | Changes |
 |------|--------|---------|---------|
+| 2026-07-22 | Orchestrator / Isabella | 1.1.0 | Added AC verification checklist from AC-VERIFICATION-PROCESS.md to all templates |
 | 2026-06-29 | Emma / Isabella | 1.0.0 | Created dedicated ISSUE-MR-TEMPLATES.md for GitLab issue and MR templates |
