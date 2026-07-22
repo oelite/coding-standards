@@ -60,6 +60,72 @@ git checkout develop && git pull origin develop
 git -C ".worktrees/$MY_ROLE" config user.email  # Must be "$MY_ROLE@phanes.ltd"
 ```
 
+### STEP 2.25: VERIFY & UPDATE SCOPE ANCHOR (Hard Gate — Compaction Resilience)
+**The `.oe-scope` file is your disk-based context anchor. It survives context compaction.**
+
+`worktree-create` auto-generates `.oe-scope` in your worktree. After issue assignment, update it with task details:
+
+```bash
+# Update scope with task details (do this AFTER Step 0.5 issue verification)
+../../coding-standards/scripts/oelite-gitlab.sh oe-scope "$MY_ROLE" \
+  --task-type "$MY_TASK_TYPE" \
+  --issue "<iid>" \
+  --desc "<brief task description>"
+```
+
+**After context compaction (or at any point you're unsure where you are):**
+```bash
+# Read the scope file to restore your working context
+cat .oe-scope
+# OR:
+../../coding-standards/scripts/oelite-gitlab.sh oe-scope "$MY_ROLE"
+```
+
+**Pre-tool directory guard (run before ANY file edit if unsure of location):**
+```bash
+# If this outputs anything, you are in the WRONG directory — STOP
+test -f .oe-scope || { echo "SCOPE LOST: No .oe-scope found. You are not in a worktree. cd to the correct worktree first."; }
+```
+
+**If `.oe-scope` is missing or you're not in a worktree:**
+1. `cd` back to your target repo root
+2. `cd .worktrees/<your-role>/`
+3. Verify `.oe-scope` exists
+4. If worktree doesn't exist, re-run Step 2 (worktree-create)
+
+### STEP 2.25: VERIFY & UPDATE SCOPE ANCHOR (Hard Gate — Compaction Resilience)
+**The `.oe-scope` file is your disk-based context anchor. It survives context compaction.**
+
+`worktree-create` auto-generates `.oe-scope` in your worktree. After issue assignment, update it with task details:
+
+```bash
+# Update scope with task details (do this AFTER Step 0.5 issue verification)
+../../coding-standards/scripts/oelite-gitlab.sh oe-scope "$MY_ROLE" \
+  --task-type "$MY_TASK_TYPE" \
+  --issue "<iid>" \
+  --desc "<brief task description>"
+```
+
+**After context compaction (or at any point you're unsure where you are):**
+```bash
+# Read the scope file to restore your working context
+cat .oe-scope
+# OR:
+../../coding-standards/scripts/oelite-gitlab.sh oe-scope "$MY_ROLE"
+```
+
+**Pre-tool directory guard (run before ANY file edit if unsure of location):**
+```bash
+# If this outputs anything, you are in the WRONG directory — STOP
+test -f .oe-scope || { echo "SCOPE LOST: No .oe-scope found. You are not in a worktree. cd to the correct worktree first."; }
+```
+
+**If `.oe-scope` is missing or you're not in a worktree:**
+1. `cd` back to your target repo root
+2. `cd .worktrees/<your-role>/`
+3. Verify `.oe-scope` exists
+4. If worktree doesn't exist, re-run Step 2 (worktree-create)
+
 ### STEP 3: LOAD REQUIRED CONTEXT (Read via `read` tool)
 Read in this exact order:
 
@@ -87,6 +153,7 @@ LOADED:
   - <target-repo>/AGENTS.md
   - <target-repo>/.ai/standards/*.md (if applicable)
 WORKTREE: .worktrees/<role>/feature/<branch> (verified via git config user.email)
+SCOPE: .oe-scope verified and updated (task-type, issue, description)
 SYNC: develop pulled from origin
 IDENTITY: <role>@phanes.ltd (confirmed per WORKTREE-OWNER-DNA.md)
 READY: true
@@ -161,8 +228,15 @@ YOUR_ROLE: <role-name>
 YOUR_TASK_TYPE: <task-type>
 YOUR_SESSION_TYPE: subagent
 
+# SCOPE CONTEXT (MANDATORY — prevents worktree drift after compaction)
+WORKING_DIR: <full path to worktree, e.g., /oelite/helios/core/.worktrees/daniel>
+GIT_ROOT: <verified via git rev-parse --show-toplevel>
+ISSUE: #<iid> — <issue title>
+TASK: <brief description>
+FORBIDDEN: Creating files outside the git repo root above.
+
 You MUST complete the Universal Agent Bootstrap (Steps 1-4) before ANY work.
-Your first output MUST be the bootstrap verification block.
+Your first output MUST be the bootstrap verification block (including SCOPE verified).
 ```
 
 ---
@@ -178,6 +252,7 @@ YOUR_TASK_TYPE: <same-as-original>
 YOUR_SESSION_TYPE: continued
 
 Re-run Steps 1-4 (abbreviated: confirm role/task, re-read role file if context lost, verify worktree).
+MANDATORY: Read .oe-scope in your worktree to restore full task context after compaction.
 ```
 
 ---
@@ -243,6 +318,7 @@ Always pass the full GitLab project path (`oelite/<family>/<repo>`) to `scripts/
 | `mr-approve <project> <iid> <agent>` | Approve MR as agent |
 | `mr-status <project> <iid>` | Check MR merge status (open/merged/closed/cannot_merge) — used for merge verification |
 | `issue-audit <project>` | List issues still open whose linked MRs are merged — used for post-merge audit |
+| `oe-scope <agent> [--task-type] [--issue] [--desc]` | Read/update per-worktree .oe-scope file (compaction-resilient context anchor) |
 | `sync <agent>` | Rebase worktree on latest `origin/develop` |
 | `status` | Show worktree status (ahead/behind `origin/develop`) |
 

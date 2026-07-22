@@ -255,7 +255,10 @@ This ensures commits are attributed to the correct agent regardless of the host 
 ```
 1. SYNC      git checkout develop && git pull origin develop (Main dir)
 2. CREATE    scripts/oelite-gitlab.sh worktree-create <agent> <branch>
+             → Auto-generates .oe-scope (compaction-resilient context anchor)
+2.5 SCOPE    scripts/oelite-gitlab.sh oe-scope <agent> --task-type <type> --issue <iid> --desc "<desc>"
 3. WORK      cd .worktrees/<agent>/ && make changes && commit
+             → After compaction: cat .oe-scope to restore context
 4. PUSH      git push origin <branch>
 5. MR        scripts/oelite-gitlab.sh mr-create <project> <agent> <branch> develop "<title>"
 6. REVIEW    Reviewer reviews → approves or requests changes
@@ -263,6 +266,7 @@ This ensures commits are attributed to the correct agent regardless of the host 
 8. MERGE     Auto-merge on approval + CI green (GitLab)
 9. SYNC      git checkout develop && git pull origin develop (Main dir)
 10. CLEANUP  scripts/oelite-gitlab.sh worktree-remove <agent>
+             → .oe-scope deleted with worktree
 ```
 
 ### 3.5 Stale Worktree Policy
@@ -819,9 +823,10 @@ scripts/oelite-gitlab.sh issue-comment oelite/helios/core 42 daniel "Implementat
 
 | Command | Description |
 |---------|-------------|
-| `scripts/oelite-gitlab.sh worktree-create <agent> <branch> [base]` | Create worktree for an agent |
+| `scripts/oelite-gitlab.sh worktree-create <agent> <branch> [base]` | Create worktree for an agent (auto-generates `.oe-scope`) |
 | `scripts/oelite-gitlab.sh worktree-list` | List all active worktrees in the current repo |
 | `scripts/oelite-gitlab.sh worktree-remove <agent>` | Remove an agent's worktree |
+| `scripts/oelite-gitlab.sh oe-scope <agent> [--task-type T] [--issue I] [--desc D]` | Read or update per-worktree `.oe-scope` context anchor |
 
 **Parameters:**
 
@@ -836,6 +841,8 @@ scripts/oelite-gitlab.sh worktree-create daniel feature/US-001-auth-token-refres
 scripts/oelite-gitlab.sh worktree-create sophia feature/US-015-checkout-payment-flow develop
 scripts/oelite-gitlab.sh worktree-list
 scripts/oelite-gitlab.sh worktree-remove daniel
+scripts/oelite-gitlab.sh oe-scope daniel
+scripts/oelite-gitlab.sh oe-scope daniel --task-type backend-impl --issue 42 --desc "Implement JWT refresh"
 ```
 
 ### 9.4 Sync & Merge Operations
