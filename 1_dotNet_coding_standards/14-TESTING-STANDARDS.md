@@ -160,7 +160,7 @@ E2E tests validate the **complete user journey** in real browsers. These are the
 - MUST run against a **live running dev server** (`npm run dev` / `dotnet run`)
 - MUST verify API calls are actually made (use `page.route()`)
 - MUST NOT assert on hardcoded data ("Premium Widget", "$49.99")
-- MUST follow the 8 E2E Quality Gates (see AGENTS.md Part II, Olivia role)
+- MUST follow the 12 E2E Quality Gates (see AGENTS.md Part II, Olivia role)
 
 ---
 

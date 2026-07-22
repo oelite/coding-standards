@@ -106,15 +106,19 @@ Start empty, load from API, render explicit loading/empty/error states. If an AP
 ### E2E Browser Tests (Playwright)
 - **MANDATORY for all web apps** — unit tests alone insufficient
 - Run headless in CI/CD, headed for debugging
-- 8 Quality Gates (NON-NEGOTIABLE):
-  1. **Min 3 assertions/test** — no no-op navigation tests
-  2. **Real server + real API** — no mock data assertions
-  3. **Interaction Coverage Matrix** — 9 categories per feature
-  4. **AC Traceability** — every test references `US-XXX/AC-XXX`
-  5. **RBAC Matrix** — test every role
-  6. **Interactive Component Pattern** — auth → navigate → interact → assert
-  7. **No-Op Detection** — pre-commit checks assertion count
-  8. **Execution Evidence** — captured output, screenshots, traces
+- 12 Quality Gates (NON-NEGOTIABLE):
+   1. **Min 3 assertions/test** — no no-op navigation tests
+   2. **Real server + real API** — no mock data assertions
+   3. **Interaction Coverage Matrix** — 9 categories per feature
+   4. **AC Traceability** — every test references `US-XXX/AC-XXX`
+   5. **RBAC Matrix** — test every role
+   6. **Interactive Component Pattern** — auth → navigate → interact → assert
+   7. **No-Op Detection** — pre-commit checks assertion count
+   8. **Execution Evidence** — captured output, screenshots, traces
+   9. **Business Logic Validation** — UI enforces business rules before API, derived values correct, state machine transitions valid
+   10. **Accessibility Testing** — aXe scan, keyboard nav, ARIA, color contrast, touch targets
+   11. **User Journey Testing** — happy path, branching, error recovery, permission-based, rollback
+   12. **State Management Testing** — cache invalidation, optimistic updates, stale data handling
 
 ### Minimum Test Counts
 | Feature | Tests |

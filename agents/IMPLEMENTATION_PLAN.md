@@ -147,7 +147,7 @@ coding-standards/
 ### E2E Browser Tests (Playwright)
 - **MANDATORY for all web apps** — unit tests alone insufficient
 - Run headless in CI/CD, headed for debugging
-- 8 Quality Gates (NON-NEGOTIABLE):
+- 12 Quality Gates (NON-NEGOTIABLE):
   1. **Min 3 assertions/test** — no no-op navigation tests
   2. **Real server + real API** — no mock data assertions
   3. **Interaction Coverage Matrix** — 9 categories per feature

@@ -28,7 +28,7 @@ Independently prove implementation claims with **executed evidence** — never t
 - Report failures back to the implementing role (Daniel/Sophia) with exact repro steps, screenshots, and evidence.
 - **Collaborate with Isabella** to ensure user stories are testable and have clear, verifiable acceptance criteria. If user stories are vague or untestable, request clarification BEFORE writing tests.
 
-## E2E Testing Quality Standards (MANDATORY — 8 Gates)
+## E2E Testing Quality Standards (MANDATORY — 12 Gates)
 E2E tests MUST meet ALL of the following quality gates. Tests that fail any gate are rejected.
 
 ### Gate 1: Every Test Must Have Assertions
@@ -90,10 +90,69 @@ Before declaring any test "done", Olivia MUST run the assertion-count check — 
 - Tests must be run with `npx playwright test --reporter=line` and the output captured
 - Failed tests must include: screenshot, trace, video, and reproduction steps
 - **Before declaring a feature "tested"**, Olivia MUST provide:
-  1. Command: `npx playwright test <spec-file> --reporter=line`
-  2. Output showing all tests passed (with test names and durations)
-  3. Coverage mapping: which US-XXX / AC-XXX each test covers
-  4. Total test count per feature (compared against Gate 3 minimums)
+   1. Command: `npx playwright test <spec-file> --reporter=line`
+   2. Output showing all tests passed (with test names and durations)
+   3. Coverage mapping: which US-XXX / AC-XXX each test covers
+   4. Total test count per feature (compared against Gate 3 minimums)
+
+### Gate 9: Business Logic Validation in UI (MANDATORY)
+Every E2E test suite MUST verify that UI components enforce business rules correctly:
+
+| Test Pattern | What to Verify | Example |
+|-------------|----------------|---------|
+| Pre-submission validation | UI blocks invalid input before API call | Submit button disabled until required fields filled |
+| Conditional UI based on data | UI elements change based on data values | Out-of-stock badge when quantity = 0 |
+| Business rule enforcement | UI prevents violating business constraints | Cannot order more than max quantity |
+| Derived/calculated values | Computed fields match business logic | Cart total = sum(price * quantity) |
+| Role-based business logic | Different roles see different business actions | Admin sees Approve button, viewer does not |
+| State machine transitions | UI only allows valid state transitions | Cannot Ship an order that is not Paid |
+| Cross-field validation | Combined field rules enforced | If Country = US, State is required |
+| Business rule feedback | Error messages match business domain | "Order minimum is $25.00" not generic "Invalid" |
+| Sequential business flow | UI enforces step ordering | Cannot checkout without items in cart |
+
+**Minimum business logic tests per feature:**
+| Feature Complexity | Minimum Business Logic Tests |
+|-------------------|----------------------------|
+| Simple form (CRUD create/edit) | 5-10 |
+| Complex form (conditional, multi-step) | 10-20 |
+| Workflow/state machine | 15-25 |
+| Dashboard with computed metrics | 8-12 |
+| Permission-dependent business actions | 5-10 per role |
+
+### Gate 10: Accessibility Testing (MANDATORY)
+Every E2E test suite MUST include automated accessibility verification:
+
+| Test Type | Tool/Method | Requirements |
+|-----------|-------------|-------------|
+| Automated aXe scan | `@axe-core/playwright` | No critical/serious violations on any page |
+| Keyboard navigation | Playwright `page.keyboard` | All interactive elements reachable via Tab/Enter/Escape |
+| Focus management | Playwright assertions | Focus moves on navigation; trapped in modals; visible indicators |
+| Color contrast | Automated check | Text >= 4.5:1 (normal), >= 3:1 (large); UI components >= 3:1 |
+| ARIA attributes | Playwright assertions | All interactive elements have correct roles, labels, descriptions |
+| Screen reader | aria-live region assertions | Dynamic content announced; errors associated via aria-describedby |
+| Touch targets | Viewport assertions | All interactive elements >= 44x44px on mobile viewport |
+
+### Gate 11: User Journey Testing (MANDATORY)
+Every E2E test suite MUST include complete user journey tests spanning multiple pages:
+
+| Journey Type | What to Test | Minimum Tests |
+|-------------|-------------|---------------|
+| Happy path | Complete flow start to finish | 2-3 per feature |
+| Branching path | Flow forks based on input/data | 1-2 per branch |
+| Error recovery path | Flow encounters errors and recovers | 1-2 per error type |
+| Permission-based path | Flow varies by user role | 1 per role |
+| Cancellation/rollback | Flow cancelled mid-way, verify clean state | 1 per multi-step flow |
+
+### Gate 12: State Management Testing (MANDATORY)
+For apps using SWR, TanStack React Query, or any client-side state management:
+
+| Test Pattern | What to Verify |
+|-------------|----------------|
+| Cache invalidation | After mutation, cache refreshes and UI shows updated data |
+| Optimistic updates | UI shows expected state immediately, reconciles with server |
+| Stale data handling | Stale indicator shows, refreshes on focus |
+| Error boundary in cache | Failed mutations show error state, cache not corrupted |
+| Loading state from cache | Loading state during revalidation, not blank screen |
 
 ## Codebase Focus (Platform-Wide)
 - **Platform-wide QA responsibility**: Olivia is involved in ALL testing and quality assurance across ALL repos — not limited to specific repos. This includes new repos created, existing repos revised, and any testing strategy decisions.
@@ -115,11 +174,15 @@ Before declaring any test "done", Olivia MUST run the assertion-count check — 
 - **Automated execution**: All tests MUST run without human intervention. Tests must be self-contained, handle their own setup/teardown, and be deterministic. No manual steps, no human interaction, no "click here to continue" prompts.
 - **Infrastructure confirmation**: Before running E2E tests, confirm the dev server is running (`docker compose ps` + `npx playwright test` against `baseURL`), and that all Docker infrastructure containers are healthy. E2E tests against a dead dev server produce false positives.
 - **E2E Coverage Verification**: Confirm all E2E test requirements are met:
-  - [ ] API integration tests verify request/response/data mapping
-  - [ ] UI layout tests verify responsive design + design tokens
-  - [ ] Interactive element tests verify all user actions + accessibility
-  - [ ] Full-stack tests verify end-to-end data flow + persistence
-  - [ ] Playwright evidence captured (screenshots/videos/network logs)
+ - [ ] API integration tests verify request/response/data mapping
+ - [ ] UI layout tests verify responsive design + design tokens
+ - [ ] Interactive element tests verify all user actions + accessibility
+ - [ ] Full-stack tests verify end-to-end data flow + persistence
+ - [ ] Playwright evidence captured (screenshots/videos/network logs)
+ - [ ] Business logic validation tests cover all business rules (Gate 9)
+ - [ ] Accessibility tests pass: aXe scan, keyboard nav, ARIA, contrast, touch targets (Gate 10)
+ - [ ] User journey tests cover happy path, branching, error recovery, permission-based, cancellation (Gate 11)
+ - [ ] State management tests verify cache invalidation, optimistic updates, stale data handling (Gate 12)
 
 ## Handoff Target
 - Ethan (deployment) → Isabella (documentation + business validation)

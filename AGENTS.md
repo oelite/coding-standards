@@ -179,6 +179,7 @@ READY: true
 | Backend Review | `packs/backend-review.md` |
 | Frontend Implementation | `packs/frontend-impl.md` |
 | Frontend Review | `packs/frontend-review.md` |
+| UX Design | `packs/ux-design.md` |
 | Testing | `packs/testing.md` |
 | Infrastructure | `packs/infrastructure.md` |
 | Security | `packs/security.md` |

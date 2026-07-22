@@ -123,7 +123,7 @@ Every completed task MUST include:
 2. Daniel implements → builds clean, service starts, health 200, tests pass.
 3. Maya reviews if auth/security/CRUD-sensitive; Victor reviews if queries/denormalization/caching changed. **(Parallel)**
 4. Grace reviews code quality & pattern compliance.
-5. Olivia validates via API/integration tests AND E2E browser tests. **Olivia MUST enforce all 8 E2E Quality Gates.** If tests fail, hand back to Daniel with exact repro steps.
+5. Olivia validates via API/integration tests AND E2E browser tests. **Olivia MUST enforce all 12 E2E Quality Gates.** If tests fail, hand back to Daniel with exact repro steps.
 6. Ethan validates Docker/K8s deployment & health.
 7. **Isabella final business validation** — confirms deliverable matches requirements, updates docs, publishes release notes.
 
@@ -134,7 +134,7 @@ Every completed task MUST include:
 4. Sophia implements in correct stack with real APIs (no mock data).
 5. Jonathan reviews UX/design fidelity; Felix reviews frontend code quality. **(Parallel)**
 6. Build succeeds (`npx next build` / `ng build` + lint clean).
-7. Olivia validates E2E browser tests. **Olivia MUST enforce all 8 E2E Quality Gates.** If tests fail, hand back to Sophia with exact repro steps.
+7. Olivia validates E2E browser tests. **Olivia MUST enforce all 12 E2E Quality Gates.** If tests fail, hand back to Sophia with exact repro steps.
 8. Ethan validates deployment.
 9. **Isabella final business validation** — captures Playwright screenshots, updates docs, publishes release notes.
 

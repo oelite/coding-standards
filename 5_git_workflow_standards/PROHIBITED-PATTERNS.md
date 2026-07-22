@@ -677,6 +677,10 @@ test('[US-015/AC-008] delete product persists to database', async ({ page }) => 
 - [ ] Do E2E tests capture network logs showing real API calls?
 - [ ] Do E2E tests have screenshots/videos for critical user journeys?
 - [ ] Does each E2E test map to a user story acceptance criterion (US-XXX/AC-YYY)?
+- [ ] Do E2E tests verify business logic validation in UI (pre-submission, derived values, state transitions)?
+- [ ] Do E2E tests verify accessibility via aXe scan, touch targets (44x44px min), color contrast?
+- [ ] Do E2E tests verify complete user journeys (happy path, branching, error recovery, permission-based)?
+- [ ] Do E2E tests verify state management (cache invalidation, optimistic updates, stale data handling)?
 
 **If ANY missing → REJECT MR. "Unit tests pass" is NOT sufficient for UI features.**
 

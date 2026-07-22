@@ -285,7 +285,10 @@ Closes #<issue-iid>
 - [ ] **UI layout tests**: Verify responsive breakpoints, design token compliance, Shadcn component usage
 - [ ] **Interactive element tests**: Verify all buttons/links, form validation, keyboard navigation, focus management
 - [ ] **Full-stack tests**: Verify data persistence, authentication/authorization, multi-step workflows
-- [ ] **Accessibility tests**: Verify WCAG 2.1 AA compliance (ARIA labels, keyboard navigation, focus states)
+- [ ] **Accessibility tests**: Verify WCAG 2.1 AA compliance (ARIA labels, keyboard navigation, focus states, aXe scan, touch targets)
+- [ ] **Business logic validation tests**: Verify UI enforces business rules before API submission, derived/calculated values correct, state machine transitions valid
+- [ ] **User journey tests**: Happy path, branching, error recovery, permission-based, cancellation/rollback flows
+- [ ] **State management tests**: Cache invalidation, optimistic updates, stale data handling, error boundary in cache
 - [ ] **Playwright evidence captured**: Screenshots/videos for critical journeys, network logs, console verification
 - [ ] **Coverage mapping**: Each E2E test maps to user story acceptance criteria (US-XXX/AC-YYY)
 
