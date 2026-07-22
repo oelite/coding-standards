@@ -55,10 +55,12 @@ MY_SESSION_TYPE = "<primary|subagent|continued>"
 # From INSIDE the target repo (after Step 0 cd):
 source ../../coding-standards/scripts/oelite-gitlab-env.sh
 git checkout develop && git pull origin develop
-../../coding-standards/scripts/oelite-gitlab.sh worktree-create "$MY_ROLE" "feature/<branch>"
+../../coding-standards/scripts/oelite-gitlab.sh worktree-create "$MY_ROLE" "feature/<branch>" --issue "<iid>"
 # Verify owner DNA (see coding-standards/5_git_workflow_standards/WORKTREE-OWNER-DNA.md)
-git -C ".worktrees/$MY_ROLE" config user.email  # Must be "$MY_ROLE@phanes.ltd"
+git -C ".worktrees/$MY_ROLE-<iid>" config user.email  # Must be "$MY_ROLE@phanes.ltd"
 ```
+
+**Note**: `--issue <iid>` is REQUIRED by default (Issue-First workflow). For work that genuinely does not require an issue ticket, use `--no-issue` (falls back to legacy `.worktrees/<agent>/` naming).
 
 ### STEP 2.25: VERIFY & UPDATE SCOPE ANCHOR (Hard Gate — Compaction Resilience)
 **The `.oe-scope` file is your disk-based context anchor. It survives context compaction.**
@@ -67,9 +69,9 @@ git -C ".worktrees/$MY_ROLE" config user.email  # Must be "$MY_ROLE@phanes.ltd"
 
 ```bash
 # Update scope with task details (do this AFTER Step 0.5 issue verification)
-../../coding-standards/scripts/oelite-gitlab.sh oe-scope "$MY_ROLE" \
+# Use <worktree-id> = <role>-<iid> for issue-keyed worktrees, or just <role> for legacy
+../../coding-standards/scripts/oelite-gitlab.sh oe-scope "$MY_ROLE-<iid>" \
   --task-type "$MY_TASK_TYPE" \
-  --issue "<iid>" \
   --desc "<brief task description>"
 ```
 
@@ -78,7 +80,7 @@ git -C ".worktrees/$MY_ROLE" config user.email  # Must be "$MY_ROLE@phanes.ltd"
 # Read the scope file to restore your working context
 cat .oe-scope
 # OR:
-../../coding-standards/scripts/oelite-gitlab.sh oe-scope "$MY_ROLE"
+../../coding-standards/scripts/oelite-gitlab.sh oe-scope "$MY_ROLE-<iid>"
 ```
 
 **Pre-tool directory guard (run before ANY file edit if unsure of location):**
@@ -89,40 +91,7 @@ test -f .oe-scope || { echo "SCOPE LOST: No .oe-scope found. You are not in a wo
 
 **If `.oe-scope` is missing or you're not in a worktree:**
 1. `cd` back to your target repo root
-2. `cd .worktrees/<your-role>/`
-3. Verify `.oe-scope` exists
-4. If worktree doesn't exist, re-run Step 2 (worktree-create)
-
-### STEP 2.25: VERIFY & UPDATE SCOPE ANCHOR (Hard Gate — Compaction Resilience)
-**The `.oe-scope` file is your disk-based context anchor. It survives context compaction.**
-
-`worktree-create` auto-generates `.oe-scope` in your worktree. After issue assignment, update it with task details:
-
-```bash
-# Update scope with task details (do this AFTER Step 0.5 issue verification)
-../../coding-standards/scripts/oelite-gitlab.sh oe-scope "$MY_ROLE" \
-  --task-type "$MY_TASK_TYPE" \
-  --issue "<iid>" \
-  --desc "<brief task description>"
-```
-
-**After context compaction (or at any point you're unsure where you are):**
-```bash
-# Read the scope file to restore your working context
-cat .oe-scope
-# OR:
-../../coding-standards/scripts/oelite-gitlab.sh oe-scope "$MY_ROLE"
-```
-
-**Pre-tool directory guard (run before ANY file edit if unsure of location):**
-```bash
-# If this outputs anything, you are in the WRONG directory — STOP
-test -f .oe-scope || { echo "SCOPE LOST: No .oe-scope found. You are not in a worktree. cd to the correct worktree first."; }
-```
-
-**If `.oe-scope` is missing or you're not in a worktree:**
-1. `cd` back to your target repo root
-2. `cd .worktrees/<your-role>/`
+2. `cd .worktrees/<your-role>-<iid>/` (or `.worktrees/<your-role>/` for legacy)
 3. Verify `.oe-scope` exists
 4. If worktree doesn't exist, re-run Step 2 (worktree-create)
 
@@ -152,7 +121,7 @@ LOADED:
   - coding-standards/agents/packs/<task-type>.md
   - <target-repo>/AGENTS.md
   - <target-repo>/.ai/standards/*.md (if applicable)
-WORKTREE: .worktrees/<role>/feature/<branch> (verified via git config user.email)
+WORKTREE: .worktrees/<role>-<iid>/feature/<branch> (verified via git config user.email)
 SCOPE: .oe-scope verified and updated (task-type, issue, description)
 SYNC: develop pulled from origin
 IDENTITY: <role>@phanes.ltd (confirmed per WORKTREE-OWNER-DNA.md)
@@ -309,9 +278,9 @@ Always pass the full GitLab project path (`oelite/<family>/<repo>`) to `scripts/
 | `issue-assign <project> <iid> <agent>` | Assign issue to agent |
 | `issue-comment <project> <iid> <agent> <msg>` | Comment on issue as agent |
 | `issue-status <project> <iid> <agent> <opened|closed>` | Open or close issue as agent |
-| `worktree-create <agent> <branch> [base]` | Create worktree with agent identity |
+| `worktree-create <agent> <branch> [base] [--issue <iid>] [--no-issue]` | Create worktree (issue-keyed for parallel same-agent work, or legacy) |
 | `worktree-list` | List active worktrees |
-| `worktree-remove <agent>` | Remove worktree after MR merged |
+| `worktree-remove <worktree-id>` | Remove worktree (worktree-id = agent or agent-issue) |
 | `mr-create <project> <agent> <src> <tgt> <title> [desc]` | Create MR as agent |
 | `mr-list <project>` | List open MRs |
 | `mr-comment <project> <iid> <agent> <msg>` | Comment on MR as agent |
@@ -319,7 +288,7 @@ Always pass the full GitLab project path (`oelite/<family>/<repo>`) to `scripts/
 | `mr-status <project> <iid>` | Check MR merge status (open/merged/closed/cannot_merge) — used for merge verification |
 | `issue-audit <project>` | List issues still open whose linked MRs are merged — used for post-merge audit |
 | `oe-scope <agent> [--task-type] [--issue] [--desc]` | Read/update per-worktree .oe-scope file (compaction-resilient context anchor) |
-| `sync <agent>` | Rebase worktree on latest `origin/develop` |
+| `sync <worktree-id>` | Rebase worktree on latest `origin/develop` |
 | `status` | Show worktree status (ahead/behind `origin/develop`) |
 
 ---

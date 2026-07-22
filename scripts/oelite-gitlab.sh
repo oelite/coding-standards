@@ -131,19 +131,38 @@ repo_root() {
 
 worktree_path() {
   local agent="$1"
+  local issue="${2:-}"
   local root
   root=$(repo_root)
-  echo "$root/.worktrees/$agent"
+  if [[ -n "$issue" ]]; then
+    echo "$root/.worktrees/${agent}-${issue}"
+  else
+    echo "$root/.worktrees/$agent"
+  fi
 }
 
 check_worktree_exists() {
   local agent="$1"
+  local issue="${2:-}"
   local wt_path
-  wt_path=$(worktree_path "$agent")
+  wt_path=$(worktree_path "$agent" "$issue")
   if [[ ! -d "$wt_path" ]]; then
-    echo "[ERROR] Worktree not found for agent: $agent (expected: $wt_path)" >&2
+    echo "[ERROR] Worktree not found for ${agent}${issue:+ (issue #$issue)} (expected: $wt_path)" >&2
     return 1
   fi
+}
+
+parse_worktree_id() {
+  local wt_id="$1"
+  local agent=""
+  local issue=""
+  if [[ "$wt_id" =~ ^([a-z]+)-([0-9]+)$ ]]; then
+    agent="${match[1]}"
+    issue="${match[2]}"
+  else
+    agent="$wt_id"
+  fi
+  echo "$agent $issue"
 }
 
 print_separator() {
@@ -399,7 +418,9 @@ cmd_worktree_create() {
   local agent="$1"
   local branch="$2"
   local base_branch="${3:-develop}"
-  local owner="$agent"  # Default: agent IS the owner (owner DNA)
+  local owner="$agent"
+  local issue=""
+  local no_issue=false
 
   validate_agent "$agent" || return 1
 
@@ -415,6 +436,18 @@ cmd_worktree_create() {
         owner="$2"
         shift 2
         ;;
+      --issue)
+        if [[ -z "${2:-}" ]]; then
+          echo "[ERROR] --issue requires a value (issue IID number)" >&2
+          return 1
+        fi
+        issue="$2"
+        shift 2
+        ;;
+      --no-issue)
+        no_issue=true
+        shift
+        ;;
       *)
         echo "[ERROR] Unknown option: $1" >&2
         return 1
@@ -422,7 +455,20 @@ cmd_worktree_create() {
     esac
   done
 
-  # Validate owner if specified (can be different from agent when delegating)
+  if [[ -z "$issue" && "$no_issue" == false ]]; then
+    echo "[WARN] No --issue specified. Per OElite Issue-First workflow," >&2
+    echo "       every work MUST have a GitLab issue ticket before starting." >&2
+    echo "       Create one via 'issue-create' using ISSUE-MR-TEMPLATES.md." >&2
+    echo "" >&2
+    echo "       If this work genuinely does not require an issue ticket," >&2
+    echo "       re-run with --no-issue to bypass this warning:" >&2
+    echo "" >&2
+    echo "         oelite-gitlab.sh worktree-create $agent $branch $base_branch --no-issue" >&2
+    echo "" >&2
+    echo "[ERROR] Refusing to create worktree without --issue or --no-issue." >&2
+    return 1
+  fi
+
   if [[ "$owner" != "$agent" ]]; then
     if [[ -z "${AGENT_IDS[$owner]:-}" ]]; then
       echo "[ERROR] Unknown owner: $owner" >&2
@@ -433,10 +479,14 @@ cmd_worktree_create() {
 
   local root
   root=$(repo_root)
-  local wt_path="$root/.worktrees/$agent"
+  local wt_suffix="$agent"
+  if [[ -n "$issue" ]]; then
+    wt_suffix="${agent}-${issue}"
+  fi
+  local wt_path="$root/.worktrees/$wt_suffix"
 
   if [[ -d "$wt_path" ]]; then
-    echo "[ERROR] Worktree already exists for $agent at $wt_path" >&2
+    echo "[ERROR] Worktree already exists for $wt_suffix at $wt_path" >&2
     return 1
   fi
 
@@ -455,7 +505,6 @@ cmd_worktree_create() {
   echo "Creating worktree at $wt_path..."
   git worktree add "$wt_path" "$branch"
 
-  # Ensure per-worktree git config isolation so each worktree retains its own identity
   git config extensions.worktreeConfig true
 
   local owner_name
@@ -463,17 +512,11 @@ cmd_worktree_create() {
   local owner_email
   owner_email=$(get_agent_email "$owner")
 
-  # Owner DNA: git identity = owner, not agent (written to the worktree's private config)
   git -C "$wt_path" config --worktree user.name "$owner_name"
   git -C "$wt_path" config --worktree user.email "$owner_email"
 
-  # Store ownership metadata for workflow tracking
   echo "$owner" > "$wt_path/.git-worktree-owner"
 
-  # --- Compaction-resilient scope anchor (.oe-scope) ---
-  # Written per-worktree so it survives context compaction and lets
-  # agents instantly restore their working scope by reading one file.
-  # Git ignores .oe-scope (added to .gitignore by worktree-create).
   local repo_rel_path
   repo_rel_path=$(basename "$root")
   local gitlab_project="oelite/$(git -C "$root" remote get-url origin 2>/dev/null | sed 's|.*oelite/||; s|\.git$||' || echo "unknown/$repo_rel_path")"
@@ -484,38 +527,43 @@ cmd_worktree_create() {
 # After context compaction, read this file to restore your working scope.
 AGENT=$agent
 WORKTREE=$wt_path
-WORKTREE_REL=.worktrees/$agent
+WORKTREE_REL=.worktrees/$wt_suffix
 BRANCH=$branch
 REPO=$repo_rel_path
 REPO_ROOT=$root
 GITLAB_PROJECT=$gitlab_project
 TASK_TYPE=
-ISSUE=
+ISSUE=$issue
 TASK_DESCRIPTION=
 CREATED_AT=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
 OE_SCOPE
 
-  # Ensure .oe-scope is gitignored in the worktree
   if ! grep -qx '.oe-scope' "$wt_path/.gitignore" 2>/dev/null; then
     echo '.oe-scope' >> "$wt_path/.gitignore"
   fi
 
-  # Log ownership attribution (for transparency)
   if [[ "$owner" != "$agent" ]]; then
     echo "[OK] Worktree created for executor $agent (owner: $owner)"
   else
-    echo "[OK] Worktree created for $agent"
+    echo "[OK] Worktree created for $wt_suffix"
   fi
   echo "  Path:   $wt_path"
   echo "  Branch: $branch"
   echo "  Owner:  $owner_name <$owner_email> (owner DNA)"
   echo "  Scope:  $wt_path/.oe-scope (compaction-resilient context anchor)"
+  if [[ -n "$issue" ]]; then
+    echo "  Issue:  #$issue"
+  fi
   if [[ "$owner" != "$agent" ]]; then
     echo "  Executor: $agent (using owner's GitLab identity)"
   fi
   echo ""
   echo "  To update scope after task assignment:"
-  echo "    ../../coding-standards/scripts/oelite-gitlab.sh oe-scope $agent --task-type backend-impl --issue 42 --desc 'Implement JWT refresh'"
+  if [[ -n "$issue" ]]; then
+    echo "    ../../coding-standards/scripts/oelite-gitlab.sh oe-scope $agent $issue --task-type backend-impl --desc 'Implement JWT refresh'"
+  else
+    echo "    ../../coding-standards/scripts/oelite-gitlab.sh oe-scope $agent --task-type backend-impl --desc 'Implement JWT refresh'"
+  fi
 }
 
 cmd_worktree_list() {
@@ -571,7 +619,7 @@ cmd_worktree_list() {
 }
 
 cmd_worktree_remove() {
-  local agent="$1"
+  local wt_id="$1"
   shift
 
   local delete_branch=false
@@ -582,15 +630,20 @@ cmd_worktree_remove() {
     esac
   done
 
+  local parsed
+  parsed=$(parse_worktree_id "$wt_id")
+  local agent="${parsed% *}"
+  local issue="${parsed#* }"
+
   validate_agent "$agent" || return 1
-  check_worktree_exists "$agent" || return 1
+  check_worktree_exists "$agent" "$issue" || return 1
 
   local wt_path
-  wt_path=$(worktree_path "$agent")
+  wt_path=$(worktree_path "$agent" "$issue")
   local branch
   branch=$(git -C "$wt_path" branch --show-current)
 
-  echo "Removing worktree for $agent..."
+  echo "Removing worktree for $wt_id..."
   git worktree remove "$wt_path"
 
   if $delete_branch && [[ -n "$branch" ]]; then
@@ -601,7 +654,7 @@ cmd_worktree_remove() {
     fi
   fi
 
-  echo "[OK] Worktree removed for $agent"
+  echo "[OK] Worktree removed for $wt_id"
 }
 
 cmd_mr_create() {
@@ -1134,13 +1187,18 @@ else:
 }
 
 cmd_sync() {
-  local agent="$1"
+  local wt_id="$1"
+
+  local parsed
+  parsed=$(parse_worktree_id "$wt_id")
+  local agent="${parsed% *}"
+  local issue="${parsed#* }"
 
   validate_agent "$agent" || return 1
-  check_worktree_exists "$agent" || return 1
+  check_worktree_exists "$agent" "$issue" || return 1
 
   local wt_path
-  wt_path=$(worktree_path "$agent")
+  wt_path=$(worktree_path "$agent" "$issue")
 
   echo "Fetching latest develop..."
   git -C "$wt_path" fetch origin develop --quiet
@@ -1242,14 +1300,19 @@ cmd_status() {
 }
 
 cmd_worktree_owner() {
-  local agent="$1"
+  local wt_id="$1"
   local new_owner="${2:-}"
 
+  local parsed
+  parsed=$(parse_worktree_id "$wt_id")
+  local agent="${parsed% *}"
+  local issue="${parsed#* }"
+
   validate_agent "$agent" || return 1
-  check_worktree_exists "$agent" || return 1
+  check_worktree_exists "$agent" "$issue" || return 1
 
   local wt_path
-  wt_path=$(worktree_path "$agent")
+  wt_path=$(worktree_path "$agent" "$issue")
   local owner_file="$wt_path/.git-worktree-owner"
   local current_owner
   if [[ -f "$owner_file" ]]; then
@@ -1264,7 +1327,7 @@ cmd_worktree_owner() {
     owner_name=$(get_agent_name "$current_owner")
     local owner_email
     owner_email=$(get_agent_email "$current_owner")
-    echo "Worktree Owner DNA for $agent:"
+    echo "Worktree Owner DNA for $wt_id:"
     echo "  Path:   $wt_path"
     echo "  Owner:  $owner_name <$owner_email>"
     echo "  Config: user.name=$owner_name, user.email=$owner_email"
@@ -1280,20 +1343,25 @@ cmd_worktree_owner() {
     git -C "$wt_path" config --worktree user.name "$new_owner_name"
     git -C "$wt_path" config --worktree user.email "$new_owner_email"
 
-    echo "[OK] Owner DNA updated for $agent:"
+    echo "[OK] Owner DNA updated for $wt_id:"
     echo "  Path:   $wt_path"
     echo "  New owner: $new_owner_name <$new_owner_email>"
   fi
 }
 
 cmd_oe_scope() {
-  local agent="$1"
+  local wt_id="$1"
   shift
+
+  local parsed
+  parsed=$(parse_worktree_id "$wt_id")
+  local agent="${parsed% *}"
+  local issue_from_id="${parsed#* }"
 
   validate_agent "$agent" || return 1
 
   local wt_path
-  wt_path=$(worktree_path "$agent")
+  wt_path=$(worktree_path "$agent" "$issue_from_id")
   local scope_file="$wt_path/.oe-scope"
 
   if [[ ! -f "$scope_file" ]]; then
@@ -1323,9 +1391,9 @@ cmd_oe_scope() {
     if [[ -n "$desc" ]]; then
       sed -i '' "s/^TASK_DESCRIPTION=.*/TASK_DESCRIPTION=$desc/" "$scope_file"
     fi
-    echo "[OK] Scope updated for $agent:"
+    echo "[OK] Scope updated for $wt_id:"
   else
-    echo "=== Scope for $agent ==="
+    echo "=== Scope for $wt_id ==="
   fi
 
   cat "$scope_file"
@@ -1364,35 +1432,46 @@ COMMANDS:
     Update issue status (opened or closed) as the specified agent.
     Example: oelite-gitlab.sh issue-status uranus/origin-auth 42 emma closed
 
-  worktree-create <agent> <branch> [base-branch] [--owner <team-member>]
+  worktree-create <agent> <branch> [base-branch] [--issue <iid>] [--no-issue] [--owner <team-member>]
     Create a git worktree for an agent with per-worktree identity.
     Default base-branch is develop.
-    --owner specifies the team member who owns the commit attribution (owner DNA).
-    When omitted, the agent IS the owner.
-    Example: oelite-gitlab.sh worktree-create daniel feature/US-001-auth
-    Example: oelite-gitlab.sh worktree-create sophia feature/auth --owner daniel
+    --issue <iid>: GitLab issue number. Creates .worktrees/<agent>-<issue>.
+                   Required by default (Issue-First workflow). Enables parallel
+                   same-agent worktrees for different issues.
+    --no-issue: Bypass the --issue requirement. Falls back to legacy
+                .worktrees/<agent>/ naming. Use only for work that genuinely
+                does not require an issue ticket.
+    --owner: Team member who owns commit attribution (owner DNA).
+             When omitted, the agent IS the owner.
+    Example: oelite-gitlab.sh worktree-create daniel feature/US-042-auth develop --issue 42
+    Example: oelite-gitlab.sh worktree-create sophia feature/auth --issue 15 --owner daniel
+    Example: oelite-gitlab.sh worktree-create marcus feature/spike --no-issue
 
   worktree-list
     List all active agent worktrees with branch, last commit, and sync status.
 
-   worktree-remove <agent> [--delete-branch]
-     Remove an agent's worktree. Use --delete-branch to also delete the branch.
+   worktree-remove <worktree-id> [--delete-branch]
+     Remove a worktree. <worktree-id> is either <agent> or <agent>-<issue>.
+     Use --delete-branch to also delete the branch.
      Note: MR source branch is auto-deleted by GitLab upon merge.
+     Example: oelite-gitlab.sh worktree-remove daniel-42 --delete-branch
      Example: oelite-gitlab.sh worktree-remove daniel --delete-branch
 
-  worktree-owner <agent> [new-owner]
-    View or update worktree owner DNA (commit attribution).
-    Without new-owner: displays current owner identity.
-    With new-owner: updates git config and owner metadata to the new owner.
-    Example: oelite-gitlab.sh worktree-owner daniel
-    Example: oelite-gitlab.sh worktree-owner daniel emma
+   worktree-owner <worktree-id> [new-owner]
+     View or update worktree owner DNA (commit attribution).
+     <worktree-id> is either <agent> or <agent>-<issue>.
+     Without new-owner: displays current owner identity.
+     With new-owner: updates git config and owner metadata to the new owner.
+     Example: oelite-gitlab.sh worktree-owner daniel-42
+     Example: oelite-gitlab.sh worktree-owner daniel-42 emma
 
-  oe-scope <agent> [--task-type <type>] [--issue <iid>] [--desc <text>]
-    Read or update the per-worktree .oe-scope file (compaction-resilient context anchor).
-    Without options: prints the current scope file contents.
-    With options: updates the specified fields in-place.
-    Example: oelite-gitlab.sh oe-scope daniel
-    Example: oelite-gitlab.sh oe-scope daniel --task-type backend-impl --issue 42 --desc "Implement JWT refresh"
+   oe-scope <worktree-id> [--task-type <type>] [--issue <iid>] [--desc <text>]
+     Read or update the per-worktree .oe-scope file (compaction-resilient context anchor).
+     <worktree-id> is either <agent> or <agent>-<issue>.
+     Without options: prints the current scope file contents.
+     With options: updates the specified fields in-place.
+     Example: oelite-gitlab.sh oe-scope daniel-42
+     Example: oelite-gitlab.sh oe-scope daniel-42 --task-type backend-impl --desc "Implement JWT refresh"
 
    mr-create <project-path> <agent> <source> <target> <title> [description]
      Create a merge request using the agent's PAT.
@@ -1430,9 +1509,11 @@ mr-auto-approve <project-path>
      Note: Security-sensitive MRs must be reviewed manually by Maya; architecture-critical by Marcus.
      Example: oelite-gitlab.sh mr-auto-approve oelite/helios/core
 
-sync <agent>
-     Rebase the agent's feature branch on the latest origin/develop.
+sync <worktree-id>
+     Rebase the worktree's feature branch on the latest origin/develop.
+     <worktree-id> is either <agent> or <agent>-<issue>.
      Use this to resolve conflicts before creating/updating an MR.
+     Example: oelite-gitlab.sh sync daniel-42
      Example: oelite-gitlab.sh sync daniel
 
   status
