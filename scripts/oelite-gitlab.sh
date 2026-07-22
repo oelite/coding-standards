@@ -3,7 +3,7 @@ emulate -L zsh
 set -euo pipefail
 
 SCRIPT_DIR="${0:A:h}"
-source "$SCRIPT_DIR/oelite-gitlab-env.sh" 2>/dev/null || {
+source "$SCRIPT_DIR/oelite-gitlab-env.sh" || {
   echo "[ERROR] Failed to source oelite-gitlab-env.sh" >&2
   exit 1
 }
@@ -34,10 +34,10 @@ url_encode_path() {
 get_pat() {
   local agent="$1"
   local var_name="OELITE_PAT_${agent:u}"
-  local pat="${(P)var_name}"
+  local pat="${${(P)var_name}:-}"
   if [[ -z "$pat" ]]; then
     local alias_name="OELITE_PAT_${agent[1]:u}${agent[2,-1]:l}"
-    pat="${(P)alias_name}"
+    pat="${${(P)alias_name}:-}"
   fi
   echo "$pat"
 }
@@ -68,6 +68,12 @@ api_call() {
   local endpoint="$2"
   local pat="$3"
   local data="${4:-}"
+
+  if [[ -z "$pat" ]]; then
+    _API_STATUS="401"
+    _API_RESPONSE='{"error":"PAT is empty — the token was not found in Keychain or was invalidated during validation. Run `oelite-gitlab.sh setup` to verify PAT status."}'
+    return 1
+  fi
 
   local tmpfile
   tmpfile=$(mktemp)

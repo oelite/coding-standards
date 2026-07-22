@@ -17,10 +17,10 @@ _missing=0
 
 for agent in $_agents; do
   var_name="OELITE_PAT_${agent:u}"
-  pat=$(security find-generic-password -s "oelite-gitlab-$agent" -a "oelite" -w 2>/dev/null)
+  pat=$(security find-generic-password -s "oelite-gitlab-$agent" -a "oelite" -w 2>/dev/null) || true
   if [[ -z "$pat" ]]; then
     echo "[WARN] PAT not found in Keychain for: $agent (service: oelite-gitlab-$agent, account: oelite)" >&2
-    ((_missing++))
+    _missing=$((_missing + 1))
     continue
   fi
 
@@ -33,18 +33,19 @@ for agent in $_agents; do
 
   if [[ "$_validate_pats" == "true" ]]; then
     # Validate token by calling /user. GitLab returns 401 for invalid tokens.
-    _status=$(curl -s -o /dev/null -w "%{http_code}" --header "PRIVATE-TOKEN: $pat" "$OELITE_GITLAB_API/user" 2>/dev/null)
+    _status=$(curl -s -o /dev/null -w "%{http_code}" --header "PRIVATE-TOKEN: $pat" "$OELITE_GITLAB_API/user" 2>/dev/null) || true
     if [[ "$_status" != "200" ]]; then
       echo "[FAIL] PAT for $agent is invalid or expired (HTTP $_status on /api/v4/user). Remove from Keychain and re-add." >&2
       unset "$var_name"
+      unset "$alias_name"
       _valid=false
-      ((_invalid++))
+      _invalid=$((_invalid + 1))
     fi
     unset _status
   fi
 
   if $_valid; then
-    ((_loaded++))
+    _loaded=$((_loaded + 1))
   fi
 done
 
@@ -57,4 +58,4 @@ else
   echo "[OK] $_loaded GitLab PATs loaded and validated."
 fi
 
-unset _agents _loaded _invalid _missing _validate_pats _valid agent var_name pat
+unset _agents _loaded _invalid _missing _validate_pats _valid agent var_name alias_name pat
