@@ -55,13 +55,23 @@ All identities are resolved from the single source of truth in `coding-standards
 ### 1. Worktree Creation
 
 ```bash
-# Standard case: agent = owner
-scripts/oelite-gitlab.sh worktree-create daniel feature/US-001-auth
+# Legacy mode (no issue ticket — use --no-issue)
+scripts/oelite-gitlab.sh worktree-create daniel feature/US-001-auth --no-issue
 
 # Result in worktree:
 #   git config user.name = "Daniel"
 #   git config user.email = "daniel@phanes.ltd"
 #   .git-worktree-owner = "daniel"
+#   .worktrees/daniel/  (legacy path)
+
+# Issue-keyed mode (parallel-safe — RECOMMENDED)
+scripts/oelite-gitlab.sh worktree-create daniel feature/US-042-auth-refresh --issue 42
+
+# Result in worktree:
+#   git config user.name = "Daniel"
+#   git config user.email = "daniel@phanes.ltd"
+#   .git-worktree-owner = "daniel"
+#   .worktrees/daniel-42/  (issue-keyed path — enables parallel same-agent worktrees)
 ```
 
 ### 2. Implementation

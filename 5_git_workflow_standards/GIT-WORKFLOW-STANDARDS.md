@@ -235,9 +235,25 @@ jupiter/ec-nx-01/.worktrees/sophia/
 uranus/origin-auth/.worktrees/maya/
 ```
 
-### 3.2 One Worktree Per Agent
+### 3.2 One Worktree Per Agent+Issue
 
-Each agent gets **ONE worktree at a time** per repo. If an agent needs to work on a second task in the same repo, they must finish or remove their current worktree first.
+Each agent gets **ONE worktree per issue** per repo. The worktree path includes the issue number to enable parallel work on non-blocking tickets:
+
+```
+<repo>/.worktrees/<agent>-<issue>/
+```
+
+**Examples:**
+
+```
+helios/core/.worktrees/daniel-42/       # Daniel working on issue #42
+helios/core/.worktrees/daniel-57/       # Daniel working on issue #57 (parallel)
+jupiter/ec-nx-01/.worktrees/sophia-15/  # Sophia working on issue #15
+```
+
+If an agent needs to work on a second task in the same repo, they create a **second worktree** with a different issue number. This enables parallel same-agent work without conflicts.
+
+**Legacy mode** (`--no-issue`): For work that genuinely does not require an issue ticket (spikes, experiments), use `--no-issue` to fall back to the agent-name-only path (`.worktrees/<agent>/`). Only one legacy worktree per agent per repo is allowed.
 
 ### 3.3 Per-Worktree Git Config
 
@@ -254,10 +270,10 @@ This ensures commits are attributed to the correct agent regardless of the host 
 
 ```
 1. SYNC      git checkout develop && git pull origin develop (Main dir)
-2. CREATE    scripts/oelite-gitlab.sh worktree-create <agent> <branch>
-             → Auto-generates .oe-scope (compaction-resilient context anchor)
-2.5 SCOPE    scripts/oelite-gitlab.sh oe-scope <agent> --task-type <type> --issue <iid> --desc "<desc>"
-3. WORK      cd .worktrees/<agent>/ && make changes && commit
+2. CREATE    scripts/oelite-gitlab.sh worktree-create <agent> <branch> --issue <iid>
+             → Creates .worktrees/<agent>-<iid>/ with auto-generated .oe-scope
+2.5 SCOPE    scripts/oelite-gitlab.sh oe-scope <agent>-<iid> --task-type <type> --desc "<desc>"
+3. WORK      cd .worktrees/<agent>-<iid>/ && make changes && commit
              → After compaction: cat .oe-scope to restore context
 4. PUSH      git push origin <branch>
 5. MR        scripts/oelite-gitlab.sh mr-create <project> <agent> <branch> develop "<title>"
@@ -265,7 +281,7 @@ This ensures commits are attributed to the correct agent regardless of the host 
 7. FIX       If changes requested: fix in worktree → push → re-review
 8. MERGE     Auto-merge on approval + CI green (GitLab)
 9. SYNC      git checkout develop && git pull origin develop (Main dir)
-10. CLEANUP  scripts/oelite-gitlab.sh worktree-remove <agent>
+10. CLEANUP  scripts/oelite-gitlab.sh worktree-remove <agent>-<iid>
              → .oe-scope deleted with worktree
 ```
 
@@ -337,8 +353,8 @@ git checkout develop
 # make changes...
 
 # CORRECT - agent works in worktree, pushes, creates MR
-scripts/oelite-gitlab.sh worktree-create daniel feature/US-001-auth-token-refresh
-cd .worktrees/daniel/
+scripts/oelite-gitlab.sh worktree-create daniel feature/US-001-auth-token-refresh --issue 42
+cd .worktrees/daniel-42/
 # make changes, commit...
 git push origin feature/US-001-auth-token-refresh
 # Then create MR via GitLab (auto-merges on approval + CI green)
@@ -481,11 +497,11 @@ source scripts/oelite-gitlab-env.sh
 # 2. Sync main develop with remote (start of task)
 git checkout develop && git pull origin develop
 
-# 3. Create worktree
-scripts/oelite-gitlab.sh worktree-create daniel feature/US-001-auth-token-refresh
+# 3. Create worktree (replace 42 with actual issue number)
+scripts/oelite-gitlab.sh worktree-create daniel feature/US-001-auth-token-refresh --issue 42
 
 # 4. Work in the worktree
-cd .worktrees/daniel/
+cd .worktrees/daniel-42/
 # ... edit files, commit ...
 
 # 5. Push feature branch to remote
@@ -499,7 +515,7 @@ scripts/oelite-gitlab.sh mr-create <project> daniel feature/US-001-auth-token-re
 
 # 8. After MR approved + CI green: GitLab auto-merges
 # Clean up worktree
-scripts/oelite-gitlab.sh worktree-remove daniel
+scripts/oelite-gitlab.sh worktree-remove daniel-42
 
 # 9. Sync local develop for next task
 git checkout develop && git pull origin develop
@@ -823,26 +839,36 @@ scripts/oelite-gitlab.sh issue-comment oelite/helios/core 42 daniel "Implementat
 
 | Command | Description |
 |---------|-------------|
-| `scripts/oelite-gitlab.sh worktree-create <agent> <branch> [base]` | Create worktree for an agent (auto-generates `.oe-scope`) |
+| `scripts/oelite-gitlab.sh worktree-create <agent> <branch> [base] [--issue <iid>] [--no-issue]` | Create worktree (issue-keyed or legacy) |
 | `scripts/oelite-gitlab.sh worktree-list` | List all active worktrees in the current repo |
-| `scripts/oelite-gitlab.sh worktree-remove <agent>` | Remove an agent's worktree |
-| `scripts/oelite-gitlab.sh oe-scope <agent> [--task-type T] [--issue I] [--desc D]` | Read or update per-worktree `.oe-scope` context anchor |
+| `scripts/oelite-gitlab.sh worktree-remove <worktree-id>` | Remove a worktree (worktree-id = agent or agent-issue) |
+| `scripts/oelite-gitlab.sh oe-scope <worktree-id> [--task-type T] [--issue I] [--desc D]` | Read or update per-worktree `.oe-scope` context anchor |
 
 **Parameters:**
 
 - `<agent>`: Agent name (e.g., `daniel`, `sophia`)
 - `<branch>`: Feature branch name (e.g., `feature/US-001-auth-token-refresh`)
 - `[base]`: Base branch to create from (default: `develop`)
+- `--issue <iid>`: GitLab issue number. Required by default. Creates `.worktrees/<agent>-<iid>/`
+- `--no-issue`: Bypass issue requirement. Falls back to legacy `.worktrees/<agent>/`
+- `<worktree-id>`: Either `<agent>` (legacy) or `<agent>-<issue>` (issue-keyed)
 
 **Examples:**
 
 ```bash
-scripts/oelite-gitlab.sh worktree-create daniel feature/US-001-auth-token-refresh
-scripts/oelite-gitlab.sh worktree-create sophia feature/US-015-checkout-payment-flow develop
+# Issue-keyed (parallel-safe):
+scripts/oelite-gitlab.sh worktree-create daniel feature/US-042-auth --issue 42
+scripts/oelite-gitlab.sh worktree-create sophia feature/US-015-checkout develop --issue 15
+scripts/oelite-gitlab.sh worktree-remove daniel-42
+
+# Legacy mode (no issue ticket):
+scripts/oelite-gitlab.sh worktree-create marcus feature/spike --no-issue
+
+# Scope management:
+scripts/oelite-gitlab.sh oe-scope daniel-42
+scripts/oelite-gitlab.sh oe-scope daniel-42 --task-type backend-impl --desc "JWT refresh"
+scripts/oelite-gitlab.sh sync daniel-42
 scripts/oelite-gitlab.sh worktree-list
-scripts/oelite-gitlab.sh worktree-remove daniel
-scripts/oelite-gitlab.sh oe-scope daniel
-scripts/oelite-gitlab.sh oe-scope daniel --task-type backend-impl --issue 42 --desc "Implement JWT refresh"
 ```
 
 ### 9.4 Sync & Merge Operations
@@ -1221,7 +1247,7 @@ scripts/oelite-gitlab.sh issues oelite/uranus/origin-auth
 # ✅ CORRECT - Use the official tool (project path = oelite/<family>/<repo>)
 scripts/oelite-gitlab.sh mr-list oelite/uranus/origin-auth
 scripts/oelite-gitlab.sh issues oelite/helios/core --assignee daniel
-scripts/oelite-gitlab.sh worktree-create daniel feature/US-001-auth
+scripts/oelite-gitlab.sh worktree-create daniel feature/US-001-auth --issue 42
 
 # ❌ WRONG - Manual curl commands with incorrect PAT retrieval
 PAT=$(security find-generic-password -s GitLab-PAT -a daniel.phanes -w)  # Wrong service name!
