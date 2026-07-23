@@ -68,6 +68,58 @@ To install:
 - [ ] **AC-002**: GIVEN <context> WHEN <action> THEN <observable outcome>
 - [ ] **AC-003**: GIVEN <context> WHEN <action> THEN <observable outcome>
 
+## Testing Strategy
+- [ ] **Unit tests**: Cover service/business logic layer
+- [ ] **Integration tests**: Cover API endpoints + data layer against real Docker infra
+- [ ] **E2E tests** (mandatory if frontend-facing): Cover user journeys via Playwright
+- [ ] **No mock/fake data**: All tests use real infrastructure (per OElite standards)
+- [ ] **Edge cases covered**: Error states, loading states, empty states, permission boundaries
+
+## E2E Test Requirements (Mandatory for UI / User-Journey Tasks)
+
+If this feature involves **UI components, user interactions, or multi-step workflows**, the following E2E coverage is **mandatory**:
+
+### API Integration
+- [ ] Request payload verification against expected schema
+- [ ] Response data mapping correctly renders in UI
+- [ ] API error handling displays user-friendly messages
+- [ ] Loading states during API calls
+- [ ] Network verification via Playwright `page.route()`
+
+### UI Layout & Design
+- [ ] Responsive breakpoints: mobile (375px), tablet (768px), desktop (1024px+)
+- [ ] Design token compliance (colors, spacing, typography via CSS vars / tailwind tokens)
+- [ ] Component library compliance (Shadcn/ui or equivalent — no reinvented primitives)
+- [ ] Accessibility: ARIA labels, roles, focus states, keyboard navigation
+
+### Interactive Elements
+- [ ] All button/link actions trigger expected outcomes
+- [ ] Client-side form validation displays correctly
+- [ ] Server-side validation errors display in UI
+- [ ] Loading → success/error → empty state transitions
+
+### Full-Stack Journeys
+- [ ] Data persists across page refreshes
+- [ ] Role-based access control enforced (if applicable)
+- [ ] Multi-step workflows: create → edit → delete round-trip
+- [ ] UI changes reflect in database after API calls
+- [ ] Login/logout/session timeout behaviors (if auth-gated)
+
+### E2E Evidence
+- [ ] Playwright execution output (all tests pass)
+- [ ] Screenshots/videos for critical user journeys
+- [ ] No JS errors/warnings in browser console
+- [ ] Each E2E test maps to a specific AC (US-XXX/AC-YYY)
+
+**Failure Condition**: If ANY E2E requirement above is not met, the implementation is **INCOMPLETE** and the MR MUST be rejected.
+
+## Implementation Quality Requirements
+- [ ] **NO stub implementations**: Every method has complete logic (no `NotImplementedException`, empty bodies, or `// TODO` placeholders)
+- [ ] **NO simplified implementations**: All edge cases, error flows, validation, and business rules implemented per AC
+- [ ] **NO temporary quick-fixes**: All solutions are production-ready (no "quick fix", "workaround", "hack" comments)
+- [ ] **NO mock/fake/placeholder data**: All data from real APIs/databases (no hardcoded test data in production code)
+- [ ] **Full test coverage**: Unit + integration + E2E tests verify all acceptance criteria
+
 ## Source References
 - User Story: `docs/business/user-stories/US-<NNN>-<feature>.md`
 - BRD: FR-<NNN>
@@ -171,10 +223,17 @@ All acceptance criteria MUST be verified against source code per [AC-VERIFICATIO
 
 ## Verification
 - [ ] Bug no longer reproducible with steps above
-- [ ] Unit test added
+- [ ] Unit test added (covers the specific defect)
 - [ ] Integration test added (if data-layer related)
-- [ ] E2E test added (if user-facing)
+- [ ] E2E test added (if user-facing — mandatory for UI bug fixes)
 - [ ] No regressions in related functionality
+
+## Testing Strategy
+- [ ] **Regression test**: A test that reproduces the original bug and verifies the fix
+- [ ] **Unit tests**: Cover the fixed logic path
+- [ ] **Integration tests**: If the bug spans API ↔ data layer
+- [ ] **E2E tests** (mandatory if UI-facing): Verify the user journey that was broken now works
+- [ ] **Edge cases**: Test around the boundary conditions that triggered the bug
 
 ## Related Issues
 - Caused by: #<NNN>
@@ -203,6 +262,22 @@ All acceptance criteria MUST be verified against source code per [AC-VERIFICATIO
 - [ ] <Criterion 1>
 - [ ] <Criterion 2>
 - [ ] <Criterion 3>
+
+## Testing Strategy
+- [ ] **Unit tests**: Cover service/business logic layer
+- [ ] **Integration tests**: Cover API endpoints + data layer (if applicable)
+- [ ] **E2E tests** (mandatory if frontend-facing): Cover user journeys
+- [ ] **Edge cases covered**: Error paths, boundary conditions, permission scenarios
+
+## E2E Test Requirements (Mandatory for UI / User-Journey Tasks)
+
+If this task involves **UI components, user interactions, or multi-step workflows**, the E2E coverage from the Feature template applies. See [Feature template](#2-issue-template-feature) for the full E2E checklist.
+
+## Implementation Quality Requirements
+- [ ] **NO stub implementations**: Every method has complete logic
+- [ ] **NO simplified implementations**: All edge cases and validation implemented
+- [ ] **NO temporary quick-fixes**: Production-ready only
+- [ ] **NO mock/fake/placeholder data**: Real APIs/databases only
 
 ## Source References
 - User Story: `docs/business/user-stories/US-<NNN>-<feature>.md`
@@ -291,6 +366,7 @@ Closes #<issue-iid>
 - [ ] **State management tests**: Cache invalidation, optimistic updates, stale data handling, error boundary in cache
 - [ ] **Playwright evidence captured**: Screenshots/videos for critical journeys, network logs, console verification
 - [ ] **Coverage mapping**: Each E2E test maps to user story acceptance criteria (US-XXX/AC-YYY)
+- [ ] **Console log verification**: No JS errors or warnings in browser console during test execution
 
 **REVIEWER MANDATE**: If ANY stub/fake/simplified/temporary implementation is detected, the MR MUST be rejected with specific citations. Approval without verifying full implementation is a code review failure.
 
@@ -362,5 +438,6 @@ Every OElite GitLab project MUST have the following labels:
 
 | Date | Author | Version | Changes |
 |------|--------|---------|---------|
+| 2026-07-23 | Sisyphus | 1.2.0 | Added Testing Strategy, E2E Test Requirements, and Implementation Quality Requirements to Feature template; added Testing Strategy to Bug template; added Testing Strategy + Implementation Quality Requirements to Task template; added console log verification to MR E2E checklist |
 | 2026-07-22 | Orchestrator / Isabella | 1.1.0 | Added AC verification checklist from AC-VERIFICATION-PROCESS.md to all templates |
 | 2026-06-29 | Emma / Isabella | 1.0.0 | Created dedicated ISSUE-MR-TEMPLATES.md for GitLab issue and MR templates |
