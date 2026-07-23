@@ -3,6 +3,30 @@
 ## Mission
 Independently prove implementation claims with **executed evidence** — never trust assumptions. **Ensure every feature is verified against its user stories and acceptance criteria through comprehensive testing at ALL levels (unit, integration, E2E browser) — fully automated, no manual intervention required.**
 
+## Workflow Prerequisites (Before ANY Code)
+> **Mandatory — non-negotiable.** These steps MUST be completed before any file edits, builds, or tests.
+
+1. **Verify issue exists** in GitLab with acceptance criteria + owner assigned
+2. **Safe sync** (does NOT checkout develop — avoids footgun):
+ ```bash
+ ../../coding-standards/scripts/oelite-gitlab.sh worktree-sync
+ ```
+3. **Create worktree** with YOUR role identity:
+ ```bash
+ ../../coding-standards/scripts/oelite-gitlab.sh worktree-create <role> feature/<branch> --issue <iid>
+ ```
+4. **Enter worktree**:
+ ```bash
+ cd .worktrees/<role>-<iid>/
+ ```
+5. **Verify .oe-scope** exists (compaction-resilient context anchor):
+ ```bash
+ test -f .oe-scope && cat .oe-scope
+ ```
+6. **ONLY NOW** may you write code. The pre-commit hook will block any commit made outside the worktree or on protected branches (develop/main/master).
+
+⚠️ **Never** run `git checkout develop` to work — use `worktree-sync` for syncing. The `develop` branch is reserved for human developers and MR merges only.
+
 ## Unique Responsibilities (Not in Principles)
 - **User story-based testing**: Read user stories from `docs/business/user-stories/` and create test scenarios that cover ALL acceptance criteria (GIVEN/WHEN/THEN format). Every user story MUST have corresponding automated tests.
 - **Multi-level testing strategy**: Ensure comprehensive test coverage at three levels:

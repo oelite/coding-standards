@@ -1,0 +1,91 @@
+#!/bin/zsh
+# OElite Pre-Commit Hook — Worktree Enforcement
+#
+# This hook is installed into every worktree created by `oelite-gitlab.sh worktree-create`.
+# It blocks commits that would violate the worktree isolation protocol:
+#   1. Rejects commits made outside a .worktrees/ directory (agents must use worktrees)
+#   2. Rejects commits made on protected branches (develop, main, master) by AI agents
+#   3. Warns if .oe-scope file is missing (compaction-resilience guard)
+#
+# Human developers can bypass this hook by setting the env var OELITE_HUMAN=1
+# or by using `git commit --no-verify` (but this is discouraged for agents).
+#
+# Installation: Automatic via `oelite-gitlab.sh worktree-create`
+# Manual:       cp scripts/hooks/pre-commit .git/hooks/pre-commit && chmod +x .git/hooks/pre-commit
+
+set -euo pipefail
+
+# ── Allow humans to bypass ──
+if [[ -n "${OELITE_HUMAN:-}" ]]; then
+  exit 0
+fi
+
+# ── Get the git directory (worktree-safe) ──
+git_dir=$(git rev-parse --git-dir 2>/dev/null) || exit 0
+common_dir=$(git rev-parse --git-common-dir 2>/dev/null) || exit 0
+toplevel=$(git rev-parse --show-toplevel 2>/dev/null) || exit 0
+
+# ── Check 1: Reject commits outside .worktrees/ ──
+# If the toplevel is NOT inside a .worktrees/ path, this is the main directory.
+# AI agents must NEVER commit in the main directory.
+if [[ "$toplevel" != *"/.worktrees/"* ]]; then
+  echo "❌ OElite Worktree Guard: COMMIT BLOCKED" >&2
+  echo "" >&2
+  echo "  You are attempting to commit in the main repository directory." >&2
+  echo "  AI agents MUST work in isolated git worktrees, never in the main dir." >&2
+  echo "" >&2
+  echo "  To fix:" >&2
+  echo "    1. Create a worktree:" >&2
+  echo "       ../../coding-standards/scripts/oelite-gitlab.sh worktree-create <agent> feature/<branch> --issue <iid>" >&2
+  echo "    2. cd into the worktree:" >&2
+  echo "       cd .worktrees/<agent>-<iid>/" >&2
+  echo "    3. Re-commit your changes there." >&2
+  echo "" >&2
+  echo "  If you are a HUMAN developer, bypass with:" >&2
+  echo "    OELITE_HUMAN=1 git commit ..." >&2
+  echo "  or use --no-verify (not recommended for agents)." >&2
+  exit 1
+fi
+
+# ── Check 2: Reject commits on protected branches ──
+current_branch=$(git branch --show-current 2>/dev/null) || exit 0
+
+case "$current_branch" in
+  develop|main|master)
+    echo "❌ OElite Branch Guard: COMMIT BLOCKED" >&2
+    echo "" >&2
+    echo "  You are on branch '$current_branch' — a PROTECTED branch." >&2
+    echo "  AI agents must NEVER commit directly on develop, main, or master." >&2
+    echo "  All code enters develop through GitLab Merge Requests (MR-Centric Model)." >&2
+    echo "" >&2
+    echo "  To fix:" >&2
+    echo "    1. Create a feature branch and worktree:" >&2
+    echo "       ../../coding-standards/scripts/oelite-gitlab.sh worktree-create <agent> feature/US-XXX-description --issue <iid>" >&2
+    echo "    2. cd into the worktree:" >&2
+    echo "       cd .worktrees/<agent>-<iid>/" >&2
+    echo "    3. Commit on the feature branch, push, and create an MR." >&2
+    echo "" >&2
+    echo "  If you are a HUMAN developer, bypass with:" >&2
+    echo "    OELITE_HUMAN=1 git commit ..." >&2
+    exit 1
+    ;;
+esac
+
+# ── Check 3: Warn if .oe-scope is missing (non-blocking) ──
+if [[ ! -f "$toplevel/.oe-scope" ]]; then
+  echo "⚠️  OElite Scope Guard: .oe-scope not found" >&2
+  echo "" >&2
+  echo "  This worktree does not have a .oe-scope file." >&2
+  echo "  This file is your compaction-resilient context anchor." >&2
+  echo "  If you lost context after compaction, you may be in the wrong worktree." >&2
+  echo "" >&2
+  echo "  To verify your worktree:" >&2
+  echo "    test -f .oe-scope && cat .oe-scope" >&2
+  echo "  To recreate .oe-scope:" >&2
+  echo "    ../../coding-standards/scripts/oelite-gitlab.sh oe-scope <agent>-<iid> --task-type <type> --desc '<description>'" >&2
+  echo "" >&2
+  echo "  Commit will proceed, but verify you are in the correct worktree." >&2
+fi
+
+# ── All checks passed ──
+exit 0

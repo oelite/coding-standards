@@ -247,6 +247,7 @@ scripts/oelite-gitlab.sh worktree-create daniel feature/US-001-auth
 | `issue-comment <project> <iid> <agent> <msg>` | Comment on issue |
 | `issue-status <project> <iid> <agent> <opened\|closed>` | Open or close issue |
 | `worktree-create <agent> <branch> [base]` | Create worktree with agent identity |
+| `worktree-sync` | Safe sync — updates local develop WITHOUT checking it out (avoids footgun) |
 | `worktree-list` | List active worktrees |
 | `worktree-remove <agent>` | Remove worktree after MR merged |
 | `mr-create <project> <agent> <src> <tgt> <title> [desc]` | Create MR |
@@ -262,7 +263,7 @@ scripts/oelite-gitlab.sh worktree-create daniel feature/US-001-auth
 
 ```bash
 # ── Phase 1: Initialization ──
-git checkout develop && git pull origin develop
+scripts/oelite-gitlab.sh worktree-sync    # Safe sync — does NOT checkout develop
 scripts/oelite-gitlab.sh worktree-create <agent> <branch>
 cd .worktrees/<agent>/
 
@@ -278,11 +279,11 @@ scripts/oelite-gitlab.sh mr-create <project> <agent> <branch> develop "<title>"
 
 # ── Phase 5: After MR Approved + CI Green ──
 scripts/oelite-gitlab.sh worktree-remove <agent>
-git checkout develop && git pull origin develop
+scripts/oelite-gitlab.sh worktree-sync
 ```
 
 **Mandatory rules for agents:**
-1. **Sync First** before creating worktree
+1. **Sync First** before creating worktree (use `worktree-sync` — safe, no checkout)
 2. **Push Feature Branch** before creating MR
 3. **Create MR** targeting `develop`
 4. **No Local Merges** — all code enters `develop` through reviewed MRs

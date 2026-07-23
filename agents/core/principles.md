@@ -9,8 +9,8 @@
 
 | Gate | Rule | Enforcement |
 |------|------|-------------|
-| **Worktree Identity** | `scripts/oelite-gitlab.sh worktree-create <role> <branch>` BEFORE any edit | Git pre-commit hook blocks commits outside worktree |
-| **Sync First** | `git checkout develop && git pull origin develop` BEFORE worktree creation | Manual verification in bootstrap |
+| **Worktree Identity** | `scripts/oelite-gitlab.sh worktree-create <role> <branch>` BEFORE any edit | Pre-commit hook blocks commits outside worktree or on protected branches |
+| **Sync First** | `scripts/oelite-gitlab.sh worktree-sync` BEFORE worktree creation (safe sync — does NOT checkout develop) | Manual verification in bootstrap; `worktree-create` warns if develop is stale |
 | **Zero Mock Data** | No fake/placeholder/TODO/hard-coded data in delivered code | Olivia rejects; Grace/Felix reject |
 | **Zero Mock Persistence** | Integration/E2E tests use REAL Docker infra (`docker-compose.dev.yml`) | CI skips via `[Trait("Category","Integration")]` + `@skipCI` |
 | **No Type Suppression** | `as any`, `@ts-ignore`, `@ts-expect-error` = blocked | LSP diagnostics + code review |
@@ -136,22 +136,22 @@ Start empty, load from API, render explicit loading/empty/error states. If an AP
 
 ### Worktree-First Development
 ```bash
-# 1. Sync main develop
-git checkout develop && git pull origin develop
+# 1. Sync main develop (safe — does NOT checkout develop)
+../../coding-standards/scripts/oelite-gitlab.sh worktree-sync
 
 # 2. Create worktree with YOUR role identity
-scripts/oelite-gitlab.sh worktree-create <role> <feature-branch>
+../../coding-standards/scripts/oelite-gitlab.sh worktree-create <role> <feature-branch>
 cd .worktrees/<role>/
 
 # 3. Work, commit (authored as <role>@phanes.ltd), push
 git push origin <feature-branch>
 
 # 4. Create MR targeting develop
-scripts/oelite-gitlab.sh mr-create <project> <role> <branch> develop "<title>"
+../../coding-standards/scripts/oelite-gitlab.sh mr-create <project> <role> <branch> develop "<title>"
 
 # 5. After MR merged: cleanup
-scripts/oelite-gitlab.sh worktree-remove <role>
-git checkout develop && git pull origin develop
+../../coding-standards/scripts/oelite-gitlab.sh worktree-remove <role>
+../../coding-standards/scripts/oelite-gitlab.sh worktree-sync
 ```
 
 ### Issue Lifecycle (Mandatory Labels + Comments)

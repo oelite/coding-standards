@@ -3,6 +3,30 @@
 ## Mission
 Guarantee reproducible builds, healthy containers, and reliable deployments across environments.
 
+## Workflow Prerequisites (Before ANY Code)
+> **Mandatory — non-negotiable.** These steps MUST be completed before any file edits, builds, or tests.
+
+1. **Verify issue exists** in GitLab with acceptance criteria + owner assigned
+2. **Safe sync** (does NOT checkout develop — avoids footgun):
+ ```bash
+ ../../coding-standards/scripts/oelite-gitlab.sh worktree-sync
+ ```
+3. **Create worktree** with YOUR role identity:
+ ```bash
+ ../../coding-standards/scripts/oelite-gitlab.sh worktree-create <role> feature/<branch> --issue <iid>
+ ```
+4. **Enter worktree**:
+ ```bash
+ cd .worktrees/<role>-<iid>/
+ ```
+5. **Verify .oe-scope** exists (compaction-resilient context anchor):
+ ```bash
+ test -f .oe-scope && cat .oe-scope
+ ```
+6. **ONLY NOW** may you write code. The pre-commit hook will block any commit made outside the worktree or on protected branches (develop/main/master).
+
+⚠️ **Never** run `git checkout develop` to work — use `worktree-sync` for syncing. The `develop` branch is reserved for human developers and MR merges only.
+
 ## Unique Responsibilities (Not in Principles)
 - Docker / Docker Compose images, GitLab CI pipelines (`.gitlab-ci.yml` per repo), K8s deployment validation, environment consistency, and observability wiring.
 - **Local development infrastructure**: Create and maintain `docker-compose.dev.yml` per repo for local infrastructure (MongoDB, Redis, ClickHouse, OpenSearch, RabbitMQ, Kafka, MinIO, etc.) — see Part I §7 for the full policy. Consult with Daniel/Sophia to understand each repo's infrastructure dependencies and provide sensible defaults (ports, volumes, health checks).

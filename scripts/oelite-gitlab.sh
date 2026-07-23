@@ -496,6 +496,17 @@ cmd_worktree_create() {
     return 1
   fi
 
+  # ── Check if local develop is stale (sync warning) ──
+  if git show-ref --verify --quiet "refs/remotes/origin/develop" 2>/dev/null; then
+    local behind_count
+    behind_count=$(git rev-list --left-right --count "develop...origin/develop" 2>/dev/null | awk '{print $2}' || echo "0")
+    if [[ "$behind_count" -gt 0 ]]; then
+      echo "[WARN] Local develop is $behind_count commits behind origin/develop" >&2
+      echo "       Recommend: oelite-gitlab.sh worktree-sync" >&2
+      echo "       Or: git fetch origin develop:develop" >&2
+    fi
+  fi
+
   echo "Fetching latest from origin..."
   git fetch origin --quiet
 
@@ -548,6 +559,18 @@ OE_SCOPE
     echo '.oe-scope' >> "$wt_path/.gitignore"
   fi
 
+  # ── Install pre-commit hook (worktree enforcement) ──
+  local hook_src="$SCRIPT_DIR/hooks/pre-commit"
+  local hook_dst="$wt_path/.git/hooks/pre-commit"
+  if [[ -f "$hook_src" ]]; then
+    mkdir -p "$(dirname "$hook_dst")"
+    cp "$hook_src" "$hook_dst"
+    chmod +x "$hook_dst"
+    echo "  Hook:   pre-commit hook installed (worktree + branch guard)"
+  else
+    echo "  [WARN] Pre-commit hook source not found at: $hook_src" >&2
+  fi
+
   if [[ "$owner" != "$agent" ]]; then
     echo "[OK] Worktree created for executor $agent (owner: $owner)"
   else
@@ -569,6 +592,49 @@ OE_SCOPE
     echo "    ../../coding-standards/scripts/oelite-gitlab.sh oe-scope $agent $issue --task-type backend-impl --desc 'Implement JWT refresh'"
   else
     echo "    ../../coding-standards/scripts/oelite-gitlab.sh oe-scope $agent --task-type backend-impl --desc 'Implement JWT refresh'"
+  fi
+  echo ""
+  echo "  ⚠️  IMPORTANT: After sync, do NOT work in the main directory."
+  echo "     Always cd into the worktree: cd .worktrees/$wt_suffix/"
+  echo "     The pre-commit hook will block commits outside the worktree."
+}
+
+cmd_worktree_sync() {
+  # ── Safe sync: updates local develop without checking it out ──
+  # Replaces the dangerous pattern: git checkout develop && git pull origin develop
+  # This avoids the footgun of switching to develop and then forgetting to switch back.
+  local root
+  root=$(repo_root)
+
+  echo "Syncing local develop from origin/develop (without switching branch)..."
+  echo ""
+
+  # Check if we're in a worktree — if so, warn
+  if [[ "$root" == *"/.worktrees/"* ]]; then
+    echo "[WARN] You are inside a worktree. The sync command updates the main"
+    echo "       directory's develop branch. Run this from the main repo root."
+    echo "       Current worktree: $root"
+    echo "       To sync this worktree's feature branch, use: oelite-gitlab.sh sync <agent>"
+    echo ""
+    echo "       Continuing anyway..."
+    echo ""
+  fi
+
+  # Fetch develop from origin and update local ref without checking out
+  git fetch origin develop:develop --quiet 2>&1 || {
+    echo "[ERROR] Failed to sync develop. Check network or origin connectivity." >&2
+    return 1
+  }
+
+  echo "[OK] Local develop synced to origin/develop"
+  echo "  Current HEAD: $(git log -1 --oneline develop 2>/dev/null)"
+
+  # Check if we're out of date vs the main directory
+  local behind_count
+  behind_count=$(git rev-list --left-right --count "develop...origin/develop" 2>/dev/null | awk '{print $2}' || echo "0")
+  if [[ "$behind_count" -gt 0 ]]; then
+    echo "  [WARN] Local develop is still $behind_count commits behind."
+    echo "  Re-run: oelite-gitlab.sh worktree-sync"
   fi
 }
 
@@ -1451,9 +1517,16 @@ COMMANDS:
              When omitted, the agent IS the owner.
     Example: oelite-gitlab.sh worktree-create daniel feature/US-042-auth develop --issue 42
     Example: oelite-gitlab.sh worktree-create sophia feature/auth --issue 15 --owner daniel
-    Example: oelite-gitlab.sh worktree-create marcus feature/spike --no-issue
+ Example: oelite-gitlab.sh worktree-create marcus feature/spike --no-issue
 
-  worktree-list
+ worktree-sync
+ Safe sync: updates local develop from origin WITHOUT checking it out.
+ Replaces the dangerous pattern: git checkout develop && git pull origin develop
+ This avoids the footgun of switching to develop and then accidentally working there.
+ Run this BEFORE worktree-create to ensure you branch from latest code.
+ Example: oelite-gitlab.sh worktree-sync
+
+ worktree-list
     List all active agent worktrees with branch, last commit, and sync status.
 
    worktree-remove <worktree-id> [--delete-branch]
@@ -1553,8 +1626,9 @@ case "$command" in
   issue-assign)   cmd_issue_assign "$@" ;;
   issue-comment)  cmd_issue_comment "$@" ;;
   issue-status)   cmd_issue_status "$@" ;;
-  worktree-create) cmd_worktree_create "$@" ;;
-  worktree-list)  cmd_worktree_list "$@" ;;
+ worktree-create) cmd_worktree_create "$@" ;;
+ worktree-sync) cmd_worktree_sync "$@" ;;
+ worktree-list) cmd_worktree_list "$@" ;;
   worktree-remove) cmd_worktree_remove "$@" ;;
   mr-create)      cmd_mr_create "$@" ;;
   mr-list)        cmd_mr_list "$@" ;;

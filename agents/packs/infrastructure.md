@@ -3,6 +3,30 @@
 ## Who Loads This
 Ethan (primary), Marcus (architecture review)
 
+## Workflow Prerequisites (Before ANY Code)
+> **Mandatory — non-negotiable.** These steps MUST be completed before any file edits, builds, or tests.
+
+1. **Verify issue exists** in GitLab with acceptance criteria + owner assigned
+2. **Safe sync** (does NOT checkout develop — avoids footgun):
+   ```bash
+   ../../coding-standards/scripts/oelite-gitlab.sh worktree-sync
+   ```
+3. **Create worktree** with YOUR role identity:
+   ```bash
+   ../../coding-standards/scripts/oelite-gitlab.sh worktree-create <role> feature/<branch> --issue <iid>
+   ```
+4. **Enter worktree**:
+   ```bash
+   cd .worktrees/<role>-<iid>/
+   ```
+5. **Verify .oe-scope** exists (compaction-resilient context anchor):
+   ```bash
+   test -f .oe-scope && cat .oe-scope
+   ```
+6. **ONLY NOW** may you write code. The pre-commit hook will block any commit made outside the worktree or on protected branches (develop/main/master).
+
+⚠️ **Never** run `git checkout develop` to work — use `worktree-sync` for syncing. The `develop` branch is reserved for human developers and MR merges only.
+
 ## Standards to Read (via tools)
 - `coding-standards/1_dotNet_coding_standards/05,11`
 - `coding-standards/5_git_workflow_standards/GIT-WORKFLOW-STANDARDS.md`

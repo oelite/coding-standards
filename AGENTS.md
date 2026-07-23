@@ -54,7 +54,8 @@ MY_SESSION_TYPE = "<primary|subagent|continued>"
 ```bash
 # From INSIDE the target repo (after Step 0 cd):
 source ../../coding-standards/scripts/oelite-gitlab-env.sh
-git checkout develop && git pull origin develop
+# Safe sync — updates local develop WITHOUT checking it out (avoids footgun)
+../../coding-standards/scripts/oelite-gitlab.sh worktree-sync
 ../../coding-standards/scripts/oelite-gitlab.sh worktree-create "$MY_ROLE" "feature/<branch>" --issue "<iid>"
 # Verify owner DNA (see coding-standards/5_git_workflow_standards/WORKTREE-OWNER-DNA.md)
 git -C ".worktrees/$MY_ROLE-<iid>" config user.email  # Must be "$MY_ROLE@phanes.ltd"
@@ -238,7 +239,9 @@ MANDATORY: Read .oe-scope in your worktree to restore full task context after co
 
 - ✅ **Issue-First**: No work begins (no worktree, no code, no exploration) until a GitLab issue ticket exists with full task elaboration (goals, acceptance criteria, scope, dependencies, assigned owner) per `ISSUE-MR-TEMPLATES.md`. Bootstrap refuses to proceed without an issue IID.
 - ✅ Worktree identity via `scripts/oelite-gitlab.sh worktree-create`
-- ✅ `develop` sync before worktree creation
+- ✅ `develop` sync before worktree creation (use `worktree-sync` — safe sync that does NOT checkout develop)
+- ✅ **Pre-commit hook enforcement**: Hook blocks commits outside `.worktrees/` and on protected branches (`develop`, `main`, `master`). Humans bypass with `OELITE_HUMAN=1`. Installed automatically by `worktree-create`.
+- ✅ **Protected branches**: `develop` and `main` are for MR merges only. AI agents must NEVER commit directly on them. GitLab protected branches should be configured server-side as a second layer of defense.
 - ✅ Zero mock data
 - ✅ Zero mock persistence — real Docker infra for tests
 - ✅ No `as any`, `@ts-ignore`, `@ts-expect-error`
@@ -286,6 +289,7 @@ Always pass the full GitLab project path (`oelite/<family>/<repo>`) to `scripts/
 | `issue-assign <project> <iid> <agent>` | Assign issue to agent |
 | `issue-comment <project> <iid> <agent> <msg>` | Comment on issue as agent |
 | `issue-status <project> <iid> <agent> <opened|closed>` | Open or close issue as agent |
+| `worktree-sync` | Safe sync — updates local develop WITHOUT checking it out (avoids footgun) |
 | `worktree-create <agent> <branch> [base] [--issue <iid>] [--no-issue]` | Create worktree (issue-keyed for parallel same-agent work, or legacy) |
 | `worktree-list` | List active worktrees |
 | `worktree-remove <worktree-id>` | Remove worktree (worktree-id = agent or agent-issue) |

@@ -25,7 +25,7 @@ Before ANY task begins — including research, exploration, planning, or code re
 
 ```bash
 # HARD GATE — execute before any task, including reading code or creating a worktree
-git checkout develop && git pull origin develop
+../../coding-standards/scripts/oelite-gitlab.sh worktree-sync
 ```
 
 ### Why This Exists
@@ -40,10 +40,10 @@ When agents push feature branches and create MRs, they need to branch from the l
 
 | Scenario | Action |
 |----------|--------|
-| Starting a new task session | `git checkout develop && git pull origin develop` — mandatory first step |
+| Starting a new task session | `../../coding-standards/scripts/oelite-gitlab.sh worktree-sync` — safe sync, does NOT checkout develop |
 | Switching between tasks | Re-sync before creating a new worktree |
-| Emma doing planning | Pull `origin/develop` before creating tasks or assigning issues |
-| Human developer working | Already on `develop` — pull before any commit |
+| Emma doing planning | Sync `develop` before creating tasks or assigning issues |
+| Human developer working | Already on `develop` — pull before any commit: `git checkout develop && git pull origin develop` |
 
 **Failure to sync before starting work means the agent branches from stale `develop`, increasing merge conflicts and rebases required.**
 
@@ -55,7 +55,7 @@ After an MR is merged into `develop` (via GitLab), the local `develop` must be s
 
 ```bash
 # After your MR is merged (or any MR is merged)
-git checkout develop && git pull origin develop
+../../coding-standards/scripts/oelite-gitlab.sh worktree-sync
 ```
 
 ### Sync Responsibilities
@@ -64,7 +64,7 @@ git checkout develop && git pull origin develop
 |------|---------------|
 | **Any agent** | MUST sync `develop` after their MR is merged and before starting a new task |
 | **Emma** (Product Coordinator) | MUST sync `develop` before starting any planning session or creating tasks |
-| **Human developers** | MUST sync `develop` before any commit or push |
+| **Human developers** | MUST sync `develop` before any commit or push (`git checkout develop && git pull origin develop`) |
 
 ### Stale `develop` Detection
 
@@ -160,6 +160,15 @@ Every team member has a unique GitLab identity. AI agents commit under the team 
 | `develop` | Integration branch. All MRs target this. | Only via merged MRs. Never direct commits. |
 | `main` | Production-ready releases. | Only via release MRs from `develop`. |
 
+### 2.1.1 Protected Branches (Server-Side Enforcement)
+
+**GitLab protected branches MUST be configured for `develop` and `main`** as a second layer of defense beyond the pre-commit hook:
+
+- `develop`: Protected against direct pushes. Only MR merges allowed. Allows force push? **No**.
+- `main`: Protected against direct pushes. Only MR merges from `develop` allowed. Allows force push? **No**.
+
+This prevents accidental direct commits even if an agent bypasses the pre-commit hook. Configure in GitLab: **Settings > Repository > Protected Branches**.
+
 ### 2.2 Feature Branches
 
 Feature branches are where all development happens. Naming convention:
@@ -210,7 +219,7 @@ review/felix-US-015-checkout-payment-flow
 6. Reviewer reviews, approves or requests changes
 7. If changes requested: agent fixes, pushes, reviewer re-reviews
 8. On approval + CI green: MR auto-merges, feature branch auto-deleted
-9. Agent syncs local develop: git checkout develop && git pull origin develop
+9. Agent syncs local develop: scripts/oelite-gitlab.sh worktree-sync
 ```
 
 ---
@@ -269,9 +278,10 @@ This ensures commits are attributed to the correct agent regardless of the host 
 ### 3.4 Worktree Lifecycle (MR-Centric Model)
 
 ```
-1. SYNC      git checkout develop && git pull origin develop (Main dir)
+1. SYNC      scripts/oelite-gitlab.sh worktree-sync (safe — does NOT checkout develop)
 2. CREATE    scripts/oelite-gitlab.sh worktree-create <agent> <branch> --issue <iid>
              → Creates .worktrees/<agent>-<iid>/ with auto-generated .oe-scope
+             → Pre-commit hook installed automatically (worktree + branch guard)
 2.5 SCOPE    scripts/oelite-gitlab.sh oe-scope <agent>-<iid> --task-type <type> --desc "<desc>"
 3. WORK      cd .worktrees/<agent>-<iid>/ && make changes && commit
              → After compaction: cat .oe-scope to restore context
@@ -280,7 +290,7 @@ This ensures commits are attributed to the correct agent regardless of the host 
 6. REVIEW    Reviewer reviews → approves or requests changes
 7. FIX       If changes requested: fix in worktree → push → re-review
 8. MERGE     Auto-merge on approval + CI green (GitLab)
-9. SYNC      git checkout develop && git pull origin develop (Main dir)
+9. SYNC      scripts/oelite-gitlab.sh worktree-sync (prepare for next task)
 10. CLEANUP  scripts/oelite-gitlab.sh worktree-remove <agent>-<iid>
              → .oe-scope deleted with worktree
 ```
@@ -494,8 +504,8 @@ This is always safe. It never disrupts any agent worktree.
 # 1. Source environment
 source scripts/oelite-gitlab-env.sh
 
-# 2. Sync main develop with remote (start of task)
-git checkout develop && git pull origin develop
+# 2. Sync main develop with remote (start of task) — safe, does NOT checkout develop
+scripts/oelite-gitlab.sh worktree-sync
 
 # 3. Create worktree (replace 42 with actual issue number)
 scripts/oelite-gitlab.sh worktree-create daniel feature/US-001-auth-token-refresh --issue 42
@@ -503,6 +513,7 @@ scripts/oelite-gitlab.sh worktree-create daniel feature/US-001-auth-token-refres
 # 4. Work in the worktree
 cd .worktrees/daniel-42/
 # ... edit files, commit ...
+# Pre-commit hook automatically enforces worktree isolation and branch protection
 
 # 5. Push feature branch to remote
 git push origin feature/US-001-auth-token-refresh
@@ -518,7 +529,7 @@ scripts/oelite-gitlab.sh mr-create <project> daniel feature/US-001-auth-token-re
 scripts/oelite-gitlab.sh worktree-remove daniel-42
 
 # 9. Sync local develop for next task
-git checkout develop && git pull origin develop
+scripts/oelite-gitlab.sh worktree-sync
 ```
 
 #### What If the Human Has Uncommitted Changes?
@@ -883,10 +894,10 @@ scripts/oelite-gitlab.sh worktree-list
 **Examples:**
 
 ```bash
-git checkout develop && git pull origin develop   # Sync main directory
-scripts/oelite-gitlab.sh sync daniel              # Rebase agent branch
-scripts/oelite-gitlab.sh status                   # Check status
-scripts/oelite-gitlab.sh worktree-remove daniel   # Cleanup after MR merged
+scripts/oelite-gitlab.sh worktree-sync                # Sync develop (safe — no checkout)
+scripts/oelite-gitlab.sh sync daniel                   # Rebase agent branch
+scripts/oelite-gitlab.sh status                        # Check status
+scripts/oelite-gitlab.sh worktree-remove daniel-42     # Cleanup after MR merged
 ```
 
 ### 9.5 GitLab Operations (Agent + Human)
@@ -1004,10 +1015,10 @@ Confirms all PATs are valid and can authenticate against GitLab.
 ### Step 3: Sync Main `develop` with Remote (Start of Task)
 
 ```bash
-git checkout develop && git pull origin develop
+scripts/oelite-gitlab.sh worktree-sync
 ```
 
-**This is the first critical sync point.** Ensures the main directory holds the latest remote state before creating a worktree.
+**This is the first critical sync point.** Updates local `develop` from `origin/develop` WITHOUT checking it out — avoids the footgun of switching to develop and then forgetting to switch back. Pre-commit hook will block commits on develop anyway.
 
 ### Step 4: Fetch Issues
 
@@ -1067,8 +1078,8 @@ When the MR is approved and CI passes:
 # Clean up worktree (branch already deleted remotely)
 scripts/oelite-gitlab.sh worktree-remove <agent>
 
-# Sync local develop for next task
-git checkout develop && git pull origin develop
+# Sync local develop for next task (safe — no checkout)
+scripts/oelite-gitlab.sh worktree-sync
 ```
 
 ---
@@ -1313,7 +1324,7 @@ Before creating an MR, the agent **MUST** verify every item below. No MR should 
 
 ### Pre-MR Verification
 
-- [ ] Main `develop` pulled from remote (`git checkout develop && git pull origin develop`)
+- [ ] Local develop synced: `scripts/oelite-gitlab.sh worktree-sync`
 - [ ] Feature branch rebased on latest `origin/develop` (resolve conflicts if any)
 - [ ] Build passes in worktree (`dotnet build` / `npm run build` / `ng build`)
 - [ ] Tests pass (unit tests at minimum; integration tests if applicable)
@@ -1337,7 +1348,7 @@ Before creating an MR, the agent **MUST** verify every item below. No MR should 
 - [ ] **Issue labeled `Done`** (after Isabella business validation)
 - [ ] **Issue closed in GitLab**: `issue-status <project> <iid> emma closed` — in same session as merge verification
 - [ ] Worktree removed after MR merged: `scripts/oelite-gitlab.sh worktree-remove <agent>`
-- [ ] Local develop synced: `git checkout develop && git pull origin develop`
+- [ ] Local develop synced: `scripts/oelite-gitlab.sh worktree-sync`
 - [ ] **Post-merge audit**: `issue-audit <project>` run to confirm no orphaned open issues
 
 ---
@@ -1432,8 +1443,8 @@ The implementing agent addresses the feedback in the worktree, pushes new commit
 # Remove worktree (branch already auto-deleted by GitLab)
 scripts/oelite-gitlab.sh worktree-remove <agent>
 
-# Sync local develop for next task
-git checkout develop && git pull origin develop
+# Sync local develop for next task (safe — no checkout)
+scripts/oelite-gitlab.sh worktree-sync
 ```
 
 ### Q: What if my MR has conflicts with `develop`?
