@@ -60,6 +60,13 @@ git checkout develop && git pull origin develop
 git -C ".worktrees/$MY_ROLE-<iid>" config user.email  # Must be "$MY_ROLE@phanes.ltd"
 ```
 
+> **⚠️ CRITICAL: Never pipe the `source` command.**
+> - ✅ `source scripts/oelite-gitlab-env.sh` — correct
+> - ✅ `source scripts/oelite-gitlab-env.sh 2>/dev/null` — quiet mode
+> - ❌ `source scripts/oelite-gitlab-env.sh 2>&1 | tail -1` — **breaks: PATs are lost in subshell**
+>
+> Piping `source` creates a subshell. All exported PATs evaporate. The script will detect this and abort.
+
 **Note**: `--issue <iid>` is REQUIRED by default (Issue-First workflow). For work that genuinely does not require an issue ticket, use `--no-issue` (falls back to legacy `.worktrees/<agent>/` naming).
 
 ### STEP 2.25: VERIFY & UPDATE SCOPE ANCHOR (Hard Gate — Compaction Resilience)
