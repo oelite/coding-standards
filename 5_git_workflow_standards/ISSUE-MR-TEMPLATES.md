@@ -9,7 +9,9 @@
 
 ## Overview
 
-This document defines the standard GitLab issue and merge request templates for all OElite repositories. These templates MUST be installed in every active repository under `<repo>/.gitlab/`.
+This document defines the standard GitLab issue and merge request templates for all OElite repositories. 
+
+> **⚠️ One-time setup distinction**: Installing these template files as `.gitlab/issue_templates/*.md` in each repo is a **one-time repository initialization task**. Creating a new issue ticket during daily workflow uses the CLI: `scripts/oelite-gitlab.sh issue-create`. See [Installation](#1-installation) for details.
 
 The templates enforce consistent, detailed, and verifiable task information so that agents can execute work without re-clarification.
 
@@ -27,6 +29,18 @@ The templates enforce consistent, detailed, and verifiable task information so t
 ---
 
 ## 1. Installation
+
+> **⚠️ ONE-TIME REPO SETUP ONLY**: Installing `.gitlab/` template files is a repository 
+> initialization task (done once per repo), NOT part of daily issue creation.
+> 
+> To create a **new issue ticket** on the remote GitLab server during daily workflow, use:
+> ```bash
+> ../../coding-standards/scripts/oelite-gitlab.sh issue-create <project> <agent> "<title>" "<description>"
+> ```
+> 
+> The templates below define the **content format** for issue descriptions. Do NOT create 
+> `.gitlab/issue_templates/` files as part of feature implementation — that is a one-time 
+> infrastructure setup.
 
 Every active OElite repository MUST contain the following files:
 

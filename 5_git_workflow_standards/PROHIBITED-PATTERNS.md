@@ -24,7 +24,8 @@ This document defines **prohibited implementation patterns** that are **STRICTLY
 4. [Mock/Fake/Placeholder Data](#4-mockfakeplaceholder-data)
 5. [Insufficient E2E Test Coverage](#5-insufficient-e2e-test-coverage)
 6. [Reviewer Enforcement Protocol](#6-reviewer-enforcement-protocol)
-7. [Examples by Technology](#7-examples-by-technology)
+7. [Local Issue File Creation](#7-local-issue-file-creation)
+8. [Examples by Technology](#8-examples-by-technology)
 
 ---
 
@@ -919,7 +920,92 @@ When rejecting an MR with prohibited patterns, use this format:
 
 ---
 
-## 6. Examples by Technology
+## 7. Local Issue File Creation
+
+### Definition
+**Local issue file creation** is the practice of creating issue tickets, task tracking files, or template copies in the local filesystem (in `.gitlab/issue_templates/`, `.ai/`, or any other local directory) instead of using the GitLab server via the `issue-create` CLI. Issue management is a **server-side operation** — local copies bypass GitLab's tracking, state management, and team visibility.
+
+### Prohibited Patterns
+
+**❌ FORBIDDEN — Creating `.gitlab/issue_templates/*.md` files during feature implementation:**
+
+```bash
+# ❌ FORBIDDEN: Copying template files as part of daily work
+cp ../../coding-standards/.gitlab/issue_templates/Feature.md .gitlab/issue_templates/
+# ❌ FORBIDDEN: Creating local issue files during feature implementation
+echo "# [US-042] ..." > .gitlab/issue_templates/Feature.md
+
+# ✅ CORRECT: Use the CLI to create issues on GitLab server
+../../coding-standards/scripts/oelite-gitlab.sh issue-create oelite/helios/core emma "[US-042] Add user dashboard" "Description..."
+```
+
+**❌ FORBIDDEN — Creating issue/task files in `.ai/` directories:**
+
+```bash
+# ❌ FORBIDDEN: Writing issue tickets to .ai/ folders
+echo "# TASK-015: Implement login" > .ai/tasks/TASK-015.md
+
+# ❌ FORBIDDEN: Creating local task tracking systems
+.ai/issues/
+.ai/tasks/
+.ai/plans/
+  (The `.ai/` directory is reserved for `standards/` overrides only)
+```
+
+**❌ FORBIDDEN — Creating local copies of GitLab templates in any directory:**
+
+```bash
+# ❌ FORBIDDEN: Any local file that duplicates GitLab issue tracking
+issues/
+tickets/
+work-items/
+```
+
+**✅ CORRECT: For ALL issue lifecycle operations, use the GitLab CLI:**
+
+```bash
+# Create issue
+../../coding-standards/scripts/oelite-gitlab.sh issue-create <project> <agent> "<title>" "<description>"
+
+# Assign issue
+../../coding-standards/scripts/oelite-gitlab.sh issue-assign <project> <iid> <agent>
+
+# Comment on issue
+../../coding-standards/scripts/oelite-gitlab.sh issue-comment <project> <iid> <agent> "<message>"
+
+# Close issue
+../../coding-standards/scripts/oelite-gitlab.sh issue-status <project> <iid> <agent> closed
+
+# List open issues
+../../coding-standards/scripts/oelite-gitlab.sh issues <project>
+
+# Verify issue exists (bootstrap Step 0.5)
+../../coding-standards/scripts/oelite-gitlab.sh issues <project> | grep <iid>
+```
+
+### Why This Matters
+
+1. **GitLab is source of truth**: Issues on the server have state (open/closed), labels, assignees, comments, and merge request cross-references that local files cannot replicate.
+2. **Team visibility**: Only GitLab-tracked issues are visible to the team. Local files are invisible silos.
+3. **Workflow enforcement**: The bootstrap's Issue-First hard gate verifies issues exist on GitLab. Local files bypass this gate, allowing agents to start work without proper authorization.
+4. **Merge traceability**: MRs reference issue IIDs (e.g., `Closes #42`). Local files have no IID, breaking the audit trail from code change → business requirement.
+
+### Exception (One-Time Repo Setup)
+
+The ONLY time `.gitlab/issue_templates/*.md` files may be created locally is during **initial repository setup** (see `ISSUE-MR-TEMPLATES.md` §1). This is a one-time infrastructure task, performed once per repository, not part of daily issue creation or feature implementation.
+
+### Detection Checklist for Reviewers
+
+- [ ] Any `.gitlab/issue_templates/*.md` files added or modified in a feature branch?
+- [ ] Any `.ai/*` files that look like issue/task tickets (not `standards/` overrides)?
+- [ ] Any other local files (`.ai/issues/`, `.ai/tasks/`, `tickets/`, etc.) created for issue tracking?
+- [ ] Does the branch add or modify files that duplicate GitLab issue management functionality?
+
+**If ANY detected → REJECT MR. Issue management must use GitLab server CLI, not local files.**
+
+---
+
+## 8. Examples by Technology
 
 ### Backend (.NET 10)
 

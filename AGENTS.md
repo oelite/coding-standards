@@ -43,6 +43,13 @@ git rev-parse --show-toplevel
 **If no issue exists → STOP. Create one via `issue-create` using `ISSUE-MR-TEMPLATES.md` before any further work.**
 **If the issue exists but lacks acceptance criteria or owner → STOP. Ask Emma to elaborate before proceeding.**
 
+**⚠️ DO NOT create local issue files.** Issue tickets belong on GitLab server, not in:
+- `.gitlab/issue_templates/` — **ONE-TIME REPO SETUP ONLY** (per `ISSUE-MR-TEMPLATES.md` §1)
+- `.ai/` — reserved for `standards/` overrides only
+- Any other local directory
+
+See `PROHIBITED-PATTERNS.md` §7 for the full prohibition.
+
 ### STEP 1: DECLARE IDENTITY
 ```markdown
 MY_ROLE = "<emma|marcus|daniel|sophia|jonathan|olivia|ethan|maya|victor|grace|felix|isabella>"
@@ -198,7 +205,7 @@ READY: true
 
 ## 🤖 SUBAGENT DELEGATION RULE
 
-When spawning a subagent via `task()`, include in the prompt:
+When a request names a specific role and the context matches their responsibility, you MAY spawn that role as a subagent using the `Agent` tool. Include in the prompt:
 
 ```markdown
 # SUBAGENT BOOTSTRAP REQUIREMENTS
@@ -217,11 +224,13 @@ You MUST complete the Universal Agent Bootstrap (Steps 1-4) before ANY work.
 Your first output MUST be the bootstrap verification block (including SCOPE verified).
 ```
 
+> **Note**: Subagent spawning is optional. The primary workflow is a single-agent session that outputs a structured handoff for the next role. Use subagents only when the user explicitly requests multi-agent orchestration or names a specific role.
+
 ---
 
 ## 🔄 CONTINUED SESSION RULE
 
-When continuing a session via `session_id` in `task()`:
+When continuing a session (e.g., resuming from a handoff or re-invoking a role after context compaction):
 
 ```markdown
 # CONTINUED SESSION BOOTSTRAP
@@ -319,6 +328,12 @@ When a request **names a role** (Emma, Marcus, Daniel, ...) **and** context matc
 1. `coding-standards/` — global source of truth
 2. `<repo>/.ai/standards/*` — repo overrides (extend, never contradict). **Deviation-only convention**: only repos that deviate from OElite patterns maintain a `.ai/` directory. Non-deviating repos must NOT carry one — it duplicates the canon and causes drift.
 3. `uranus/arc-agents/standards/` — mirror only (may drift)
+
+**`.ai/` Directory Constraints**:
+- **Allowed**: `<repo>/.ai/standards/*.md` — repo-specific coding standard overrides
+- **FORBIDDEN**: `<repo>/.ai/issues/`, `<repo>/.ai/tasks/`, `<repo>/.ai/plans/`, or any local issue/task tracking files
+- **FORBIDDEN**: Issue tickets, task descriptions, or work-item files in `.ai/` (see `PROHIBITED-PATTERNS.md` §7)
+- All issue management MUST go through GitLab server via `issue-create` CLI
 
 ---
 
