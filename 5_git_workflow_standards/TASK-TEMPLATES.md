@@ -130,6 +130,7 @@ An issue is **Done** when ALL of the following are true. Only Emma may mark an i
 - [ ] **Loading states**: E2E tests verify loading indicators appear during API calls
 - [ ] **Retry logic**: E2E tests verify retry mechanism works on API failures
 - [ ] **Network verification**: E2E tests capture and validate actual network requests (Playwright `page.route()`)
+- [ ] **🚨 `page.route()` API interception MANDATORY**: Every data-driven test MUST intercept API calls via `page.route()` to prove the API was called (see PROHIBITED-PATTERNS.md §5)
 
 #### UI Layout & Design Compliance
 - [ ] **Responsive breakpoints**: E2E tests verify layout at mobile (375px), tablet (768px), desktop (1024px+)
@@ -141,6 +142,7 @@ An issue is **Done** when ALL of the following are true. Only Emma may mark an i
 
 #### Interactive Element Validation
 - [ ] **Button/link actions**: E2E tests verify all clickable elements trigger expected actions
+- [ ] **🚨 Button-works (not just exists)**: E2E tests MUST click every interactive element AND verify the outcome — testing element existence alone is REJECTED
 - [ ] **Form validation**: E2E tests verify client-side validation errors display correctly
 - [ ] **Server-side errors**: E2E tests verify server validation errors display in UI
 - [ ] **Keyboard navigation**: E2E tests verify Tab/Enter/Escape keyboard interactions work
@@ -149,11 +151,18 @@ An issue is **Done** when ALL of the following are true. Only Emma may mark an i
 
 #### Full-Stack Integration
 - [ ] **Data persistence**: E2E tests verify data persists across page refreshes
+- [ ] **🚨 Data persistence chain**: CRUD tests MUST verify data survives `page.reload()` — proving record was written to backend, not just cached in client state
 - [ ] **Authentication/authorization**: E2E tests verify role-based access control (RBAC) enforcement
 - [ ] **Multi-step workflows**: E2E tests verify complete user journeys (e.g., create → edit → delete)
 - [ ] **Cross-page navigation**: E2E tests verify state maintains across page navigation
 - [ ] **Database reflection**: E2E tests verify UI changes reflect in database after API calls
 - [ ] **Session management**: E2E tests verify login/logout/session timeout behaviors
+
+#### Cross-Component Business Logic Validation (NEW)
+- [ ] **🚨 Cross-field conditional rules**: E2E tests verify that changing one field affects another (e.g., "Country = US" makes "State" required)
+- [ ] **🚨 Derived/calculated values**: E2E tests verify computed values match business logic (e.g., cart total = sum(price * quantity))
+- [ ] **🚨 Role-based views**: E2E tests verify different roles see different data, fields, and actions
+- [ ] **🚨 State machine transitions**: E2E tests verify only valid state transitions are allowed in the UI
 
 #### E2E Test Evidence Requirements
 - [ ] **Playwright execution output**: Test run output captured showing all tests pass
@@ -161,6 +170,7 @@ An issue is **Done** when ALL of the following are true. Only Emma may mark an i
 - [ ] **Network logs**: API calls verified via Playwright network inspection
 - [ ] **Console logs**: No JavaScript errors or warnings in browser console
 - [ ] **Coverage mapping**: Each E2E test maps to specific user story acceptance criteria (US-XXX/AC-YYY)
+- [ ] **🚨 No tautological assertions**: Zero `expect(body).toBeVisible()`, `expect(html).toBeVisible()`, or `expect(page).toHaveURL()` without expected URL
 
 **Failure Condition**: If ANY E2E requirement above is not met, the UI implementation is **INCOMPLETE** and the MR MUST be rejected.
 

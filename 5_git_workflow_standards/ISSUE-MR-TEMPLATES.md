@@ -357,6 +357,11 @@ Closes #<issue-iid>
 
 ### E2E Test Coverage Verification (For UI Features - Olivia Mandate)
 - [ ] **API integration tests**: Verify request payloads, response data mapping, error handling, loading states
+- [ ] **`page.route()` API interception**: Every data-driven test intercepts and verifies API calls (MANDATORY — see PROHIBITED-PATTERNS.md §5)
+- [ ] **No tautological assertions**: Zero `expect(body).toBeVisible()`, `expect(html).toBeVisible()`, or `toHaveURL()` without expected URL
+- [ ] **Button-works verification**: Every interactive element tested by clicking AND verifying outcome (not just existence)
+- [ ] **Data persistence chain**: CRUD tests verify data survives `page.reload()` (proves backend persistence)
+- [ ] **Cross-component business logic**: Conditional fields, derived values, and field interactions tested
 - [ ] **UI layout tests**: Verify responsive breakpoints, design token compliance, Shadcn component usage
 - [ ] **Interactive element tests**: Verify all buttons/links, form validation, keyboard navigation, focus management
 - [ ] **Full-stack tests**: Verify data persistence, authentication/authorization, multi-step workflows
@@ -367,6 +372,10 @@ Closes #<issue-iid>
 - [ ] **Playwright evidence captured**: Screenshots/videos for critical journeys, network logs, console verification
 - [ ] **Coverage mapping**: Each E2E test maps to user story acceptance criteria (US-XXX/AC-YYY)
 - [ ] **Console log verification**: No JS errors or warnings in browser console during test execution
+- [ ] **Automated quality checks passed**:
+  - [ ] `grep -rn 'expect.*body.*toBeVisible\|expect.*html.*toBeVisible' tests/` → zero results
+  - [ ] `grep -rn 'page.route' tests/` → at least one result per data-driven test file
+  - [ ] `grep -rn 'US-[0-9]\|US-XXX' tests/` → AC references present in test descriptions
 
 **REVIEWER MANDATE**: If ANY stub/fake/simplified/temporary implementation is detected, the MR MUST be rejected with specific citations. Approval without verifying full implementation is a code review failure.
 
