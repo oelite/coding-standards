@@ -498,13 +498,66 @@ const ProductCard = ({ product }) => (
 
 ### Prohibited Patterns
 
-**❌ FORBIDDEN - Missing API Integration Tests:**
+**❌ FORBIDDEN - Tautological/No-Op Assertions:**
 ```typescript
-// ❌ INSUFFICIENT: E2E test only checks page loads, no API verification
-test('product list page loads', async ({ page }) => {
-  await page.goto('/en/dashboards/products');
-  await expect(page).toHaveTitle(); // Does NOT verify API was called
+// ❌ FORBIDDEN: These assertions ALWAYS pass and provide zero verification value
+test('user list page renders', async ({ page }) => {
+  await page.goto('/users');
+  await expect(page.locator('body')).toBeVisible();    // body is ALWAYS visible
+  await expect(page.locator('html')).toBeVisible();     // html is ALWAYS visible
+  await expect(page).toHaveURL();                       // no expected URL!
+  // These assertions pass even if the page is completely broken
 });
+
+// ✅ CORRECT: Meaningful assertions that verify actual behavior
+test('user list loads and displays data from API', async ({ page }) => {
+  await page.goto('/users');
+  await page.waitForLoadState('networkidle');
+  await expect(page.locator('h1')).toContainText('Users');  // specific heading
+  await expect(page.locator('table tbody tr')).toHaveCount({ greaterThan: 0 }); // data exists
+  const firstRow = page.locator('table tbody tr').first();
+  await expect(firstRow).toBeVisible(); // specific element, not body
+});
+```
+
+**Detection**: Run `grep -rn 'expect.*body.*toBeVisible\|expect.*html.*toBeVisible\|expect.*\.toHaveURL()' tests/` in every web app. If ANY results found, the MR MUST be rejected. These assertions are always tautological and indicate the test is not verifying actual functionality.
+
+**❌ FORBIDDEN - Missing API Call Verification (page.route() Mandate):**
+```typescript
+// ❌ FORBIDDEN: Does not verify the API was actually called
+test('user list fetches data', async ({ page }) => {
+  await page.goto('/users');
+  await expect(page.locator('table')).toBeVisible();
+  // This passes even if the table is rendered with hardcoded/mock data
+  // or if the API call silently fails
+});
+
+// ✅ MANDATORY: Every data-driven test MUST intercept and verify API calls
+test('[US-XXX/AC-YYY] user list fetches and displays real API data', async ({ page }) => {
+  const apiCalls: string[] = [];
+  await page.route('**/v1.0/users*', (route) => {
+    apiCalls.push(route.request().url());
+    route.continue();
+  });
+
+  await page.goto('/users');
+  await page.waitForLoadState('networkidle');
+
+  // Verify API was called with correct endpoint
+  expect(apiCalls.length).toBeGreaterThan(0);
+  expect(apiCalls[0]).toContain('/v1.0/users');
+
+  // Verify data from API actually renders in UI
+  const response = await page.request.get('/v1.0/users');
+  const responseData = await response.json();
+  const rows = page.locator('table tbody tr');
+  await expect(rows).toHaveCount({ greaterThan: 0 });
+});
+```
+
+**Every E2E test for a data-driven page MUST include `page.route()` interception to prove the API call was made.** Tests that navigate to a page and check DOM structure without proving the API was called are REJECTED.
+
+**❌ FORBIDDEN - Missing API Integration Tests:**
 
 // ✅ CORRECT: Full API integration validation
 test('[US-015/AC-002] product list fetches and displays real API data', async ({ page }) => {
@@ -658,6 +711,108 @@ test('[US-015/AC-008] delete product persists to database', async ({ page }) => 
 });
 ```
 
+**❌ FORBIDDEN - Button Existence Without Action Verification:**
+```typescript
+// ❌ FORBIDDEN: Only checks button exists, never clicks it
+test('delete button exists', async ({ page }) => {
+  await page.goto('/users');
+  await expect(page.locator('button:has-text("Delete")')).toBeVisible();
+  // This test passes even if the button click handler does nothing
+  // or is completely broken
+});
+
+// ✅ MANDATORY: Every interactive element test MUST click it AND verify the result
+test('[US-XXX/AC-YYY] delete button triggers deletion flow', async ({ page }) => {
+  await page.goto('/users');
+  const deleteButton = page.locator('button:has-text("Delete")').first();
+  await expect(deleteButton).toBeEnabled(); // Verify it's clickable
+  
+  // Click and verify action
+  await deleteButton.click();
+  await expect(page.locator('[role="dialog"]')).toBeVisible(); // Dialog opened
+  
+  await page.locator('button:has-text("Confirm")').click();
+  await expect(page.locator('[data-testid="success-toast"]')).toBeVisible(); // Action completed
+});
+```
+
+**Every interactive element (button, link, form submit) MUST be tested by: (1) clicking it, (2) verifying the expected outcome.** Testing that an element "exists" without testing that it "works" is REJECTED.
+
+**❌ FORBIDDEN - Missing Data Persistence Verification:**
+```typescript
+// ❌ FORBIDDEN: Creates record but doesn't verify it persists
+test('create user flow', async ({ page }) => {
+  await page.goto('/users/new');
+  await page.fill('[name="email"]', 'test@example.com');
+  await page.click('button:has-text("Save")');
+  await expect(page.locator('[data-testid="success-toast"]')).toBeVisible();
+  // This passes even if the save failed silently
+  // or if the data was not actually written to the database
+});
+
+// ✅ MANDATORY: CRUD operations MUST verify data persists across page refresh
+test('[US-XXX/AC-YYY] created user persists after page refresh', async ({ page }) => {
+  const testEmail = `test-${Date.now()}@example.com`;
+  
+  // 1. Create via UI
+  await page.goto('/users/new');
+  await page.fill('[name="email"]', testEmail);
+  await page.click('button:has-text("Save")');
+  await page.waitForURL(/\/users\/[a-f0-9]+/);
+  
+  // 2. Verify in list
+  await page.goto('/users');
+  await expect(page.locator(`text=${testEmail}`)).toBeVisible();
+  
+  // 3. CRITICAL: Refresh and verify STILL exists
+  await page.reload();
+  await expect(page.locator(`text=${testEmail}`)).toBeVisible();
+  
+  // 4. Optional: Verify via API that data is in database
+  const apiResponse = await page.request.get(`/v1.0/users?email=${testEmail}`);
+  const userData = await apiResponse.json();
+  expect(userData.data).toBeDefined();
+  expect(userData.data.email).toBe(testEmail);
+});
+```
+
+**Every CRUD operation MUST verify: (1) immediate UI feedback, (2) data appears in list, (3) data persists after page refresh.** Tests that stop at "toast appeared" without proving persistence are REJECTED.
+
+**❌ FORBIDDEN - Missing Cross-Component/Cross-Field Validation:**
+```typescript
+// ❌ FORBIDDEN: Tests fields in isolation, misses business logic
+test('form validates required fields', async ({ page }) => {
+  await page.goto('/orders/new');
+  await page.click('button:has-text("Submit")');
+  await expect(page.locator('.error')).toContainText('Email is required');
+  // This only tests field-level validation, not business rules
+});
+
+// ✅ MANDATORY: Test cross-field business logic
+test('[US-XXX/AC-YYY] shipping method changes based on country and order value', async ({ page }) => {
+  await page.goto('/orders/new');
+  
+  // Test: Express shipping only available for orders > $50
+  await page.fill('[name="orderValue"]', '30');
+  await page.selectOption('[name="country"]', 'US');
+  await expect(page.locator('option:has-text("Express")')).not.toBeVisible();
+  
+  await page.fill('[name="orderValue"]', '100');
+  await expect(page.locator('option:has-text("Express")')).toBeVisible();
+  
+  // Test: State field required when Country = US
+  await page.selectOption('[name="country"]', 'US');
+  await page.click('button:has-text("Submit")');
+  await expect(page.locator('.error')).toContainText('State is required');
+  
+  await page.selectOption('[name="country"]', 'UK');
+  await page.click('button:has-text("Submit")');
+  await expect(page.locator('.error')).not.toContainText('State is required');
+});
+```
+
+**Every form with conditional business logic MUST test: (1) field interactions, (2) conditional requirements, (3) computed/derived values.** Testing field-level validation only without business rule interactions is REJECTED.
+
 ### Detection Checklist for Reviewers
 
 - [ ] Do E2E tests verify API request payloads match expected schema?
@@ -681,6 +836,11 @@ test('[US-015/AC-008] delete product persists to database', async ({ page }) => 
 - [ ] Do E2E tests verify accessibility via aXe scan, touch targets (44x44px min), color contrast?
 - [ ] Do E2E tests verify complete user journeys (happy path, branching, error recovery, permission-based)?
 - [ ] Do E2E tests verify state management (cache invalidation, optimistic updates, stale data handling)?
+- [ ] **Do E2E tests contain tautological assertions like `expect(page.locator('body')).toBeVisible()`?** — If YES, REJECT and require removal
+- [ ] **Do E2E tests use `page.route()` to intercept and verify API calls were made?** — If NO for data-driven pages, REJECT
+- [ ] **Do E2E tests only check element existence without clicking and verifying action?** — If YES, REJECT and add action verification
+- [ ] **Do E2E tests verify data persists after page.refresh() or page.reload()?** — If NO for CRUD operations, REJECT
+- [ ] **Do E2E tests verify cross-field business logic (conditional requirements, derived values)?** — If NO for complex forms, REJECT
 
 **If ANY missing → REJECT MR. "Unit tests pass" is NOT sufficient for UI features.**
 

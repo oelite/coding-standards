@@ -109,6 +109,26 @@ Every interactive component (buttons, dialogs, dropdowns, tabs, etc.) MUST be te
 ### Gate 7: No-Op Test Detection (Pre-Commit Quality Gate)
 Before declaring any test "done", Olivia MUST run the assertion-count check — every test file must have at least 3 `expect()` calls per test. Any test that only navigates and waits is REJECTED.
 
+**🚨 Expanded No-Op Detection (NEW — Hard Gate):**
+In addition to the assertion count check, Olivia MUST run:
+```bash
+# 1. Check for tautological/no-op assertions
+grep -rn 'expect.*body.*toBeVisible\|expect.*html.*toBeVisible\|expect.*\.toHaveURL()' tests/
+# If ANY results → REJECT. These assertions always pass and provide zero verification.
+
+# 2. Check for page.route() usage in data-driven tests
+for file in tests/e2e/*.spec.ts tests/e2e/**/*.spec.ts; do
+  if grep -q 'page.goto\|page.navigate' "$file" && ! grep -q 'page.route' "$file"; then
+    echo "WARNING: $file navigates but does not intercept API calls via page.route()"
+  fi
+done
+# If any warnings → REJECT. Data-driven tests must prove APIs were called.
+
+# 3. Check for "button exists" without "button clicked" pattern
+grep -rn 'toBeVisible\|toBeEnabled' tests/ | grep -i 'button\|link\|submit' | grep -v 'click'
+# If any results → REJECT. Testing element existence without action is insufficient.
+```
+
 ### Gate 8: Test Execution Evidence Requirements
 - **Every feature** must show **executed test output** — not just "test files exist"
 - Tests must be run with `npx playwright test --reporter=line` and the output captured
