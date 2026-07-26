@@ -356,7 +356,27 @@ Closes #<issue-iid>
 - [ ] Health endpoint verified if service is runnable
 
 ### E2E Test Coverage Verification (For UI Features - Olivia Mandate)
+
+**🚨 MANDATORY: Run E2E Quality Check Script Before Approving MR**
+
+```bash
+# Run from target repo root
+../../coding-standards/scripts/e2e-quality-check.sh --dir tests/e2e
+
+# For CI pipelines
+../../coding-standards/scripts/e2e-quality-check.sh --ci
+```
+
+The script automates detection of prohibited patterns. Exit code `1` = violations found → MR MUST be rejected.
+
+#### E2E Test Quality Checklist
+- [ ] **E2E quality check script passed**: Zero violations from `e2e-quality-check.sh`
 - [ ] **API integration tests**: Verify request payloads, response data mapping, error handling, loading states
+- [ ] **`page.route()` API interception**: Every data-driven test intercepts and verifies API calls (MANDATORY)
+- [ ] **No tautological assertions**: Zero `expect(body).toBeVisible()`, `expect(html).toBeVisible()`, `expect(page).toHaveURL()` without expected URL
+- [ ] **Button-works verification**: Every interactive element tested by clicking AND verifying outcome
+- [ ] **Data persistence chain**: CRUD tests verify data survives `page.reload()`
+- [ ] **Cross-component business logic**: Conditional fields, derived values, field interactions tested
 - [ ] **UI layout tests**: Verify responsive breakpoints, design token compliance, Shadcn component usage
 - [ ] **Interactive element tests**: Verify all buttons/links, form validation, keyboard navigation, focus management
 - [ ] **Full-stack tests**: Verify data persistence, authentication/authorization, multi-step workflows

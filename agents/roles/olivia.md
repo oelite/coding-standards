@@ -106,8 +106,54 @@ For every authenticated feature:
 ### Gate 6: Interactive Component Testing (MANDATORY Pattern)
 Every interactive component (buttons, dialogs, dropdowns, tabs, etc.) MUST be tested using the pattern: auth → navigate → interact → assert (dialog opens, content correct, ARIA attributes, buttons enabled/disabled, close works)
 
-### Gate 7: No-Op Test Detection (Pre-Commit Quality Gate)
-Before declaring any test "done", Olivia MUST run the assertion-count check — every test file must have at least 3 `expect()` calls per test. Any test that only navigates and waits is REJECTED.
+### Gate 7: No-Op Test Detection (Pre-Commit Quality Gate) — MANDATORY SCRIPT ENFORCEMENT
+
+Before declaring any test "done", Olivia MUST run the automated E2E quality check script:
+
+```bash
+# From the target repo root (e.g., uranus/origin-auth/)
+../../coding-standards/scripts/e2e-quality-check.sh --dir tests/e2e
+```
+
+**This script automates detection of:**
+1. **Tautological assertions** — `expect(body).toBeVisible()`, `expect(html).toBeVisible()`, `expect(page).toHaveURL()` without expected URL
+2. **Missing API verification** — tests that navigate but don't use `page.route()`
+3. **Button existence without click** — tests that check visibility without verifying action
+4. **Missing AC traceability** — tests without US-XXX/AC-YYY references
+5. **Missing data persistence** — CRUD tests without `page.reload()` verification
+
+**Gate 7 Workflow (MANDATORY):**
+1. Run: `../../coding-standards/scripts/e2e-quality-check.sh --dir <test-directory>`
+2. If ANY violations found → **REJECT MR** immediately with specific citations
+3. If all checks pass → Proceed to run actual tests with `npx playwright test`
+4. Capture execution output as evidence
+
+**Exit Codes:**
+- `0` = All checks passed, proceed to test execution
+- `1` = Violations found, MR MUST be rejected
+- `2` = Script error (missing directory, etc.)
+
+**Olivia MUST NOT approve any MR until Gate 7 script passes.**
+
+**🚨 Expanded No-Op Detection (NEW — Hard Gate):**
+In addition to the assertion count check, Olivia MUST run:
+```bash
+# 1. Check for tautological/no-op assertions
+grep -rn 'expect.*body.*toBeVisible\|expect.*html.*toBeVisible\|expect.*\.toHaveURL()' tests/
+# If ANY results → REJECT. These assertions always pass and provide zero verification.
+
+# 2. Check for page.route() usage in data-driven tests
+for file in tests/e2e/*.spec.ts tests/e2e/**/*.spec.ts; do
+  if grep -q 'page.goto\|page.navigate' "$file" && ! grep -q 'page.route' "$file"; then
+    echo "WARNING: $file navigates but does not intercept API calls via page.route()"
+  fi
+done
+# If any warnings → REJECT. Data-driven tests must prove APIs were called.
+
+# 3. Check for "button exists" without "button clicked" pattern
+grep -rn 'toBeVisible\|toBeEnabled' tests/ | grep -i 'button\|link\|submit' | grep -v 'click'
+# If any results → REJECT. Testing element existence without action is insufficient.
+```
 
 ### Gate 8: Test Execution Evidence Requirements
 - **Every feature** must show **executed test output** — not just "test files exist"

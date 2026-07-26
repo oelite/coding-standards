@@ -41,6 +41,127 @@ Olivia (primary), Daniel (backend testing reference), Sophia (frontend testing r
 - Cover: happy path, null/empty, invalid, boundary, error
 - Every service method with business logic needs a unit test
 
+### 🚨 Meaningful Assertion Mandate (NEW — Hard Gate)
+**Every E2E test assertion MUST prove the code works, not just that the code exists.**
+
+#### FORBIDDEN Assertions (Always Pass, No Verification Value)
+These assertions are **EXPRESSLY FORBIDDEN** in all OElite E2E tests:
+- `expect(page.locator("body")).toBeVisible()` — body is always visible
+- `expect(page.locator("html")).toBeVisible()` — html is always visible
+- `expect(page).toHaveURL()` — no expected URL provided
+- `expect(count).toBeGreaterThanOrEqual(0)` — always true
+- Any assertion on a guaranteed-to-exist element without verifying specific state
+
+#### MANDATORY Assertion Patterns
+Every assertion must fall into one of these categories:
+
+| Category | What It Proves | Example |
+|----------|---------------|---------|
+| **Data correctness** | API data renders correctly | `expect(page.locator('h1')).toContainText('Users')` |
+| **Action outcome** | Click/input produced expected result | `await button.click(); await expect(dialog).toBeVisible()` |
+| **State transition** | UI moved from state A to state B | `expect(skeleton).toBeVisible(); await waitForData(); expect(table).toBeVisible()` |
+| **Error handling** | Error state renders correctly | `expect(errorBanner).toContainText('Failed to load')` |
+| **Business logic** | Business rule is enforced | `expect(expressOption).not.toBeVisible()` when order < $50 |
+| **Persistence** | Data survives refresh | `await page.reload(); await expect(data).toBeVisible()` |
+| **API verification** | API was actually called | `expect(apiCalls.length).toBeGreaterThan(0)` via `page.route()` |
+
+#### Detection
+Reviewers MUST run: `grep -rn 'expect.*body.*toBeVisible\|expect.*html.*toBeVisible\|expect.*\.toHaveURL()' tests/`
+If ANY results, the MR MUST be rejected.
+
+### 🚨 E2E Quality Enforcement Tool (MANDATORY)
+
+**Olivia MUST use `e2e-quality-check.sh` to automate E2E quality verification.**
+
+#### Location
+```bash
+coding-standards/scripts/e2e-quality-check.sh
+```
+
+#### Usage
+```bash
+# Run against auto-detected test directory
+./scripts/e2e-quality-check.sh
+
+# Run against specific test directory
+./scripts/e2e-quality-check.sh --dir tests/e2e
+
+# Run in CI mode (exit with error if violations found)
+./scripts/e2e-quality-check.sh --ci
+
+# Run with auto-fix (removes tautological assertions)
+./scripts/e2e-quality-check.sh --fix
+
+# Verbose output
+./scripts/e2e-quality-check.sh --verbose
+```
+
+#### What the Script Checks
+| Check | What It Detects | Action Required |
+|-------|-----------------|-----------------|
+| **Tautological assertions** | `expect(body).toBeVisible()`, `expect(html).toBeVisible()`, `expect(page).toHaveURL()` without expected URL | REMOVE — these always pass |
+| **API call verification** | Tests that navigate but don't use `page.route()` | ADD `page.route()` interception to prove API was called |
+| **Button-works verification** | Tests that check button existence without clicking | ADD click + outcome verification |
+| **AC traceability** | Tests without US-XXX/AC-YYY references | ADD acceptance criterion reference |
+| **Data persistence** | Tests without `page.reload()` verification for CRUD | ADD persistence chain |
+
+#### When Olivia MUST Run This Script
+1. **Before approving any MR** with E2E tests — Gate 7 enforcement
+2. **After receiving test files from Daniel/Sophia** — immediate quality check
+3. **Before marking an issue as "tested"** — final verification
+
+#### Exit Codes
+- `0` = All checks passed
+- `1` = Violations found (CI mode)
+- `2` = Script error (missing directory, etc.)
+
+#### Integration with Olivia's Workflow
+```
+Gate 7 Workflow:
+1. Receive MR with E2E tests
+2. Run: ./scripts/e2e-quality-check.sh --dir tests/e2e
+3. If exit code 1 → REJECT MR with specific violations
+4. If exit code 0 → Proceed with test execution verification
+5. Run: npx playwright test --reporter=line
+6. Verify all tests pass + coverage mapping
+```
+
+### 🚨 API Call Verification Mandate (NEW — Hard Gate)
+Every E2E test for a data-driven page MUST use `page.route()` to intercept and verify API calls:
+
+```typescript
+// MANDATORY pattern for every data-driven test
+const apiCalls: string[] = [];
+await page.route('**/v1.0/users*', (route) => {
+  apiCalls.push(route.request().url());
+  route.continue();
+});
+await page.goto('/users');
+await page.waitForLoadState('networkidle');
+expect(apiCalls.length).toBeGreaterThan(0);
+expect(apiCalls[0]).toContain('/v1.0/users');
+```
+
+### 🚨 Button-Works-Not-Just-Exists Mandate (NEW — Hard Gate)
+Every interactive element test MUST:
+1. Click the element
+2. Verify the expected outcome
+
+```typescript
+// ❌ FORBIDDEN
+await expect(page.locator('button:has-text("Delete")')).toBeVisible();
+
+// ✅ MANDATORY
+await page.locator('button:has-text("Delete")').click();
+await expect(page.locator('[role="dialog"]')).toBeVisible();
+```
+
+### 🚨 Data Persistence Chain Mandate (NEW — Hard Gate)
+Every CRUD test MUST verify data survives page refresh:
+1. Create record via UI → verify in list
+2. **Refresh page** (`page.reload()`)
+3. **Verify record STILL appears** (proves backend persistence)
+
 ### Integration Tests (Data Layer)
 - **REAL Docker containers** — zero mocks
 - Every repository method + controller action
