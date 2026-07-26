@@ -85,7 +85,7 @@ Isabella (primary), Emma (requirements reference)
 - New OElite framework pattern
 - Repo starts/stops using OElite patterns
 - New coding standard
-- `.ai/standards/` changed
+- `.ai/standards/` changed (deviation-only repos only)
 - Health endpoint path/port changes
 - New feature implemented
 - New release deployed

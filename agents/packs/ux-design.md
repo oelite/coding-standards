@@ -32,7 +32,7 @@ Jonathan (primary), Sophia (design spec reference), Felix (design fidelity revie
 - `coding-standards/3_angular_coding_standards/11-ANGULAR-CODING-STANDARDS.md` (legacy app design patterns)
 - `coding-standards/2_general_web_coding_standards/README.md`
 - `coding-standards/agents/core/principles.md` (Frontend Stack, Shadcn/ui priority)
-- Target repo `.ai/standards/design-standards.md` (if exists)
+- Target repo `.ai/standards/design-standards.md` (deviation-only — skip unless repo is in AGENTS.md STANDARDS AUTHORITY §2)
 - Target repo `README.md` (app-specific theming)
 
 ---

@@ -33,7 +33,7 @@ Felix (primary), Jonathan (UX/design fidelity review)
 - `coding-standards/2_general_web_coding_standards/README.md`
 - `coding-standards/5_git_workflow_standards/PROHIBITED-PATTERNS.md`
 - `coding-standards/agents/packs/ux-design.md` (for Jonathan: UX fidelity review)
-- Target repo `.ai/standards/coding-standards.md` (if exists)
+- Target repo `.ai/standards/coding-standards.md` (deviation-only — skip unless repo is in AGENTS.md STANDARDS AUTHORITY §2)
 
 ## Review Dimensions
 

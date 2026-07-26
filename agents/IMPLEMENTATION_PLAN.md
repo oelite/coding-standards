@@ -329,5 +329,5 @@ Ethan (deploy validate) → Isabella (infra docs + biz validation)
 ## 📐 STANDARDS AUTHORITY
 
 1. **Global**: `coding-standards/` (1_dotNet_*, 3_angular_*, 4_react_nextjs_*, 0_project_planning_*, 2_general_web_*)
-2. **Repo Override**: `<repo>/.ai/standards/*` — extends, never contradicts
+2. **Repo Override** (deviation-only): `<repo>/.ai/standards/*` — extends, never contradicts. Only repos that deviate from OElite patterns should maintain a `.ai/` directory; non-deviating repos must NOT carry one (see AGENTS.md STANDARDS AUTHORITY).
 3. **Mirror (may drift)**: `uranus/arc-agents/standards/` — never treat as source

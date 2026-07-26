@@ -12,7 +12,7 @@
 
 This document defines the standard templates and formats for all OElite documentation. Every repository in the OElite ecosystem MUST use these templates for business, technical, and user-facing documentation.
 
-These templates are the single source of truth. Project files in `<repo>/.ai/standards/` may extend but never contradict them.
+These templates are the single source of truth. Project files in `<repo>/.ai/standards/` (deviation-only repos) may extend but never contradict them. Non-deviating repos must NOT carry a `.ai/` directory — it duplicates the canon and causes drift.
 
 ---
 

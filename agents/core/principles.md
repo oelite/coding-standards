@@ -258,7 +258,7 @@ Before declaring **any** task complete, run this checklist. If any item applies,
 | **New OElite framework pattern introduced** | Update OElite Framework Primer in `principles.md` (this file). Update per-repo `AGENTS.md` as needed. Isabella updates `docs/technical/architecture/` and `docs/technical/data/`. |
 | **Repo starts/stops using OElite patterns** | Update per-repo `AGENTS.md` `OElite-Specific Patterns`. Update root `AGENTS.md` OElite-compliant list. Isabella updates migration guides. |
 | **New coding standard added** | Reference it in relevant role/pack files. Isabella updates onboarding docs. |
-| **Per-repo `.ai/standards/` added or changed** | Note it in per-repo `AGENTS.md` `Standards & Overrides`. Create/update `.ai/standards/` for deviations. Isabella ensures `docs/technical/architecture/` reflects them. |
+| **Per-repo `.ai/standards/` added or changed** | Note it in per-repo `AGENTS.md` `Standards & Overrides`. Create/update `.ai/standards/` ONLY when the repo deviates from OElite patterns (deviation-only convention — non-deviating repos must NOT carry `.ai/`). Isabella ensures `docs/technical/architecture/` reflects them. |
 | **Health endpoint path/port changes** | Update per-repo `AGENTS.md` and `REPOS.md`. Update verification commands in this file if common service. Isabella updates `docs/technical/deployment/`. |
 | **New feature implemented** | Isabella updates user stories, API endpoints, user guides, CHANGELOG. Captures Playwright screenshots. |
 | **New release deployed** | Isabella creates release notes, updates CHANGELOG, creates migration guide if needed. |
@@ -271,7 +271,7 @@ Before declaring **any** task complete, run this checklist. If any item applies,
 - [ ] If I added or removed a repo, did I update `REPOS.md`, root `AGENTS.md` topology?
 - [ ] If I introduced a new OElite pattern, did I update the Framework Primer in this file (`principles.md`)?
 - [ ] If I migrated a repo toward/away from OElite patterns, did I update the per-repo `AGENTS.md` `OElite-Specific Patterns` section?
-- [ ] If this repo has `.ai/standards/`, did I update those files to reflect any pattern/command/architecture changes? If this repo deviates from platform standards but has no `.ai/standards/` yet, did I create one documenting the deviation?
+- [ ] If this repo has `.ai/standards/`, did I update those files to reflect any pattern/command/architecture changes? If this repo deviates from platform standards but has no `.ai/standards/` yet, did I create one documenting the deviation? (Deviation-only convention: most repos should NOT have `.ai/` at all.)
 - [ ] **Did my changes impact user-facing behavior, APIs, configuration, architecture, or business requirements?** If YES, did I notify Isabella with specific details about what changed and what documentation needs updating?
 
 ### Periodic Consistency Audit

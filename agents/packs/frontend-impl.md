@@ -32,7 +32,7 @@ Sophia (primary), Jonathan (design spec reference), Felix (code review reference
 - `coding-standards/3_angular_coding_standards/11-ANGULAR-CODING-STANDARDS.md`
 - `coding-standards/2_general_web_coding_standards/README.md`
 - `coding-standards/agents/packs/ux-design.md` (Jonathan's design spec for reference)
-- Target repo `.ai/standards/coding-standards.md` (if exists)
+- Target repo `.ai/standards/coding-standards.md` (deviation-only — skip unless repo is in AGENTS.md STANDARDS AUTHORITY §2)
 - Target repo `README.md`
 
 ## Implementation Standards

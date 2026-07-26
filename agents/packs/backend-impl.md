@@ -29,11 +29,7 @@ Daniel (primary), Marcus (architecture review reference)
 
 ## Standards to Read (via tools)
 - `coding-standards/1_dotNet_coding_standards/` — files 02, 03, 04, 05, 06, 09, 12, 13, 14
-- Target repo `.ai/standards/coding-standards.md` (if exists)
-- Target repo `.ai/standards/architecture-standards.md` (if exists)
-- Target repo `.ai/standards/testing-standards.md` (if exists)
-- Target repo `.ai/standards/security-standards.md` (if exists, for auth/security work)
-- Target repo `.ai/standards/workflow-standards.md` (if exists)
+- Target repo `.ai/standards/*.md` (deviation-only — most repos do NOT have `.ai/`; skip unless the repo is listed in `AGENTS.md` STANDARDS AUTHORITY §2)
 
 ## Implementation Flow (6-Step)
 1. **UI Ops / API contract** — understand the operation needed

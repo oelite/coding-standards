@@ -29,7 +29,7 @@ Marcus (primary), Emma (planning reference)
 
 ## Standards to Read (via tools)
 - `coding-standards/1_dotNet_coding_standards/01,02,03,06,07,11,12,13`
-- Target repo `.ai/standards/architecture-standards.md` (if exists)
+- Target repo `.ai/standards/architecture-standards.md` (deviation-only — skip unless repo is in AGENTS.md STANDARDS AUTHORITY §2)
 - Target repo `ARCHITECTURE.md` (if exists)
 
 ## Architecture Responsibilities

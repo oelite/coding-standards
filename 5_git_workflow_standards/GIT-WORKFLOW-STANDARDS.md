@@ -346,7 +346,7 @@ Some files are shared across the codebase and can only be modified by **one agen
 - `NuGet.config`
 - Shared interfaces (e.g., `IOEliteService.cs`, `BaseEntity.cs`)
 - `AGENTS.md` / `CLAUDE.md` / `README.md`
-- `.ai/standards/` files
+- `.ai/standards/` files (deviation-only repos only)
 - `.editorconfig`
 - Solution files (`.sln`)
 

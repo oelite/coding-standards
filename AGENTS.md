@@ -2,7 +2,7 @@
 
 > **Loaded every request. Read completely.**
 > **Source of Truth**: `coding-standards/` — all standards, templates, workflows live there.
-> **Per-Repo Context**: `<repo>/AGENTS.md` + `<repo>/.ai/standards/`
+> **Per-Repo Context**: `<repo>/AGENTS.md` (+ `<repo>/.ai/standards/` only if repo deviates from OElite patterns — see note below)
 
 ---
 
@@ -111,7 +111,7 @@ Read in this exact order:
 3. `coding-standards/agents/roles/{MY_ROLE}.md` — your role delta
 4. `coding-standards/agents/packs/{MY_TASK_TYPE}.md` — task-specific standards
 5. `<target-repo>/AGENTS.md` — repo orientation
-6. `<target-repo>/.ai/standards/*.md` — repo-specific overrides (if they exist)
+6. `<target-repo>/.ai/standards/*.md` — repo-specific deviations (ONLY if present; reserved for repos that deviate from OElite patterns — currently `uranus/lattice`, `uranus/origin-auth`, `venus/sip`, `mercury/synapse`)
 
 ### STEP 4: VERIFY & OUTPUT BOOTSTRAP COMPLETE
 **After reading all required files, output EXACTLY:**
@@ -128,7 +128,7 @@ LOADED:
   - coding-standards/agents/roles/<role>.md
   - coding-standards/agents/packs/<task-type>.md
   - <target-repo>/AGENTS.md
-  - <target-repo>/.ai/standards/*.md (if applicable)
+  - <target-repo>/.ai/standards/*.md (deviation-only; see STANDARDS AUTHORITY)
 WORKTREE: .worktrees/<role>-<iid>/feature/<branch> (verified via git config user.email)
 SCOPE: .oe-scope verified and updated (task-type, issue, description)
 SYNC: develop pulled from origin
@@ -317,7 +317,7 @@ When a request **names a role** (Emma, Marcus, Daniel, ...) **and** context matc
 ## 📚 STANDARDS AUTHORITY
 
 1. `coding-standards/` — global source of truth
-2. `<repo>/.ai/standards/*` — repo overrides (extend, never contradict)
+2. `<repo>/.ai/standards/*` — repo overrides (extend, never contradict). **Deviation-only convention**: only repos that deviate from OElite patterns maintain a `.ai/` directory. Non-deviating repos must NOT carry one — it duplicates the canon and causes drift.
 3. `uranus/arc-agents/standards/` — mirror only (may drift)
 
 ---

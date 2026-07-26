@@ -31,7 +31,7 @@ Olivia (primary), Daniel (backend testing reference), Sophia (frontend testing r
 - `coding-standards/1_dotNet_coding_standards/02` (acceptance flow)
 - `coding-standards/5_git_workflow_standards/TASK-TEMPLATES.md` (E2E requirements)
 - `coding-standards/5_git_workflow_standards/PROHIBITED-PATTERNS.md` (Insufficient E2E Coverage section)
-- Target repo `.ai/standards/testing-standards.md` (if exists)
+- Target repo `.ai/standards/testing-standards.md` (deviation-only — skip unless repo is in AGENTS.md STANDARDS AUTHORITY §2)
 - User stories from `docs/business/user-stories/` (source of truth)
 
 ## Testing Levels
@@ -40,6 +40,70 @@ Olivia (primary), Daniel (backend testing reference), Sophia (frontend testing r
 - Pure business logic only
 - Cover: happy path, null/empty, invalid, boundary, error
 - Every service method with business logic needs a unit test
+
+### 🚨 Meaningful Assertion Mandate (NEW — Hard Gate)
+**Every E2E test assertion MUST prove the code works, not just that the code exists.**
+
+#### FORBIDDEN Assertions (Always Pass, No Verification Value)
+These assertions are **EXPRESSLY FORBIDDEN** in all OElite E2E tests:
+- `expect(page.locator("body")).toBeVisible()` — body is always visible
+- `expect(page.locator("html")).toBeVisible()` — html is always visible
+- `expect(page).toHaveURL()` — no expected URL provided
+- `expect(count).toBeGreaterThanOrEqual(0)` — always true
+- Any assertion on a guaranteed-to-exist element without verifying specific state
+
+#### MANDATORY Assertion Patterns
+Every assertion must fall into one of these categories:
+
+| Category | What It Proves | Example |
+|----------|---------------|---------|
+| **Data correctness** | API data renders correctly | `expect(page.locator('h1')).toContainText('Users')` |
+| **Action outcome** | Click/input produced expected result | `await button.click(); await expect(dialog).toBeVisible()` |
+| **State transition** | UI moved from state A to state B | `expect(skeleton).toBeVisible(); await waitForData(); expect(table).toBeVisible()` |
+| **Error handling** | Error state renders correctly | `expect(errorBanner).toContainText('Failed to load')` |
+| **Business logic** | Business rule is enforced | `expect(expressOption).not.toBeVisible()` when order < $50 |
+| **Persistence** | Data survives refresh | `await page.reload(); await expect(data).toBeVisible()` |
+| **API verification** | API was actually called | `expect(apiCalls.length).toBeGreaterThan(0)` via `page.route()` |
+
+#### Detection
+Reviewers MUST run: `grep -rn 'expect.*body.*toBeVisible\|expect.*html.*toBeVisible\|expect.*\.toHaveURL()' tests/`
+If ANY results, the MR MUST be rejected.
+
+### 🚨 API Call Verification Mandate (NEW — Hard Gate)
+Every E2E test for a data-driven page MUST use `page.route()` to intercept and verify API calls:
+
+```typescript
+// MANDATORY pattern for every data-driven test
+const apiCalls: string[] = [];
+await page.route('**/v1.0/users*', (route) => {
+  apiCalls.push(route.request().url());
+  route.continue();
+});
+await page.goto('/users');
+await page.waitForLoadState('networkidle');
+expect(apiCalls.length).toBeGreaterThan(0);
+expect(apiCalls[0]).toContain('/v1.0/users');
+```
+
+### 🚨 Button-Works-Not-Just-Exists Mandate (NEW — Hard Gate)
+Every interactive element test MUST:
+1. Click the element
+2. Verify the expected outcome
+
+```typescript
+// ❌ FORBIDDEN
+await expect(page.locator('button:has-text("Delete")')).toBeVisible();
+
+// ✅ MANDATORY
+await page.locator('button:has-text("Delete")').click();
+await expect(page.locator('[role="dialog"]')).toBeVisible();
+```
+
+### 🚨 Data Persistence Chain Mandate (NEW — Hard Gate)
+Every CRUD test MUST verify data survives page refresh:
+1. Create record via UI → verify in list
+2. **Refresh page** (`page.reload()`)
+3. **Verify record STILL appears** (proves backend persistence)
 
 ### Integration Tests (Data Layer)
 - **REAL Docker containers** — zero mocks
