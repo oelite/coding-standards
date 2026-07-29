@@ -1,8 +1,8 @@
 # OElite Platform — Agent Navigator
 
-> **Loaded every request. Read completely.**
-> **Source of Truth**: `coding-standards/` — all standards, templates, workflows live there.
-> **Per-Repo Context**: `<repo>/AGENTS.md` (+ `<repo>/.ai/standards/` only if repo deviates from OElite patterns — see note below)
+**Loaded every request. Read completely.**
+**Source of Truth**: `coding-standards/` — all standards, templates, workflows live there.
+**Per-Repo Context**: `<repo>/AGENTS.md` (+ `<repo>/.ai/standards/` only if repo deviates from OElite patterns — see note below)
 
 ---
 
@@ -14,6 +14,24 @@
 **You MUST be inside a sub-repository (e.g., `helios/core/`, `uranus/origin-auth/`, `jupiter/ec-nx-01/`) before running bootstrap.**
 The root `oelite/` folder is NOT a git repository — it is a monorepo container.
 
+> **⛔ MACHINE-ENFORCED:** A PreToolUse hook (`coding-standards/scripts/hooks/oelite-guard.sh`)
+> blocks ALL of the following — for both Claude Code and OpenCode (via `coding-standards/scripts/opencode-plugin-oelite/`):
+>
+> | Gate | Blocks |
+> |---|---|
+> | **A. Root-write** | Write/Edit/Bash targeting paths under the oelite root but NOT inside a scoped git sub-repo |
+> | **B. Worktree-presence** | Edits inside a scoped git repo that are NOT under `.worktrees/<agent>-<iid>/` |
+> | **C. Protected-branch** | Edits in worktrees whose branch is `develop`, `main`, or `master` |
+> | **D. Issue-IID** | (Advisory) When `.oe-scope` exists, the worktree's declared issue must match the branch's issue ref |
+>
+> The `OELITE_HUMAN=1` environment variable bypasses the guard for intentional human maintenance.
+> `.claude/` and `.opencode/` are auto-allowed (IDE config writes).
+>
+> The guard is wired into **every active sub-repo** via per-repo `.claude/settings.json` files
+> (run `coding-standards/scripts/hooks/install-ide-guards.sh --apply` to roll out to new repos),
+> so the same rules fire regardless of which directory you launch your IDE from.
+> See § HARD GATES → "Unified IDE guard" for the full policy.
+>
 ```bash
 # Navigate to your assigned repo FIRST (check ACTIVE REPOS table below)
 cd <target-repo-path>   # e.g., cd helios/core
@@ -23,14 +41,39 @@ git rev-parse --show-toplevel
 # Must output your repo path, NOT "fatal: not a git repository"
 ```
 
-### STEP 0.5: VERIFY ISSUE TICKET EXISTS (Hard Gate — Issue-First)
-**No work begins until a GitLab issue ticket exists with full task elaboration.**
+### STEP 0.5: VERIFY OR CREATE ISSUE TICKET (Hard Gate — Issue-First)
+**No work begins until a GitLab issue ticket exists for this task with full task elaboration.**
+
+**The agent MUST create the issue, not the human.** The human gave you a goal;
+you owe them a properly-scoped, Definition-of-Ready issue ticket before any
+exploration or code edits. Do not block the session by asking the human to
+go create one themselves.
 
 ```bash
-# Verify the issue exists in GitLab before proceeding
-# Replace <project> with GitLab path (e.g., oelite/uranus/origin-auth)
-# Replace <iid> with the issue number
+# 1. Search GitLab for an existing issue that already covers this task.
+#    If one exists and meets Definition of Ready, reuse it.
 ../../coding-standards/scripts/oelite-gitlab.sh issues <project>
+
+# 2. If no issue exists, AUTHOR IT YOURSELF using the templates, then create
+#    it on GitLab via the CLI. Pick the template that matches the work:
+#    - Feature → ISSUE-MR-TEMPLATES.md § Feature Issue
+#    - Bug     → ISSUE-MR-TEMPLATES.md § Bug Issue
+#    - Task    → ISSUE-MR-TEMPLATES.md § Task Issue
+#    - Audit/post-implementation review → Task Issue with US-XXX ref
+../../coding-standards/scripts/oelite-gitlab.sh issue-create \
+  <project> <your-role> "<title>" "<description>"
+# example:
+# oelite-gitlab.sh issue-create oelite/uranus/origin-auth isabella \
+#   "[US-042] Post-impl audit: full UI/API journey validation" \
+#   "$(cat <<'EOF'
+#   ## Goal
+#   Retrospectively audit the origin-auth implementation ...
+#
+#   ## Acceptance Criteria (GIVEN/WHEN/THEN)
+#   - GIVEN the auth UI pages ... WHEN a user signs in ... THEN ...
+#   ...
+#   EOF
+#   )"
 ```
 
 **The issue MUST meet Definition of Ready** (see `TASK-TEMPLATES.md` §1):
@@ -39,9 +82,12 @@ git rev-parse --show-toplevel
 - Owner assigned
 - Priority labeled
 - Dependencies identified (not blocking)
+- **Authorization clause** for creating child issues and fixing discovered defects
+  in-scope (write it in the description if the parent is an audit/repair umbrella)
 
-**If no issue exists → STOP. Create one via `issue-create` using `ISSUE-MR-TEMPLATES.md` before any further work.**
-**If the issue exists but lacks acceptance criteria or owner → STOP. Ask Emma to elaborate before proceeding.**
+**If you find an existing issue that does NOT meet Definition of Ready → you
+update it, you do not block the session on a human.** Add the missing AC,
+assign yourself as owner, set priority, and proceed.
 
 **⚠️ DO NOT create local issue files.** Issue tickets belong on GitLab server, not in:
 - `.gitlab/issue_templates/` — **ONE-TIME REPO SETUP ONLY** (per `ISSUE-MR-TEMPLATES.md` §1)
@@ -64,16 +110,30 @@ source ../../coding-standards/scripts/oelite-gitlab-env.sh
 # Safe sync — updates local develop WITHOUT checking it out (avoids footgun)
 ../../coding-standards/scripts/oelite-gitlab.sh worktree-sync
 ../../coding-standards/scripts/oelite-gitlab.sh worktree-create "$MY_ROLE" "feature/<branch>" --issue "<iid>"
-# Verify owner DNA (see coding-standards/5_git_workflow_standards/WORKTREE-OWNER-DNA.md)
+# Verify owner DNA — USE `git -C` (NOT `cd .worktrees/... && git ...`)
+# See "⚠️ Claude Code permission pattern" below for why.
 git -C ".worktrees/$MY_ROLE-<iid>" config user.email  # Must be "$MY_ROLE@phanes.ltd"
 ```
 
-> **⚠️ CRITICAL: Never pipe the `source` command.**
-> - ✅ `source scripts/oelite-gitlab-env.sh` — correct
-> - ✅ `source scripts/oelite-gitlab-env.sh 2>/dev/null` — quiet mode
-> - ❌ `source scripts/oelite-gitlab-env.sh 2>&1 | tail -1` — **breaks: PATs are lost in subshell**
+**⚠️ Claude Code permission pattern (use `git -C`, never `cd <dir> && git ...`).**
+Claude Code prompts for approval on every `cd <new-dir> && git ...` compound command because a new
+directory can host its own `.git/hooks/`. The pattern `Bash(git *)` in the allow-list does **not**
+match `cd <dir> && git ...`. Use `git -C <dir> ...` (or `git --git-dir=<dir>/.git ...`) instead —
+it matches `Bash(git -C *)` and skips the prompt. Same rule applies to any other version-control
+or build tool you want to invoke against a worktree. The apex per-repo `.claude/settings.local.json`
+is pre-seeded with worktree-scoped allow rules; add equivalents for your own repos.
+
+**⚠️ CRITICAL: Never pipe the `source` command.**
+- ✅ `source scripts/oelite-gitlab-env.sh` — correct
+- ✅ `source scripts/oelite-gitlab-env.sh 2>/dev/null` — quiet mode
+- ❌ `source scripts/oelite-gitlab-env.sh 2>&1 | tail -1` — **breaks: PATs are lost in subshell**
 >
-> Piping `source` creates a subshell. All exported PATs evaporate. The script will detect this and abort.
+Piping `source` creates a subshell. All exported PATs evaporate. The script will detect this and abort.
+
+**⚠️ Never chain `source` with `curl` in a compound command.**
+- ❌ `source ...; curl ... $OELITE_PAT_X ...` — **triggers `simple_expansion` approval prompts and exposes the PAT to Claude Code's shell evaluator**
+- ✅ Run `source` standalone (or skip it entirely — the `oelite-gitlab.sh` wrapper loads PATs internally from Keychain as needed)
+- ✅ Use `oelite-gitlab.sh <subcommand> ...` for ALL GitLab operations — it handles PAT retrieval and never expands secrets in your command
 
 **Note**: `--issue <iid>` is REQUIRED by default (Issue-First workflow). For work that genuinely does not require an issue ticket, use `--no-issue` (falls back to legacy `.worktrees/<agent>/` naming).
 
@@ -224,7 +284,7 @@ You MUST complete the Universal Agent Bootstrap (Steps 1-4) before ANY work.
 Your first output MUST be the bootstrap verification block (including SCOPE verified).
 ```
 
-> **Note**: Subagent spawning is optional. The primary workflow is a single-agent session that outputs a structured handoff for the next role. Use subagents only when the user explicitly requests multi-agent orchestration or names a specific role.
+**Note**: Subagent spawning is optional. The primary workflow is a single-agent session that outputs a structured handoff for the next role. Use subagents only when the user explicitly requests multi-agent orchestration or names a specific role.
 
 ---
 
@@ -247,6 +307,7 @@ MANDATORY: Read .oe-scope in your worktree to restore full task context after co
 ## 🛡️ HARD GATES (Non-Negotiable)
 
 - ✅ **Issue-First**: No work begins (no worktree, no code, no exploration) until a GitLab issue ticket exists with full task elaboration (goals, acceptance criteria, scope, dependencies, assigned owner) per `ISSUE-MR-TEMPLATES.md`. Bootstrap refuses to proceed without an issue IID.
+✅ **Unified IDE guard**: AI agents may create or modify files/folders only inside their scoped git sub-repository AND only inside a worktree on a feature branch. The `oelite/` root is a non-git monorepo container; direct writes to it and non-repository family containers are blocked, plus edits in main checkouts (not under `.worktrees/`) and on protected branches (`develop`/`main`/`master`) are blocked. Enforced by `coding-standards/scripts/hooks/oelite-guard.sh` for both Claude Code (via per-repo `.claude/settings.json`) and OpenCode (via `coding-standards/scripts/opencode-plugin-oelite/`). Humans bypass with `OELITE_HUMAN=1`; `.claude/` and `.opencode/` are auto-allowed (IDE config). Run `coding-standards/scripts/hooks/install-ide-guards.sh --apply` to roll out to new repos.
 - ✅ Worktree identity via `scripts/oelite-gitlab.sh worktree-create`
 - ✅ `develop` sync before worktree creation (use `worktree-sync` — safe sync that does NOT checkout develop)
 - ✅ **Pre-commit hook enforcement**: Hook blocks commits outside `.worktrees/` and on protected branches (`develop`, `main`, `master`). Humans bypass with `OELITE_HUMAN=1`. Installed automatically by `worktree-create`.
@@ -289,6 +350,18 @@ The table above lists **local sub-repository folders** inside the monorepo conta
 Always pass the full GitLab project path (`oelite/<family>/<repo>`) to `scripts/oelite-gitlab.sh`.
 
 ### CLI Tool Reference
+
+**⚠️ GitLab API security rule:** Never generate raw `curl` commands against `code.phanes.ltd`, and never expand `OELITE_PAT_*` in an agent-generated Bash command. This exposes a secret-bearing operation to Claude Code's shell evaluator and triggers `simple_expansion` approval prompts. Use the provided wrapper for every GitLab operation:
+
+```bash
+# Correct — PAT is loaded internally from Keychain
+coding-standards/scripts/oelite-gitlab.sh issue-status oelite/jupiter/apex 323 emma closed
+
+# Forbidden — raw API call and PAT expansion
+source coding-standards/scripts/oelite-gitlab-env.sh; curl ... \"$OELITE_PAT_EMMA\" ...
+```
+
+The wrapper is the only supported interface for issues, worktrees, MRs, comments, approvals, and status transitions. If the wrapper lacks an operation, extend `oelite-gitlab.sh`; do not bypass it with raw API calls.
 
 | Command | Purpose |
 |---------|---------|
