@@ -153,14 +153,21 @@ Piping `source` creates a subshell. All exported PATs evaporate. The script will
 **After context compaction (or at any point you're unsure where you are):**
 ```bash
 # Read the scope file to restore your working context
-cat .oe-scope
-# OR:
+# IMPORTANT: .oe-scope is a per-worktree file. It only exists inside
+# .worktrees/<agent>-<iid>/.oe-scope. If you're at the monorepo root or
+# a repo root, you will NOT find it there — that's normal.
+# cd to your worktree first, then read it:
+cat .worktrees/<role>-<iid>/.oe-scope
+# OR (from the repo root):
 ../../coding-standards/scripts/oelite-gitlab.sh oe-scope "$MY_ROLE-<iid>"
 ```
 
 **Pre-tool directory guard (run before ANY file edit if unsure of location):**
 ```bash
 # If this outputs anything, you are in the WRONG directory — STOP
+# Navigate to the correct worktree first:
+cd .worktrees/<role>-<iid>/
+# Then verify:
 test -f .oe-scope || { echo "SCOPE LOST: No .oe-scope found. You are not in a worktree. cd to the correct worktree first."; }
 ```
 

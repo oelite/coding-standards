@@ -44,6 +44,14 @@ OPENCODE_DIR="$ROOT/.opencode"
 # ── Human bypass ────────────────────────────────────────────────────────────
 if [[ "${OELITE_HUMAN:-0}" == "1" ]]; then exit 0; fi
 
+# ── Staleness check: .oe-scope at the monorepo root is a contaminant ──
+if [[ -f "$ROOT/.oe-scope" ]]; then
+  echo "[oelite-guard] WARNING: Stale .oe-scope found at $ROOT/.oe-scope" >&2
+  echo "          This file is a PER-WORKTREE anchor and should NOT exist" >&2
+  echo "          at the monorepo root. It was likely created by an agent" >&2
+  echo "          running from the wrong CWD. Delete it." >&2
+fi
+
 # ── Read payload, normalise fields ───────────────────────────────────────────
 PAYLOAD="$(cat)"
 
