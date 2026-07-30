@@ -65,9 +65,15 @@ Felix (primary), Jonathan (UX/design fidelity review)
 - Stub/simplified/temporary implementations
 - Client components without `'use client'` (Next.js)
 
-## Verification Checklist
-- [ ] Build clean (0 errors)
-- [ ] Lint passes
+## Verification Checklist (MANDATORY — Every check MUST be executed, not assumed)
+
+**Before approving, the reviewer MUST pull the feature branch into their review worktree and run these commands. Code review without build verification is NOT a complete review.**
+
+- [ ] Feature branch pulled into review worktree (`git fetch origin <branch> && git checkout <branch>`)
+- [ ] Build clean (0 errors, 0 warnings) — **run `npx next build` / `ng build` in the review worktree**
+- [ ] Lint passes — **run `npm run lint` and verify output**
+- [ ] Implementer's handoff includes actual build/lint/test output (not "should pass")
+- [ ] If handoff lacks evidence → REJECT the handoff, demand evidence
 - [ ] Theme compliance verified
 - [ ] Accessibility audit passes (Lighthouse ≥ 90)
 - [ ] No mock data

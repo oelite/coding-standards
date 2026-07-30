@@ -719,7 +719,9 @@ This flags:
 
 #### Reviewer (Grace/Felix/Maya/Marcus/Victor)
 - Reviews MR within the workflow chain
-- Sets `Ready to Merge` label after approval + CI green
+- **MUST verify build + tests + health before approving** — pull the feature branch into your review worktree and run the implementer build/test/health commands. If the implementer handoff lacks actual build/test/health output, **REJECT the handoff** and demand evidence.
+- **MUST NOT set `Ready to Merge` until Olivia has validated.** The sequential chain is: Implementer → Reviewer → Olivia (E2E/testing) → Ethan (deploy) → Isabella (biz validation). If Olivia has not validated, set a comment "Review approved, awaiting Olivia E2E/validation" — do NOT set `Ready to Merge`.
+- Sets `Ready to Merge` label ONLY after approval + CI green + Olivia validation confirmed
 - **Verifies MR merge** via `mr-status` after approval — confirms GitLab actually merged the MR
 - If merge verified: transitions issue to `Done` (if Emma delegates) or notifies Emma to close
 - If changes requested: comment with specific fixes, assignee returns to `In Progress`

@@ -55,18 +55,21 @@ The team should:
 
 ---
 
-## 📋 MANDATORY HANDOFF FORMAT
+## 📋 MANDATORY HANDOFF FORMAT (HARD GATE — Reviewers Reject Incomplete Handoffs)
 
-Every completed task MUST include:
+Every completed task MUST include the sections below. **Reviewers MUST reject any handoff missing any of these fields.** "Should pass" or "Works locally" without evidence is NOT acceptable — the reviewer must be able to confirm from the output alone.
 
 ### Work Completed
 - summary of what changed and where (files/projects)
 
-### Commands Executed
-- exact commands with their output (build/test/E2E/health/docker/kubectl)
+### Commands Executed (MUST paste actual command output)
+- build command + output (e.g. `dotnet build` / `npx next build` — show the actual exit code and any errors)
+- test command + output (e.g. `dotnet test` / `npx playwright test` — show pass/fail count, NOT just "all pass")
+- health/startup command + output (e.g. `curl -f http://localhost:<port>/health` — show HTTP status code)
 
 ### Verification Results
 - build status · test status · runtime/health status · (security scan if applicable)
+- **Evidence above is mandatory. "Should pass" or "Works locally" is NOT acceptable.**
 
 ### Documentation Impact
 - **Does this change require documentation updates?** YES / NO

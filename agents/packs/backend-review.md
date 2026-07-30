@@ -69,9 +69,16 @@ Grace (primary), Maya (security review), Victor (performance review)
 - `as any`, `@ts-ignore`, `@ts-expect-error`
 - Comments unless explicitly requested
 
-## Verification Checklist
-- [ ] `dotnet build` clean (0 errors)
-- [ ] Tests exist and pass for new behavior
+## Verification Checklist (MANDATORY — Every check MUST be executed, not assumed)
+
+**Before approving, the reviewer MUST pull the feature branch into their review worktree and run these commands. Code review without build verification is NOT a complete review.**
+
+- [ ] Feature branch pulled into review worktree (`git fetch origin <branch> && git checkout <branch>`)
+- [ ] `dotnet build` clean (0 errors, 0 warnings) — **run in the review worktree**
+- [ ] Tests exist and pass for new behavior — **run `dotnet test` and verify the output**
+- [ ] Service starts and health endpoint responds 200 — **run `curl -f http://localhost:<port>/health`**
+- [ ] Implementer's handoff includes actual build/test/health output (not "should pass")
+- [ ] If handoff lacks evidence → REJECT the handoff, demand evidence
 - [ ] Naming/structure compliant
 - [ ] No forbidden patterns remain
 - [ ] Security review passed (Maya, if applicable)
