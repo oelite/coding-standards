@@ -314,6 +314,29 @@ Review the output for worktrees with no recent activity. If a worktree is stale,
 scripts/oelite-gitlab.sh worktree-remove <agent>
 ```
 
+### 3.6 Forbidden: Native IDE/AI Worktree Tools (Hard Gate)
+
+**AI agents MUST NOT use built-in worktree tools** (Claude Code `EnterWorktree`, OpenCode worktree, VS Code worktree, or any other IDE-native worktree mechanism).
+
+These tools create worktrees under `.claude/worktrees/` or equivalent paths that:
+- Bypass OElite naming conventions (no `<role>-<iid>` pattern)
+- Lack `.oe-scope` context anchors (breaks compaction resilience)
+- Skip owner DNA setup (`<role>@phanes.ltd` not configured)
+- Omit pre-commit hook enforcement (worktree + branch protection)
+- Are invisible to `oelite-gitlab.sh worktree-list` and related management commands
+- Are unknown to the rest of the team — no one can tell who owns what
+
+**The only valid worktree creation command:**
+
+```bash
+scripts/oelite-gitlab.sh worktree-create <agent> <branch> --issue <iid>
+```
+
+**Enforcement:**
+- The OElite guard (`oelite-guard.sh`) blocks code edits in `.claude/worktrees/` and other non-OElite paths — work created there is rejected at write time
+- Agents spawning subagents MUST include in the subagent prompt: `"NEVER use EnterWorktree or any built-in worktree tool. Only use oelite-gitlab.sh worktree-create."`
+- Stale `.claude/worktrees/` entries should be cleaned up when discovered, and the root cause eliminated (ensure subagent prompts forbid the tool)
+
 ---
 
 ## 5. Parallel Development Rules
