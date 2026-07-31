@@ -277,6 +277,41 @@ print("Total: " + str(len(issues)) + " open issue(s)")
 '
 }
 
+cmd_issue_show() {
+  local project_path="$1"
+  local iid="$2"
+
+  local encoded_path
+  encoded_path=$(url_encode_path "$project_path")
+
+  local pat
+  pat=$(get_pat "emma")
+  api_get "/projects/$encoded_path/issues/$iid" "$pat"
+
+  if [[ "$_API_STATUS" != "200" ]]; then
+    echo "[ERROR] Failed to fetch issue #$iid (HTTP $_API_STATUS)" >&2
+    api_error_hint "$_API_STATUS" "$project_path"
+    echo "$_API_RESPONSE" >&2
+    return 1
+  fi
+
+  printf '%s\n' "$_API_RESPONSE" | python3 -c '
+import sys, json
+i = json.load(sys.stdin)
+print("IID:           #" + str(i.get("iid", "")))
+print("Title:         " + i.get("title", ""))
+print("State:         " + i.get("state", ""))
+print("Author:        " + (i.get("author", {}).get("username", "") if i.get("author") else ""))
+print("Assignee:      " + (i.get("assignee", {}).get("username", "") if i.get("assignee") else "(unassigned)"))
+print("Labels:        " + ",".join(i.get("labels", [])))
+print("Created:       " + i.get("created_at", ""))
+print("Updated:       " + i.get("updated_at", ""))
+print("Web URL:       " + i.get("web_url", ""))
+print("---")
+print(i.get("description", "(no description)"))
+'
+}
+
 cmd_issue_create() {
   local project_path="$1"
   local agent="$2"
@@ -868,6 +903,44 @@ cmd_mr_approve() {
     echo "[OK] MR !$mr_iid approved by $agent (${AGENT_USERNAMES[$agent]})"
   else
     echo "[ERROR] Failed to approve MR !$mr_iid (HTTP $_API_STATUS)" >&2
+    api_error_hint "$_API_STATUS" "$project_path"
+    echo "$_API_RESPONSE" >&2
+    return 1
+  fi
+}
+
+cmd_mr_update() {
+  local project_path="$1"
+  local mr_iid="$2"
+  local agent="$3"
+  local title="$4"
+  local description="${5:-}"
+
+  validate_agent "$agent" || return 1
+
+  local encoded_path
+  encoded_path=$(url_encode_path "$project_path")
+
+  local data
+  data=$(python3 -c "
+import json, sys
+payload = {}
+if '$title':
+  payload['title'] = '$title'
+desc = '''$description'''
+if desc:
+  payload['description'] = desc
+print(json.dumps(payload))
+")
+
+  local pat
+  pat=$(get_pat "$agent")
+  api_put "/projects/$encoded_path/merge_requests/$mr_iid" "$pat" "$data"
+
+  if [[ "$_API_STATUS" == "200" ]]; then
+    echo "[OK] MR !$mr_iid updated by $agent"
+  else
+    echo "[ERROR] Failed to update MR !$mr_iid (HTTP $_API_STATUS)" >&2
     api_error_hint "$_API_STATUS" "$project_path"
     echo "$_API_RESPONSE" >&2
     return 1
@@ -1524,6 +1597,10 @@ COMMANDS:
     List open issues for a project.
     Example: oelite-gitlab.sh issues uranus/origin-auth --label backend
 
+  issue-show <project-path> <iid>
+    Show issue details with description.
+    Example: oelite-gitlab.sh issue-show uranus/origin-auth 42
+
   issue-create <project-path> <agent> <title> [description]
     Create a new issue as the specified agent.
     Example: oelite-gitlab.sh issue-create oelite/uranus/origin-auth emma "feat: add tenant export" "Closes #7"
@@ -1605,6 +1682,10 @@ COMMANDS:
     Approve a merge request as the specified agent.
     Example: oelite-gitlab.sh mr-approve uranus/origin-auth 15 grace
 
+  mr-update <project-path> <mr-iid> <agent> <title> [description]
+    Update MR title and description. Pass empty quotes for title to keep current title.
+    Example: oelite-gitlab.sh mr-update uranus/origin-auth 420 isabella "fix: new title" "New description"
+
   mr-status <project-path> <mr-iid>
     Check MR merge status (open/merged/closed/cannot_merge).
     Used for merge verification before labeling an issue Done.
@@ -1658,6 +1739,7 @@ shift
 case "$command" in
   setup)          cmd_setup "$@" ;;
   issues)         cmd_issues "$@" ;;
+  issue-show)     cmd_issue_show "$@" ;;
   issue-create)   cmd_issue_create "$@" ;;
   issue-assign)   cmd_issue_assign "$@" ;;
   issue-comment)  cmd_issue_comment "$@" ;;
@@ -1670,6 +1752,7 @@ case "$command" in
   mr-list)        cmd_mr_list "$@" ;;
   mr-comment)     cmd_mr_comment "$@" ;;
   mr-approve)     cmd_mr_approve "$@" ;;
+  mr-update)      cmd_mr_update "$@" ;;
   mr-status)      cmd_mr_status "$@" ;;
   mr-merge)       cmd_mr_merge "$@" ;;
   mr-check-eligible) cmd_mr_check_eligible "$@" ;;
