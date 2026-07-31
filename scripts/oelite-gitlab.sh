@@ -1151,9 +1151,9 @@ cmd_mr_merge() {
   local data
   data=$(python3 -c "import json; print(json.dumps({'should_remove_source_branch': True, 'squash': False}))")
 
-  api_post "/projects/$encoded_path/merge_requests/$mr_iid/merge" "$pat" "$data"
+  api_put "/projects/$encoded_path/merge_requests/$mr_iid/merge" "$pat" "$data"
 
-  if [[ "$_API_STATUS" == "200" ]]; then
+  if [[ "$_API_STATUS" == "200" ]] || [[ "$_API_STATUS" == "201" ]]; then
     local state merged_at
     state=$(echo "$_API_RESPONSE" | json_get "state" "")
     merged_at=$(echo "$_API_RESPONSE" | json_get "merged_at" "")
