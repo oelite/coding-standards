@@ -1131,6 +1131,42 @@ else:
 '
 }
 
+cmd_mr_merge() {
+  local project_path="${1:-}"
+  local mr_iid="${2:-}"
+  local agent="${3:-emma}"
+
+  [[ -z "$project_path" ]] && { echo "[ERROR] Project path required" >&2; return 1; }
+  [[ -z "$mr_iid" ]] && { echo "[ERROR] MR IID required" >&2; return 1; }
+
+  validate_agent "$agent" || return 1
+
+  local encoded_path
+  encoded_path=$(url_encode_path "$project_path")
+
+  local pat
+  pat=$(get_pat "$agent")
+
+  # Accept the MR via POST /merge_requests/:iid/merge
+  local data
+  data=$(python3 -c "import json; print(json.dumps({'should_remove_source_branch': True, 'squash': False}))")
+
+  api_post "/projects/$encoded_path/merge_requests/$mr_iid/merge" "$pat" "$data"
+
+  if [[ "$_API_STATUS" == "200" ]]; then
+    local state merged_at
+    state=$(echo "$_API_RESPONSE" | json_get "state" "")
+    merged_at=$(echo "$_API_RESPONSE" | json_get "merged_at" "")
+    echo "[OK] MR !$mr_iid merged by $agent"
+    echo "  State:      $state"
+    echo "  Merged At:  $merged_at"
+  else
+    echo "[ERROR] Failed to merge MR !$mr_iid (HTTP $_API_STATUS)" >&2
+    echo "$_API_RESPONSE" >&2
+    return 1
+  fi
+}
+
 cmd_issue_audit() {
   local project_path="${1:-}"
 
@@ -1635,6 +1671,7 @@ case "$command" in
   mr-comment)     cmd_mr_comment "$@" ;;
   mr-approve)     cmd_mr_approve "$@" ;;
   mr-status)      cmd_mr_status "$@" ;;
+  mr-merge)       cmd_mr_merge "$@" ;;
   mr-check-eligible) cmd_mr_check_eligible "$@" ;;
   mr-auto-approve)  cmd_mr_auto_approve "$@" ;;
   issue-audit)    cmd_issue_audit "$@" ;;
