@@ -19,7 +19,16 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# Resolve the OElite monorepo root. Works from both the main checkout
+# (<root>/coding-standards/scripts/hooks/) and from a worktree
+# (<root>/coding-standards/.worktrees/<agent>/scripts/hooks/).
 ROOT="$(cd "$SCRIPT_DIR/../../.." && pwd)"
+while [[ "$(basename "$ROOT")" == ".worktrees" ]]; do
+  ROOT="$(cd "$ROOT/.." && pwd)"
+done
+if [[ ! -d "$ROOT/coding-standards" && -d "$(cd "$ROOT/../coding-standards" 2>/dev/null && pwd)" ]]; then
+  ROOT="$(cd "$ROOT/.." && pwd)"
+fi
 CODING_STANDARDS="$ROOT/coding-standards"
 GUARD_PATH="coding-standards/scripts/hooks/oelite-guard.sh"
 
@@ -76,6 +85,36 @@ PY
 render_settings() {
   cat <<'GUARDEOF'
 {
+    "permissions": {
+        "allow": [
+            "Bash(dotnet *)",
+            "Bash(npm *)",
+            "Bash(npx *)",
+            "Bash(cd *)",
+            "Bash(source *)",
+            "Bash(ls *)",
+            "Bash(cat *)",
+            "Bash(echo *)",
+            "Bash(pwd)",
+            "Bash(which *)",
+            "Bash(mkdir *)",
+            "Bash(cp *)",
+            "Bash(mv *)",
+            "Bash(grep *)",
+            "Bash(curl *)",
+            "Bash(python3 *)",
+            "Bash(node *)",
+            "Bash(test *)",
+            "Bash(git -C *)",
+            "Bash(git status*)",
+            "Bash(git log*)",
+            "Bash(git diff*)",
+            "Bash(git branch*)",
+            "Bash(git fetch*)",
+            "Bash(security find-generic-password *)",
+            "Bash(xxd *)"
+        ]
+    },
     "hooks": {
         "PreToolUse": [
             {
