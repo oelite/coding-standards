@@ -1167,6 +1167,40 @@ cmd_mr_merge() {
   fi
 }
 
+cmd_mr_close() {
+  local project_path="${1:-}"
+  local mr_iid="${2:-}"
+  local agent="${3:-emma}"
+
+  [[ -z "$project_path" ]] && { echo "[ERROR] Project path required" >&2; return 1; }
+  [[ -z "$mr_iid" ]] && { echo "[ERROR] MR IID required" >&2; return 1; }
+
+  validate_agent "$agent" || return 1
+
+  local encoded_path
+  encoded_path=$(url_encode_path "$project_path")
+
+  local pat
+  pat=$(get_pat "$agent")
+
+  # Close the MR via PUT /merge_requests/:iid with state_event=close
+  local data
+  data=$(python3 -c "import json; print(json.dumps({'state_event': 'close'}))")
+
+  api_put "/projects/$encoded_path/merge_requests/$mr_iid" "$pat" "$data"
+
+  if [[ "$_API_STATUS" == "200" ]] || [[ "$_API_STATUS" == "201" ]]; then
+    local state
+    state=$(echo "$_API_RESPONSE" | json_get "state" "")
+    echo "[OK] MR !$mr_iid closed by $agent"
+    echo "  State: $state"
+  else
+    echo "[ERROR] Failed to close MR !$mr_iid (HTTP $_API_STATUS)" >&2
+    echo "$_API_RESPONSE" >&2
+    return 1
+  fi
+}
+
 cmd_issue_audit() {
   local project_path="${1:-}"
 
@@ -1610,6 +1644,10 @@ COMMANDS:
     Used for merge verification before labeling an issue Done.
     Example: oelite-gitlab.sh mr-status uranus/origin-auth 15
 
+  mr-close <project-path> <mr-iid> <agent>
+    Close a merge request without merging (e.g. superseded, obsolete).
+    Example: oelite-gitlab.sh mr-close uranus/origin-auth 15 emma
+
   issue-audit <project-path>
     List issues still open whose linked MRs were merged.
     Used for post-merge audit to catch orphaned open issues.
@@ -1672,6 +1710,7 @@ case "$command" in
   mr-approve)     cmd_mr_approve "$@" ;;
   mr-status)      cmd_mr_status "$@" ;;
   mr-merge)       cmd_mr_merge "$@" ;;
+  mr-close)       cmd_mr_close "$@" ;;
   mr-check-eligible) cmd_mr_check_eligible "$@" ;;
   mr-auto-approve)  cmd_mr_auto_approve "$@" ;;
   issue-audit)    cmd_issue_audit "$@" ;;

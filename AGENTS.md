@@ -387,6 +387,8 @@ The wrapper is the only supported interface for issues, worktrees, MRs, comments
 | `mr-comment <project> <iid> <agent> <msg>` | Comment on MR as agent |
 | `mr-approve <project> <iid> <agent>` | Approve MR as agent |
 | `mr-status <project> <iid>` | Check MR merge status (open/merged/closed/cannot_merge) — used for merge verification |
+| `mr-merge <project> <iid> <agent>` | Merge MR as agent (via GitLab API) |
+| `mr-close <project> <iid> <agent>` | Close MR without merging (e.g. superseded/obsolete) |
 | `issue-audit <project>` | List issues still open whose linked MRs are merged — used for post-merge audit |
 | `oe-scope <agent> [--task-type] [--issue] [--desc]` | Read/update per-worktree .oe-scope file (compaction-resilient context anchor) |
 | `sync <worktree-id>` | Rebase worktree on latest `origin/develop` |
