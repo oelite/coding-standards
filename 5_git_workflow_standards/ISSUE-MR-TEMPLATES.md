@@ -370,6 +370,21 @@ Closes #<issue-iid>
 - [ ] Health endpoint verified if service is runnable
 
 ### E2E Test Coverage Verification (For UI Features - Olivia Mandate)
+
+**🚨 MANDATORY: Run E2E Quality Check Script Before Approving MR**
+
+```bash
+# Run from target repo root
+../../coding-standards/scripts/e2e-quality-check.sh --dir tests/e2e
+
+# For CI pipelines
+../../coding-standards/scripts/e2e-quality-check.sh --ci
+```
+
+The script automates detection of prohibited patterns. Exit code `1` = violations found → MR MUST be rejected.
+
+#### E2E Test Quality Checklist
+- [ ] **E2E quality check script passed**: Zero violations from `e2e-quality-check.sh`
 - [ ] **API integration tests**: Verify request payloads, response data mapping, error handling, loading states
 - [ ] **`page.route()` API interception**: Every data-driven test intercepts and verifies API calls (MANDATORY — see PROHIBITED-PATTERNS.md §5)
 - [ ] **No tautological assertions**: Zero `expect(body).toBeVisible()`, `expect(html).toBeVisible()`, or `toHaveURL()` without expected URL
@@ -386,10 +401,6 @@ Closes #<issue-iid>
 - [ ] **Playwright evidence captured**: Screenshots/videos for critical journeys, network logs, console verification
 - [ ] **Coverage mapping**: Each E2E test maps to user story acceptance criteria (US-XXX/AC-YYY)
 - [ ] **Console log verification**: No JS errors or warnings in browser console during test execution
-- [ ] **Automated quality checks passed**:
-  - [ ] `grep -rn 'expect.*body.*toBeVisible\|expect.*html.*toBeVisible' tests/` → zero results
-  - [ ] `grep -rn 'page.route' tests/` → at least one result per data-driven test file
-  - [ ] `grep -rn 'US-[0-9]\|US-XXX' tests/` → AC references present in test descriptions
 
 **REVIEWER MANDATE**: If ANY stub/fake/simplified/temporary implementation is detected, the MR MUST be rejected with specific citations. Approval without verifying full implementation is a code review failure.
 

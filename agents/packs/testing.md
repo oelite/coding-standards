@@ -69,6 +69,63 @@ Every assertion must fall into one of these categories:
 Reviewers MUST run: `grep -rn 'expect.*body.*toBeVisible\|expect.*html.*toBeVisible\|expect.*\.toHaveURL()' tests/`
 If ANY results, the MR MUST be rejected.
 
+### 🚨 E2E Quality Enforcement Tool (MANDATORY)
+
+**Olivia MUST use `e2e-quality-check.sh` to automate E2E quality verification.**
+
+#### Location
+```bash
+coding-standards/scripts/e2e-quality-check.sh
+```
+
+#### Usage
+```bash
+# Run against auto-detected test directory
+./scripts/e2e-quality-check.sh
+
+# Run against specific test directory
+./scripts/e2e-quality-check.sh --dir tests/e2e
+
+# Run in CI mode (exit with error if violations found)
+./scripts/e2e-quality-check.sh --ci
+
+# Run with auto-fix (removes tautological assertions)
+./scripts/e2e-quality-check.sh --fix
+
+# Verbose output
+./scripts/e2e-quality-check.sh --verbose
+```
+
+#### What the Script Checks
+| Check | What It Detects | Action Required |
+|-------|-----------------|-----------------|
+| **Tautological assertions** | `expect(body).toBeVisible()`, `expect(html).toBeVisible()`, `expect(page).toHaveURL()` without expected URL | REMOVE — these always pass |
+| **API call verification** | Tests that navigate but don't use `page.route()` | ADD `page.route()` interception to prove API was called |
+| **Button-works verification** | Tests that check button existence without clicking | ADD click + outcome verification |
+| **AC traceability** | Tests without US-XXX/AC-YYY references | ADD acceptance criterion reference |
+| **Data persistence** | Tests without `page.reload()` verification for CRUD | ADD persistence chain |
+
+#### When Olivia MUST Run This Script
+1. **Before approving any MR** with E2E tests — Gate 7 enforcement
+2. **After receiving test files from Daniel/Sophia** — immediate quality check
+3. **Before marking an issue as "tested"** — final verification
+
+#### Exit Codes
+- `0` = All checks passed
+- `1` = Violations found (CI mode)
+- `2` = Script error (missing directory, etc.)
+
+#### Integration with Olivia's Workflow
+```
+Gate 7 Workflow:
+1. Receive MR with E2E tests
+2. Run: ./scripts/e2e-quality-check.sh --dir tests/e2e
+3. If exit code 1 → REJECT MR with specific violations
+4. If exit code 0 → Proceed with test execution verification
+5. Run: npx playwright test --reporter=line
+6. Verify all tests pass + coverage mapping
+```
+
 ### 🚨 API Call Verification Mandate (NEW — Hard Gate)
 Every E2E test for a data-driven page MUST use `page.route()` to intercept and verify API calls:
 
