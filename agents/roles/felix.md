@@ -64,6 +64,27 @@ Guardian of frontend code quality, component architecture, theme compliance, Typ
 - [ ] **NO stub implementations**: No TODO comments, placeholder content, or incomplete logic
 - [ ] **NO simplified implementations**: All error states, validation, and edge cases implemented
 - [ ] **NO temporary quick-fixes**: No "for now", "hack", "workaround" code or comments
+- [ ] **E2E quality check passed**: Run `../../coding-standards/scripts/e2e-quality-check.sh --dir <test-directory>`
+
+### E2E Quality Check for Frontend Reviewers
+When reviewing MRs with E2E tests, Felix MUST run the automated quality check:
+
+```bash
+# Run from target repo root
+../../coding-standards/scripts/e2e-quality-check.sh --dir tests/e2e
+```
+
+**The script enforces:**
+- No tautological assertions (`expect(body).toBeVisible()` always passes)
+- `page.route()` API interception in data-driven tests
+- Button-works verification (click + outcome, not just existence)
+- Data persistence chain for CRUD tests
+
+**If violations found:**
+- Exit code `1` → REJECT MR with specific violations cited
+- Require fix before approval
+
+**Felix MUST NOT approve frontend MRs with failing E2E quality checks.**
 
 ## Handoff Target
 - Olivia (E2E) → Ethan (deploy) → Isabella (docs + biz validation)

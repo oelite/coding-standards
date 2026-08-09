@@ -374,6 +374,7 @@ The wrapper is the only supported interface for issues, worktrees, MRs, comments
 |---------|---------|
 | `setup` | Verify all 12 agent PATs against GitLab |
 | `issues <project>` | List open issues (GitLab path: `oelite/<family>/<repo>`) |
+| `issue-show <project> <iid>` | Show issue details with description and assignee |
 | `issue-create <project> <agent> <title> [desc]` | Create a new issue as agent |
 | `issue-assign <project> <iid> <agent>` | Assign issue to agent |
 | `issue-comment <project> <iid> <agent> <msg>` | Comment on issue as agent |
@@ -382,11 +383,15 @@ The wrapper is the only supported interface for issues, worktrees, MRs, comments
 | `worktree-create <agent> <branch> [base] [--issue <iid>] [--no-issue]` | Create worktree (issue-keyed for parallel same-agent work, or legacy) |
 | `worktree-list` | List active worktrees |
 | `worktree-remove <worktree-id>` | Remove worktree (worktree-id = agent or agent-issue) |
+| `worktree-owner <worktree-id> [new-owner]` | View or update worktree owner DNA (commit attribution) |
 | `mr-create <project> <agent> <src> <tgt> <title> [desc]` | Create MR as agent |
 | `mr-list <project>` | List open MRs |
 | `mr-comment <project> <iid> <agent> <msg>` | Comment on MR as agent |
 | `mr-approve <project> <iid> <agent>` | Approve MR as agent |
+| `mr-update <project> <iid> <agent> <title> [desc]` | Update MR title and description (pass empty title to keep current) |
 | `mr-status <project> <iid>` | Check MR merge status (open/merged/closed/cannot_merge) — used for merge verification |
+| `mr-check-eligible <project>` | List open MRs that meet auto-approval criteria (CI green, no conflicts, age ≥10min) |
+| `mr-auto-approve <project>` | Auto-approve all eligible MRs (uses caller's PAT for attribution) |
 | `mr-merge <project> <iid> <agent>` | Merge MR as agent (via GitLab API) |
 | `mr-close <project> <iid> <agent>` | Close MR without merging (e.g. superseded/obsolete) |
 | `issue-audit <project>` | List issues still open whose linked MRs are merged — used for post-merge audit |

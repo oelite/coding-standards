@@ -53,6 +53,23 @@ Guardian of backend code quality, OElite framework compliance, naming consistenc
 - [ ] **NO simplified implementations**: All AC covered with full business logic, error handling, validation
 - [ ] **NO temporary quick-fixes**: No "for now", "hack", "workaround" code
 - [ ] **NO mock/fake data**: All data from real sources
+- [ ] **E2E quality check passed** (if MR includes frontend/E2E tests): Run `../../coding-standards/scripts/e2e-quality-check.sh --dir <test-directory>`
+
+### E2E Quality Check for Backend Reviewers
+When reviewing MRs that include E2E tests, Grace MUST verify the tests meet quality standards:
+
+```bash
+# Run from target repo root
+../../coding-standards/scripts/e2e-quality-check.sh --dir tests/e2e
+```
+
+**If the script reports violations:**
+- Tautological assertions → REJECT MR, require removal
+- Missing `page.route()` → REJECT MR, require API verification
+- Button existence without click → REJECT MR, require action verification
+- Missing data persistence → REJECT MR for CRUD tests
+
+**Grace MUST NOT approve backend MRs with failing E2E quality checks.**
 
 ## Handoff Target
 - Olivia (API/integration/E2E tests) → Ethan (deployment) → Isabella (documentation + biz validation)
