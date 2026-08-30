@@ -455,6 +455,44 @@ cmd_issue_status() {
   fi
 }
 
+cmd_issue_label() {
+  local project_path="$1"
+  local iid="$2"
+  local agent="$3"
+  shift 3
+
+  validate_agent "$agent" || return 1
+
+  if [[ $# -eq 0 ]]; then
+    echo "[ERROR] At least one label required" >&2
+    return 1
+  fi
+
+  local encoded_path
+  encoded_path=$(url_encode_path "$project_path")
+
+  local pat
+  pat=$(get_pat "$agent")
+
+  local data
+  data=$(python3 -c "
+import json, sys
+labels = sys.argv[1:]
+print(json.dumps({'labels': labels}))
+" "$@")
+
+  api_put "/projects/$encoded_path/issues/$iid" "$pat" "$data"
+
+  if [[ "$_API_STATUS" -ge 200 && "$_API_STATUS" -lt 300 ]]; then
+    echo "[OK] Issue #$iid labels updated by $agent: $*"
+  else
+    echo "[ERROR] Failed to update issue labels (HTTP $_API_STATUS)" >&2
+    api_error_hint "$_API_STATUS" "$project_path"
+    echo "$_API_RESPONSE" >&2
+    return 1
+  fi
+}
+
 cmd_worktree_create() {
   local agent="$1"
   local branch="$2"
@@ -1782,6 +1820,7 @@ case "$command" in
   issue-assign)   cmd_issue_assign "$@" ;;
   issue-comment)  cmd_issue_comment "$@" ;;
   issue-status)   cmd_issue_status "$@" ;;
+  issue-label)    cmd_issue_label "$@" ;;
  worktree-create) cmd_worktree_create "$@" ;;
  worktree-sync) cmd_worktree_sync "$@" ;;
  worktree-list) cmd_worktree_list "$@" ;;
