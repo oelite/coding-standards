@@ -328,10 +328,12 @@ cmd_issue_create() {
   encoded_path=$(url_encode_path "$project_path")
 
   local data
-  data=$(python3 -c "
+  data=$(printf '%s\n%s' "$title" "$description" | python3 -c "
 import json, sys
-payload = {'title': $(json_encode_value "$title")}
-desc = $(json_encode_value "$description")
+lines = sys.stdin.read().split('\n', 1)
+title = lines[0]
+desc = lines[1] if len(lines) > 1 else ''
+payload = {'title': title}
 if desc:
     payload['description'] = desc
 print(json.dumps(payload))
