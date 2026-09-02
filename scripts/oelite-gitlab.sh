@@ -129,7 +129,13 @@ api_error_hint() {
 }
 
 repo_root() {
-  main_repo_root
+  local root
+  root=$(main_repo_root 2>/dev/null)
+  if [[ -z "$root" || "$root" == "$(pwd)" && ! -d "$root/.git" && ! -f "$root/.git" ]]; then
+    echo "[ERROR] Not inside a git repository" >&2
+    return 1
+  fi
+  echo "$root"
 }
 
 worktree_path() {
@@ -557,15 +563,10 @@ cmd_worktree_create() {
     local preflight_root preflight_wt_path preflight_wt_branch preflight_stale=false
     preflight_root=$(main_repo_root 2>/dev/null || true)
     if [[ -n "$preflight_root" && -d "$preflight_root" ]]; then
-      local preflight_output
-      preflight_output=$(git -C "$preflight_root" worktree list --porcelain 2>/dev/null)
-      while IFS= read -r line || [[ -n "$line" ]]; do
-        [[ -z "$line" ]] && continue
-        case "$line" in
-          worktree\ *) preflight_wt_path="${line#worktree }" ;;
-          branch\ *)   preflight_wt_branch="${line#branch refs/heads/}" ;;
-          prunable\ *) preflight_stale=true ;;
-          *)
+      local preflight_line
+      while IFS= read -r preflight_line; do
+        case "$preflight_line" in
+          "")  # Record delimiter — evaluate the worktree we just finished parsing
             if [[ -n "$preflight_wt_path" && "$preflight_wt_path" == "$preflight_root/.worktrees/$agent"* ]]; then
               if $preflight_stale; then
                 echo "" >&2
@@ -587,10 +588,38 @@ cmd_worktree_create() {
                 echo "" >&2
                 echo "       To proceed anyway (e.g. parallel task), re-run with --force." >&2
               fi
-              preflight_wt_path=""; preflight_wt_branch=""; preflight_stale=false
-            fi ;;
+            fi
+            preflight_wt_path=""; preflight_wt_branch=""; preflight_stale=false
+            ;;
+          worktree\ *) preflight_wt_path="${preflight_line#worktree }" ;;
+          branch\ *)   preflight_wt_branch="${preflight_line#branch refs/heads/}" ;;
+          prunable\ *) preflight_stale=true ;;
         esac
-      done <<< "$preflight_output"
+      done < <(git -C "$preflight_root" worktree list --porcelain 2>/dev/null)
+
+      # Handle the last record (no trailing blank line)
+      if [[ -n "$preflight_wt_path" && "$preflight_wt_path" == "$preflight_root/.worktrees/$agent"* ]]; then
+        if $preflight_stale; then
+          echo "" >&2
+          echo "[WARN] Stale worktree found for agent '$agent':" >&2
+          echo "       $preflight_wt_path (orphan, branch: $preflight_wt_branch)" >&2
+          echo "       Per GIT-WORKFLOW-STANDARDS.md §1.8, clean up before starting new work." >&2
+          echo "" >&2
+          echo "       Run:  oelite-gitlab.sh worktree-cleanup $agent --delete-branch" >&2
+          echo "       Or:   oelite-gitlab.sh worktree-check-stale --cleanup" >&2
+          echo "" >&2
+          echo "       To proceed anyway (e.g. spike work), re-run with --force." >&2
+        else
+          echo "" >&2
+          echo "[WARN] Active worktree exists for agent '$agent':" >&2
+          echo "       $preflight_wt_path (branch: $preflight_wt_branch)" >&2
+          echo "       Per GIT-WORKFLOW-STANDARDS.md §1.8, clean up after each task." >&2
+          echo "" >&2
+          echo "       Run:  oelite-gitlab.sh worktree-cleanup $agent --delete-branch" >&2
+          echo "" >&2
+          echo "       To proceed anyway (e.g. parallel task), re-run with --force." >&2
+        fi
+      fi
     fi
   fi
 
@@ -862,20 +891,20 @@ get_gitlab_project_path() {
 main_repo_root() {
   local gitrepo
   gitrepo=$(git rev-parse --git-common-dir 2>/dev/null)
-  if [[ -n "$gitrepo" ]]; then
-    if [[ "$gitrepo" != /* ]]; then
-      gitrepo="$(pwd)/$gitrepo"
-    fi
-    dirname "$gitrepo"
-  else
-    pwd
+  if [[ -z "$gitrepo" ]]; then
+    echo "[ERROR] Not inside a git repository" >&2
+    return 1
   fi
+  if [[ "$gitrepo" != /* ]]; then
+    gitrepo="$(pwd)/$gitrepo"
+  fi
+  dirname "$gitrepo"
 }
 
 get_mr_state_for_branch() {
   local project_path="$1"
   local source_branch="$2"
-  local state _api_response _api_count
+  local _api_response _api_count
 
   local encoded_path
   encoded_path=$(url_encode_path "$project_path")
