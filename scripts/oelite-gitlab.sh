@@ -129,10 +129,7 @@ api_error_hint() {
 }
 
 repo_root() {
-  git rev-parse --show-toplevel 2>/dev/null || {
-    echo "[ERROR] Not inside a git repository" >&2
-    exit 1
-  }
+  main_repo_root
 }
 
 worktree_path() {
@@ -500,6 +497,7 @@ cmd_worktree_create() {
   local owner="$agent"
   local issue=""
   local no_issue=false
+  local force_preflight=false
 
   validate_agent "$agent" || return 1
 
@@ -527,6 +525,10 @@ cmd_worktree_create() {
         no_issue=true
         shift
         ;;
+      --force)
+        force_preflight=true
+        shift
+        ;;
       *)
         echo "[ERROR] Unknown option: $1" >&2
         return 1
@@ -546,6 +548,50 @@ cmd_worktree_create() {
     echo "" >&2
     echo "[ERROR] Refusing to create worktree without --issue or --no-issue." >&2
     return 1
+  fi
+
+  # Pre-flight: warn about stale worktrees for the same agent (GIT-WORKFLOW-STANDARDS.md §1.8).
+  # Per the worktree-cleanup hard gate, agents should clean up after each task.
+  # This check is advisory only — pass --force to skip the warning for spike work.
+  if ! $force_preflight; then
+    local preflight_root preflight_wt_path preflight_wt_branch preflight_stale=false
+    preflight_root=$(main_repo_root 2>/dev/null || true)
+    if [[ -n "$preflight_root" && -d "$preflight_root" ]]; then
+      local preflight_output
+      preflight_output=$(git -C "$preflight_root" worktree list --porcelain 2>/dev/null)
+      while IFS= read -r line || [[ -n "$line" ]]; do
+        [[ -z "$line" ]] && continue
+        case "$line" in
+          worktree\ *) preflight_wt_path="${line#worktree }" ;;
+          branch\ *)   preflight_wt_branch="${line#branch refs/heads/}" ;;
+          prunable\ *) preflight_stale=true ;;
+          *)
+            if [[ -n "$preflight_wt_path" && "$preflight_wt_path" == "$preflight_root/.worktrees/$agent"* ]]; then
+              if $preflight_stale; then
+                echo "" >&2
+                echo "[WARN] Stale worktree found for agent '$agent':" >&2
+                echo "       $preflight_wt_path (orphan, branch: $preflight_wt_branch)" >&2
+                echo "       Per GIT-WORKFLOW-STANDARDS.md §1.8, clean up before starting new work." >&2
+                echo "" >&2
+                echo "       Run:  oelite-gitlab.sh worktree-cleanup $agent --delete-branch" >&2
+                echo "       Or:   oelite-gitlab.sh worktree-check-stale --cleanup" >&2
+                echo "" >&2
+                echo "       To proceed anyway (e.g. spike work), re-run with --force." >&2
+              else
+                echo "" >&2
+                echo "[WARN] Active worktree exists for agent '$agent':" >&2
+                echo "       $preflight_wt_path (branch: $preflight_wt_branch)" >&2
+                echo "       Per GIT-WORKFLOW-STANDARDS.md §1.8, clean up after each task." >&2
+                echo "" >&2
+                echo "       Run:  oelite-gitlab.sh worktree-cleanup $agent --delete-branch" >&2
+                echo "" >&2
+                echo "       To proceed anyway (e.g. parallel task), re-run with --force." >&2
+              fi
+              preflight_wt_path=""; preflight_wt_branch=""; preflight_stale=false
+            fi ;;
+        esac
+      done <<< "$preflight_output"
+    fi
   fi
 
   if [[ "$owner" != "$agent" ]]; then
@@ -814,7 +860,16 @@ get_gitlab_project_path() {
 }
 
 main_repo_root() {
-  git rev-parse --git-common-dir 2>/dev/null | xargs dirname
+  local gitrepo
+  gitrepo=$(git rev-parse --git-common-dir 2>/dev/null)
+  if [[ -n "$gitrepo" ]]; then
+    if [[ "$gitrepo" != /* ]]; then
+      gitrepo="$(pwd)/$gitrepo"
+    fi
+    dirname "$gitrepo"
+  else
+    pwd
+  fi
 }
 
 get_mr_state_for_branch() {
@@ -1960,7 +2015,7 @@ COMMANDS:
     Update issue status (opened or closed) as the specified agent.
     Example: oelite-gitlab.sh issue-status uranus/origin-auth 42 emma closed
 
-  worktree-create <agent> <branch> [base-branch] [--issue <iid>] [--no-issue] [--owner <team-member>]
+  worktree-create <agent> <branch> [base-branch] [--issue <iid>] [--no-issue] [--owner <team-member>] [--force]
     Create a git worktree for an agent with per-worktree identity.
     Default base-branch is develop.
     --issue <iid>: GitLab issue number. Creates .worktrees/<agent>-<issue>.
@@ -1971,9 +2026,11 @@ COMMANDS:
                 does not require an issue ticket.
     --owner: Team member who owns commit attribution (owner DNA).
              When omitted, the agent IS the owner.
+    --force: Skip the pre-flight check that warns about stale worktrees
+             for the same agent (per §1.8). Use only for spike work.
     Example: oelite-gitlab.sh worktree-create daniel feature/US-042-auth develop --issue 42
     Example: oelite-gitlab.sh worktree-create sophia feature/auth --issue 15 --owner daniel
- Example: oelite-gitlab.sh worktree-create marcus feature/spike --no-issue
+    Example: oelite-gitlab.sh worktree-create marcus feature/spike --no-issue
 
  worktree-sync
  Safe sync: updates local develop from origin WITHOUT checking it out.
