@@ -24,8 +24,7 @@ json_get() {
 }
 
 json_encode_value() {
-  # Use /dev/stdin to avoid here-string truncation on complex multiline content
-  python3 -c "import json,sys; print(json.dumps(sys.stdin.read().rstrip('\n')))" < /dev/stdin <<< "$1"
+  printf '%s' "$1" | python3 -c "import json,sys; print(json.dumps(sys.stdin.read()))"
 }
 
 url_encode_path() {
