@@ -113,29 +113,34 @@ worktree_toplevel() {
   in_worktree "$p" || return 1
   local d="$p"
   while [[ ! -e "$d" && "$d" != "/" ]]; do d="$(dirname "$d")"; done
-  # Walk to .worktrees
   while [[ "$(basename "$d")" != ".worktrees" && "$d" != "/" ]]; do
     d="$(dirname "$d")"
   done
-  # d = <repo>/.worktrees. Iterate siblings to find the one containing our path.
+  local pp="$p"
+  while [[ ! -e "$pp" && "$pp" != "/" ]]; do pp="$(dirname "$pp")"; done
+  local best_top=""
+  local best_depth=0
   for wt in "$d"/*/; do
     [[ -d "$wt" ]] || continue
-    # Normalise the worktree path (resolve symlinks for the comparison).
     local wt_canon="$wt"
     if command -v python3 >/dev/null 2>&1; then
       wt_canon="$(python3 -c 'import os,sys; print(os.path.realpath(sys.argv[1]))' "$wt" 2>/dev/null || echo "$wt")"
     fi
-    # Use git from inside this candidate worktree to get its own toplevel.
     local top
     top="$(cd "$wt" 2>/dev/null && git rev-parse --show-toplevel 2>/dev/null || true)"
     [[ -z "$top" ]] && continue
-    # Match if the input file (or its nearest existing ancestor) is inside top.
-    local pp="$p"
-    while [[ ! -e "$pp" && "$pp" != "/" ]]; do pp="$(dirname "$pp")"; done
+    [[ "$top" != "$wt" && "$top" != "$wt_canon" ]] && continue
     case "$pp" in
-      "$top"/*|"$top") printf '%s\n' "$top"; return 0 ;;
+      "$top"/*|"$top")
+        local depth="${#top}"
+        if (( depth > best_depth )); then
+          best_top="$top"
+          best_depth="$depth"
+        fi
+        ;;
     esac
   done
+  [[ -n "$best_top" ]] && { printf '%s\n' "$best_top"; return 0; }
   return 1
 }
 
