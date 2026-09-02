@@ -433,6 +433,7 @@ curl -f http://localhost:<port>/health
 
 ### Post-Approval Actions (Reviewer or Emma)
 - [ ] **Merge verified**: `mr-status <project> <mr-iid>` confirms `merged` state
+- [ ] **Worktree cleaned up**: `worktree-cleanup <agent> --delete-branch` ran successfully in the same session as merge verification (per `GIT-WORKFLOW-STANDARDS.md` §1.8 — hard gate). Verify with `worktree-list` showing no entries for the implementing agent.
 - [ ] **Issue labeled `Done`** (after Isabella business validation)
 - [ ] **Issue closed in GitLab**: `issue-status <project> <issue-iid> emma closed` — in same session as merge verification
 
@@ -475,3 +476,4 @@ Every OElite GitLab project MUST have the following labels:
 | 2026-07-23 | Sisyphus | 1.2.0 | Added Testing Strategy, E2E Test Requirements, and Implementation Quality Requirements to Feature template; added Testing Strategy to Bug template; added Testing Strategy + Implementation Quality Requirements to Task template; added console log verification to MR E2E checklist |
 | 2026-07-22 | Orchestrator / Isabella | 1.1.0 | Added AC verification checklist from AC-VERIFICATION-PROCESS.md to all templates |
 | 2026-06-29 | Emma / Isabella | 1.0.0 | Created dedicated ISSUE-MR-TEMPLATES.md for GitLab issue and MR templates |
+| 2026-09-02 | Isabella (per TASK-008) | 1.3.0 | Added `worktree-cleanup` step to MR Post-Approval Actions — hard-gate enforcement for post-merge cleanup per `GIT-WORKFLOW-STANDARDS.md` §1.8 |
