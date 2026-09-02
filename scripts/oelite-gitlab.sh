@@ -802,6 +802,277 @@ cmd_worktree_remove() {
   echo "[OK] Worktree removed for $wt_id"
 }
 
+get_gitlab_project_path() {
+  local root="${1:-$(repo_root)}"
+  local url_path
+  url_path=$(git -C "$root" remote get-url origin 2>/dev/null | sed 's|.*oelite/||; s|\.git$||' || true)
+  if [[ -n "$url_path" ]]; then
+    echo "oelite/$url_path"
+  else
+    echo "oelite/$(basename "$root")"
+  fi
+}
+
+main_repo_root() {
+  git rev-parse --git-common-dir 2>/dev/null | xargs dirname
+}
+
+get_mr_state_for_branch() {
+  local project_path="$1"
+  local source_branch="$2"
+  local state _api_response _api_count
+
+  local encoded_path
+  encoded_path=$(url_encode_path "$project_path")
+
+  local pat
+  pat=$(get_pat emma)
+
+  for state in opened merged closed; do
+    api_get "/projects/$encoded_path/merge_requests?state=${state}&source_branch=${source_branch}&per_page=10" "$pat" 2>/dev/null
+    _api_response="$_API_RESPONSE"
+    if [[ "$_API_STATUS" == "200" ]]; then
+      _api_count=$(printf '%s' "$_api_response" | python3 -c '
+import sys, json
+try:
+  d = json.loads(sys.stdin.read() or "[]")
+  print(len(d) if isinstance(d, list) else 0)
+except Exception:
+  print(0)
+' 2>/dev/null) || _api_count=0
+      : "${_api_count:=0}"
+      if [[ "$_api_count" -gt 0 ]]; then
+        echo "$state"
+        return 0
+      fi
+    fi
+  done
+
+  echo "not_found"
+  return 0
+}
+
+cmd_worktree_cleanup() {
+  local target_agent=""
+  local delete_branch=false
+  local sweep_all=false
+  local check_stale=false
+  local do_cleanup=false
+
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --delete-branch) delete_branch=true; shift ;;
+      --all)           sweep_all=true;   shift ;;
+      --check-stale)   check_stale=true; shift ;;
+      --cleanup)       do_cleanup=true;   shift ;;
+      --agent)         target_agent="$2"; shift 2 ;;
+      -*)
+        echo "[ERROR] Unknown option: $1" >&2
+        echo "Usage: worktree-cleanup <agent> [--delete-branch]" >&2
+        echo "       worktree-cleanup --all" >&2
+        echo "       worktree-cleanup --check-stale [--agent A]" >&2
+        return 1 ;;
+      *)
+        [[ -z "$target_agent" ]] && target_agent="$1"
+        shift ;;
+    esac
+  done
+
+  local root current_wt_path
+  root=$(main_repo_root)
+  current_wt_path=$(git rev-parse --show-toplevel 2>/dev/null || true)
+  local gitlab_project
+  gitlab_project=$(get_gitlab_project_path "$root")
+
+  if $check_stale; then
+    local found_stale=false
+    echo "=== Worktree Stale Check ==="
+    echo "Project: $gitlab_project"
+    echo ""
+
+    while read -r line; do
+      case "$line" in
+        worktree\ *) wt_path="${line#worktree }" ;;
+        branch\ *)   branch="${line#branch refs/heads/}" ;;
+        prunable\ *) prunable_reason="${line#prunable }" ;;
+        "")
+          if [[ -n "$wt_path" && "$wt_path" == "$root/.worktrees/"* ]]; then
+            local agent_name="${wt_path#$root/.worktrees/}"
+            local is_stale=false
+            local reason=""
+
+            if [[ -n "${prunable_reason:-}" ]]; then
+              is_stale=true
+              reason="${prunable_reason} (orphan)"
+            fi
+
+            if $is_stale; then
+              found_stale=true
+              if [[ -z "$target_agent" || "$agent_name" == "$target_agent" ]]; then
+                echo "[STALE] $agent_name | reason: $reason"
+              fi
+            fi
+          fi
+          wt_path=""; branch=""; prunable_reason="" ;;
+      esac
+    done < <(git -C "$root" worktree list --porcelain 2>/dev/null)
+
+    if ! $found_stale; then
+      echo "No stale worktrees found."
+    fi
+    if $do_cleanup; then
+      echo ""
+      echo "=== Pruning stale worktrees ==="
+      git -C "$root" worktree prune 2>&1
+      echo "[OK] Prune complete."
+    else
+      echo ""
+      echo "To auto-prune, run:"
+      echo "  worktree-cleanup --check-stale --cleanup"
+    fi
+    return 0
+  fi
+
+  if $sweep_all; then
+    echo "=== Sweeping all worktrees ==="
+    echo "Project: $gitlab_project"
+    echo ""
+    echo "[prune] Running git worktree prune..."
+    git -C "$root" worktree prune 2>&1
+
+    local removed_count=0
+    local skipped_count=0
+    while read -r line; do
+      case "$line" in
+        worktree\ *) wt_path="${line#worktree }" ;;
+        branch\ *)   branch="${line#branch refs/heads/}" ;;
+        prunable\ *) prunable_reason="${line#prunable }" ;;
+        "")
+          if [[ -n "$wt_path" && "$wt_path" == "$root/.worktrees/"* ]]; then
+            local agent_name="${wt_path#$root/.worktrees/}"
+
+            if [[ "$wt_path" == "$current_wt_path" ]]; then
+              echo "  [SKIP] $agent_name ($branch) — currently in use"
+              skipped_count=$((skipped_count + 1))
+              wt_path=""; branch=""; prunable_reason=""
+              continue
+            fi
+
+            if [[ -n "${prunable_reason:-}" ]]; then
+              echo "==> $agent_name (orphan: $prunable_reason) — pruning..."
+              if [[ -d "$wt_path" ]]; then
+                git -C "$root" worktree remove "$wt_path" --force 2>&1 || echo "  [WARN] Could not remove: $wt_path"
+              fi
+              if [[ -n "$branch" ]] && (git -C "$root" branch --list "$branch" | grep -q . || true); then
+                git -C "$root" branch -D "$branch" 2>/dev/null && echo "  Deleted branch: $branch"
+              fi
+              removed_count=$((removed_count + 1))
+            else
+              local mr_state
+              mr_state=$(get_mr_state_for_branch "$gitlab_project" "$branch")
+              if [[ "$mr_state" == "merged" || "$mr_state" == "closed" || "$mr_state" == "not_found" ]]; then
+                echo "==> $agent_name ($branch) MR=$mr_state — removing..."
+                if [[ -d "$wt_path" ]]; then
+                  git -C "$root" worktree remove "$wt_path" --force 2>&1 || echo "  [WARN] Could not remove: $wt_path"
+                fi
+                if (git -C "$root" branch --list "$branch" | grep -q . || true); then
+                  git -C "$root" branch -D "$branch" 2>/dev/null && echo "  Deleted branch: $branch"
+                fi
+                removed_count=$((removed_count + 1))
+              else
+                echo "  [SKIP] $agent_name ($branch) MR=$mr_state — still open"
+                skipped_count=$((skipped_count + 1))
+              fi
+            fi
+          fi
+          wt_path=""; branch=""; prunable_reason="" ;;
+      esac
+    done < <(git -C "$root" worktree list --porcelain 2>/dev/null)
+
+    echo ""
+    echo "=== Sweep Summary ==="
+    echo "  Removed: $removed_count"
+    echo "  Skipped: $skipped_count"
+    echo "  Remaining worktrees:"
+    git -C "$root" worktree list --porcelain | grep "$root/.worktrees/" || echo "    (none)"
+    return 0
+  fi
+
+  if [[ -z "$target_agent" ]]; then
+    echo "[ERROR] Missing agent name. Usage: worktree-cleanup <agent> [--delete-branch]" >&2
+    return 1
+  fi
+
+  validate_agent "$target_agent" || return 1
+
+  local wt_info
+  wt_info=$(git -C "$root" worktree list --porcelain | while IFS= read -r line; do
+    case "$line" in
+      worktree\ *) wt_p="${line#worktree }" ;;
+      branch\ *)   br="${line#branch refs/heads/}" ;;
+      "")
+        if [[ "$wt_p" == "$root/.worktrees/$target_agent" || \
+              "$wt_p" == "$root/.worktrees/$target_agent-"* ]]; then
+          echo "$wt_p|$br"
+        fi
+        wt_p=""; br="" ;;
+    esac
+  done | head -1)
+
+  if [[ -z "$wt_info" ]]; then
+    echo "[INFO] No worktree found for agent: $target_agent"
+    return 0
+  fi
+
+  local wt_path="${wt_info%%|*}"
+  local branch="${wt_info#*|}"
+
+  if [[ "$wt_path" == "$current_wt_path" ]]; then
+    echo "[WARN] Cannot remove currently-active worktree: $wt_path"
+    echo "       Run from main repo or another worktree."
+    return 1
+  fi
+
+  echo "=== Cleaning up worktree: $wt_path ==="
+  echo "  Branch: $branch"
+  echo "[prune] Running git worktree prune..."
+  git -C "$root" worktree prune 2>&1
+
+  if [[ ! -d "$wt_path" ]]; then
+    echo "  Worktree directory already gone (prunable orphan)"
+    if (git -C "$root" branch --list "$branch" | grep -q . || true); then
+      echo "  Deleting local branch: $branch"
+      git -C "$root" branch -D "$branch" 2>/dev/null && echo "  [OK] Branch deleted"
+    fi
+    echo "[OK] Orphan cleanup complete for $target_agent"
+    return 0
+  fi
+
+  echo "[remove] git worktree remove $wt_path"
+  if git -C "$root" worktree remove "$wt_path" 2>&1; then
+    echo "  [OK] Worktree removed"
+  else
+    echo "  [WARN] Standard remove failed, trying --force..."
+    git -C "$root" worktree remove "$wt_path" --force 2>&1 || echo "  [WARN] Could not remove worktree"
+  fi
+
+  if $delete_branch && [[ -n "$branch" ]]; then
+    echo "[branch] Deleting local branch: $branch"
+    if git -C "$root" branch -D "$branch" 2>/dev/null; then
+      echo "  [OK] Branch deleted"
+    else
+      echo "  [WARN] Could not delete branch (may not exist)" >&2
+    fi
+  fi
+
+  echo ""
+  echo "[OK] Worktree cleanup complete for $target_agent"
+}
+
+cmd_worktree_check_stale() {
+  cmd_worktree_cleanup --check-stale "$@"
+}
+
 cmd_mr_create() {
   local project_path="$1"
   local agent="$2"
@@ -1721,6 +1992,25 @@ COMMANDS:
      Example: oelite-gitlab.sh worktree-remove daniel-42 --delete-branch
      Example: oelite-gitlab.sh worktree-remove daniel --delete-branch
 
+   worktree-cleanup <agent> [--delete-branch]
+     HARD GATE per GIT-WORKFLOW-STANDARDS.md section 1.8. Removes a worktree
+     and (optionally) its local feature branch after the linked MR
+     is merged or closed. Prunes orphan gitdir references first.
+     Example: oelite-gitlab.sh worktree-cleanup daniel --delete-branch
+
+   worktree-cleanup --all
+     Sweep ALL worktrees in the current repo. For each worktree,
+     queries GitLab for the linked MR state and removes if merged,
+     closed, or not_found. Prunes orphan gitdir references. For
+     Emma/Isabella periodic sweeps.
+     Example: oelite-gitlab.sh worktree-cleanup --all
+
+   worktree-check-stale [--agent <agent>] [--cleanup]
+     Dry-run report of stale worktrees (orphans with missing
+     directories). With --cleanup, auto-prunes them.
+     Example: oelite-gitlab.sh worktree-check-stale
+     Example: oelite-gitlab.sh worktree-check-stale --cleanup
+
    worktree-owner <worktree-id> [new-owner]
      View or update worktree owner DNA (commit attribution).
      <worktree-id> is either <agent> or <agent>-<issue>.
@@ -1825,6 +2115,8 @@ case "$command" in
  worktree-sync) cmd_worktree_sync "$@" ;;
  worktree-list) cmd_worktree_list "$@" ;;
   worktree-remove) cmd_worktree_remove "$@" ;;
+  worktree-cleanup) cmd_worktree_cleanup "$@" ;;
+  worktree-check-stale) cmd_worktree_check_stale "$@" ;;
   mr-create)      cmd_mr_create "$@" ;;
   mr-list)        cmd_mr_list "$@" ;;
   mr-comment)     cmd_mr_comment "$@" ;;
