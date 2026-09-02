@@ -20,7 +20,7 @@ _API_RESPONSE=""
 _API_STATUS=""
 
 json_get() {
-  python3 -c 'import sys,json; d=json.load(sys.stdin); v=d.get(sys.argv[1]); print(v if v is not None else sys.argv[2])' "$1" "$2"
+  python3 -c 'import sys,json; d=json.loads(sys.stdin.read()); v=d.get(sys.argv[1]); print(v if v is not None else sys.argv[2])' "$1" "$2"
 }
 
 json_encode_value() {
