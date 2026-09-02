@@ -20,7 +20,30 @@ _API_RESPONSE=""
 _API_STATUS=""
 
 json_get() {
-  python3 -c 'import sys,json; d=json.loads(sys.stdin.read()); v=d.get(sys.argv[1]); print(v if v is not None else sys.argv[2])' "$1" "$2"
+  python3 -c '
+import sys, json
+raw = sys.stdin.read()
+out = []
+in_str = False
+esc = False
+for c in raw:
+    if esc:
+        out.append(c)
+        esc = False
+    elif c == "\\\\":
+        out.append(c)
+        esc = True
+    elif c == "\"":
+        in_str = not in_str
+        out.append(c)
+    elif c in ("\n","\r") and in_str:
+        out.append("\\\\n")
+    else:
+        out.append(c)
+d = json.loads("".join(out))
+v = d.get(sys.argv[1])
+print(v if v is not None else sys.argv[2])
+' "$1" "$2"
 }
 
 json_encode_value() {
@@ -89,10 +112,10 @@ api_call() {
   )
 
   if [[ -n "$data" ]]; then
-    curl_args+=(--data "$data")
+    curl_args+=(--data-binary @- --header "Content-Length: ${#data}")
   fi
 
-  _API_STATUS=$(curl "${curl_args[@]}")
+  _API_STATUS=$(printf '%s' "$data" | curl "${curl_args[@]}")
   _API_RESPONSE=$(<"$tmpfile")
   rm -f "$tmpfile"
 }
