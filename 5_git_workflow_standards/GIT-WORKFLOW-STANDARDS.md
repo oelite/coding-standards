@@ -123,6 +123,72 @@ scripts/oelite-gitlab.sh issues <project>
 
 ---
 
+## 1.8 Mandatory Worktree Cleanup (Hard Gate)
+
+**This is a non-negotiable gate. No worktree may remain on disk after the MR that justified it has been merged.**
+
+After `mr-status` confirms an MR is `merged` (or `closed`), the linked worktree and local feature branch MUST be removed **in the same session as the merge verification** — before the agent picks up the next task. Leaving worktrees behind is a prohibited pattern (see `PROHIBITED-PATTERNS.md` §9).
+
+### Why This Exists
+
+Without an enforced cleanup gate:
+
+- **Local disk fills up** with duplicate working copies of the repo. A 5 GB monorepo × N stale worktrees per agent × 12 agents = silent disk exhaustion.
+- **`worktree-list` output is unreliable** — agents cannot see at a glance which worktrees are in-flight vs. abandoned. Orphans (e.g., `prunable gitdir file points to non-existent location`) appear alongside active work and confuse the status report.
+- **Stale local feature branches accumulate** and leak to `origin` if the `remove_source_branch` flag was missed at MR creation. Remote branch count grows unboundedly.
+- **Reviewer chain breaks**: A reviewer picking up a stale worktree cannot tell which MR it belonged to and may run tests against already-merged code.
+
+### Required Sequence After Merge Verification
+
+The merge verification step (see §8.2.1) MUST be followed immediately by cleanup, in the same session:
+
+```bash
+# 1. Verify merge (existing — §8.2.1)
+scripts/oelite-gitlab.sh mr-status <project> <mr-iid>
+# Must show: merged (or closed)
+
+# 2. MANDATORY: clean up the worktree and local branch
+#    (note: GitLab already auto-deletes the REMOTE branch via the
+#     remove_source_branch flag set in mr-create; this step removes
+#     the LOCAL branch and the worktree directory)
+scripts/oelite-gitlab.sh worktree-cleanup <agent> --delete-branch
+
+# 3. Sync local develop for next task (existing — §1.6)
+scripts/oelite-gitlab.sh worktree-sync
+
+# 4. THEN start the next task
+scripts/oelite-gitlab.sh worktree-create <agent> <branch> --issue <iid>
+```
+
+### Cleanup Responsibilities
+
+| Role | Responsibility |
+|------|---------------|
+| **Any agent** | MUST run `worktree-cleanup <agent> --delete-branch` in the same session as `mr-status` confirming merge, before starting the next task |
+| **Reviewer** | MUST include "Worktree cleaned up" in the MR approval comment (see `ISSUE-MR-TEMPLATES.md` Post-Approval Actions) |
+| **Emma** | MUST run `worktree-cleanup --all` periodically across active repos to sweep any leftovers |
+| **Isabella** | MUST run `worktree-check-stale` during post-merge issue audit and escalate to Emma if orphans found |
+
+### What `worktree-cleanup` Does
+
+`worktree-cleanup` (and its `--all` / `--check-stale` variants) is a single subcommand that:
+
+1. Iterates every worktree in `.worktrees/<agent>-*` (or all worktrees for `--all`).
+2. For each worktree, queries GitLab for the MR whose `source_branch` matches the worktree's current branch.
+3. Removes the worktree if the MR is `merged` or `closed` (with `git worktree prune` for orphan / `prunable` state, then `git worktree remove --force`).
+4. Deletes the local feature branch (`git branch -D`) when `--delete-branch` is passed.
+5. Reports any worktree whose MR is still `open` (kept) or unknown (kept with a warning).
+
+### Failure to Comply
+
+| Scenario | Consequence |
+|----------|-------------|
+| Agent leaves worktree after merge, picks up new task | Reviewer MUST reject the next MR's handoff with: "Worktree from prior task not cleaned up. Run `worktree-cleanup <agent> --delete-branch` first." |
+| Reviewer approves MR without confirming cleanup | Audit finding; escalates to Emma for coaching |
+| Multiple `prunable` orphans accumulate in a repo | `worktree-cleanup --all` is mandatory; one-time migration per repo |
+
+---
+
 ## 2. Team Identity Registry
 
 Every team member has a unique GitLab identity. AI agents commit under the team member's GitLab identity configured in their worktree — **never under the AI executor's own name**. All GitLab operations (comments, MRs, approvals) use the configured team member's personal access token (PAT).
@@ -290,10 +356,15 @@ This ensures commits are attributed to the correct agent regardless of the host 
 6. REVIEW    Reviewer reviews → approves or requests changes
 7. FIX       If changes requested: fix in worktree → push → re-review
 8. MERGE     Auto-merge on approval + CI green (GitLab)
-9. SYNC      scripts/oelite-gitlab.sh worktree-sync (prepare for next task)
-10. CLEANUP  scripts/oelite-gitlab.sh worktree-remove <agent>-<iid>
-             → .oe-scope deleted with worktree
+8.5 VERIFY   scripts/oelite-gitlab.sh mr-status <project> <mr-iid>   # MUST show: merged
+9. CLEANUP   ⛔ HARD GATE: scripts/oelite-gitlab.sh worktree-cleanup <agent> --delete-branch
+             → Removes .worktrees/<agent>-<iid>/ and local feature branch
+             → Prunes any prunable orphans
+             → See §1.8 for rationale and enforcement
+10. SYNC     scripts/oelite-gitlab.sh worktree-sync (prepare for next task)
 ```
+
+**Step 9 is a hard gate.** An agent MUST NOT proceed to step 10 (or start the next task) without running `worktree-cleanup`. See §1.8 for full rationale.
 
 ### 3.5 Stale Worktree Policy
 
@@ -784,6 +855,7 @@ An issue is only `Done` when ALL are true:
 - [ ] No `Blocked` label remaining
 - [ ] **Issue closed in GitLab** via `issue-status closed` (not just labeled `Done`)
 - [ ] **Post-merge audit passed**: `issue-audit` confirms no orphaned open issues for this MR
+- [ ] **Worktree cleaned up**: `scripts/oelite-gitlab.sh worktree-cleanup <agent> --delete-branch` ran successfully in the same session as the merge verification — see §1.8
 
 ### 8.5 Issue Comment Templates
 
@@ -878,6 +950,10 @@ scripts/oelite-gitlab.sh issue-comment oelite/helios/core 42 daniel "Implementat
 | `scripts/oelite-gitlab.sh worktree-create <agent> <branch> [base] [--issue <iid>] [--no-issue]` | Create worktree (issue-keyed or legacy) |
 | `scripts/oelite-gitlab.sh worktree-list` | List all active worktrees in the current repo |
 | `scripts/oelite-gitlab.sh worktree-remove <worktree-id>` | Remove a worktree (worktree-id = agent or agent-issue) |
+| `scripts/oelite-gitlab.sh worktree-cleanup <agent> [--delete-branch]` | **HARD GATE** — verify MR state, prune orphans, remove merged/closed worktrees, optionally delete local branch. See §1.8. |
+| `scripts/oelite-gitlab.sh worktree-cleanup --all` | Sweep all worktrees in the current repo; remove those whose linked MR is merged/closed. For periodic Emma/Isabella audits. |
+| `scripts/oelite-gitlab.sh worktree-check-stale [--agent <agent>] [--cleanup]` | Report worktrees with no commits in >24h or whose MR is merged/closed. Dry-run by default; `--cleanup` to auto-remove. |
+| `scripts/oelite-gitlab.sh worktree-owner <worktree-id> [new-owner]` | View or update worktree owner DNA (commit attribution). |
 | `scripts/oelite-gitlab.sh oe-scope <worktree-id> [--task-type T] [--issue I] [--desc D]` | Read or update per-worktree `.oe-scope` context anchor |
 
 **Parameters:**

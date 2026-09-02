@@ -1039,6 +1039,80 @@ The ONLY time `.gitlab/issue_templates/*.md` files may be created locally is dur
 
 ---
 
+## 9. Orphaned Worktree / Stale Branch
+
+### Definition
+
+An **orphaned worktree** is a `.worktrees/<agent>-<iid>/` directory (or a `prunable` gitdir reference to a missing directory) whose linked MR has already been merged or closed. A **stale branch** is a local feature branch (`feature/<issue>-<description>`) that no longer has an open MR.
+
+Both conditions indicate a workflow enforcement failure: per `GIT-WORKFLOW-STANDARDS.md` §1.8 and §3.4, worktree cleanup is a **hard gate** that MUST run in the same session as merge verification.
+
+### Prohibited Patterns
+
+**❌ FORBIDDEN — Leaving a worktree on disk after MR merge:**
+
+```bash
+# ❌ FORBIDDEN: After mr-status confirms "merged", agent proceeds without cleanup
+scripts/oelite-gitlab.sh mr-status oelite/helios/core 142
+# Output: [OK] MR !142 is MERGED
+# ... agent starts next task without removing the worktree
+scripts/oelite-gitlab.sh worktree-create daniel feature/US-200-next --issue 200
+# Result: .worktrees/daniel-142/ still consumes disk; feature/daniel-142-* still in branch list
+```
+
+**❌ FORBIDDEN — `prunable` orphan accumulating across MRs:**
+
+```text
+$ git worktree list
+/Users/.../coding-standards                        [develop]
+/Users/.../coding-standards/.worktrees/daniel-440  [feature/daniel-440-apiclient-fixes] prunable
+/Users/.../coding-standards/.worktrees/grace       [feature/grace-review-299]
+```
+
+The `prunable` flag means the directory no longer exists but git's metadata still references it. `cmd_worktree_remove` cannot clean this up on its own — it requires `git worktree prune` first, which is what the new `worktree-cleanup` subcommand does automatically.
+
+**❌ FORBIDDEN — Stale local branches not deleted:**
+
+```bash
+# ❌ FORBIDDEN: After MR merge, local branch lingers
+$ git branch
+  develop
+* feature/US-142-foo  # MR !142 merged days ago; this branch should be gone
+  feature/US-200-bar  # still in flight
+  feature/BUG-89-quux # MR !89 closed without merge; this branch should be gone
+```
+
+### Detection Checklist for Reviewers
+
+- [ ] Run `git worktree list` in the target repo. Any entry whose linked MR is merged/closed is a violation.
+- [ ] Run `git worktree list --porcelain | grep prunable`. Any output is a violation (orphan).
+- [ ] Run `git branch`. Any `feature/*` branch with no open MR is a violation.
+- [ ] Is the issue's "Definition of Done" (`GIT-WORKFLOW-STANDARDS.md` §8.4) item "Worktree cleaned up" checked? If not, the MR MUST be rejected.
+
+**If ANY detected → REJECT MR or escalate to Emma for `worktree-cleanup --all` sweep.**
+
+### Required Fix
+
+```bash
+# Agent self-cleanup (per §1.8 — same session as merge verification)
+scripts/oelite-gitlab.sh worktree-cleanup <agent> --delete-branch
+
+# Emma/Isabella periodic sweep (covers all agents)
+scripts/oelite-gitlab.sh worktree-cleanup --all
+
+# Dry-run report (no removal) for audit
+scripts/oelite-gitlab.sh worktree-check-stale
+```
+
+### Why This Matters
+
+1. **Disk exhaustion**: A 5 GB monorepo × N stale worktrees × 12 agents silently fills the developer's disk.
+2. **Workflow opacity**: `worktree-list` and `status` outputs become unreliable when they mix in-flight and abandoned work.
+3. **Audit trail breakage**: Reviewers cannot tell which worktree belongs to which MR; tests may run against already-merged code.
+4. **Remote branch accumulation**: If `remove_source_branch: True` was missed on `mr-create`, stale local branches get pushed to origin and pollute the global branch namespace.
+
+---
+
 ## Related Documentation
 
 - [AGENTS.md](../../AGENTS.md) — Team roles and workflow chains
@@ -1055,3 +1129,4 @@ The ONLY time `.gitlab/issue_templates/*.md` files may be created locally is dur
 | Date | Author | Version | Changes |
 |------|--------|---------|---------|
 | 2026-07-09 | Sisyphus (per user request) | 1.0.0 | Initial version - defines prohibited patterns to prevent stub/fake/simplified implementations from being approved in MRs |
+| 2026-09-02 | Isabella (per TASK-008) | 1.1.0 | Added §9 "Orphaned Worktree / Stale Branch" — hard-gate enforcement for post-merge cleanup, `worktree-cleanup` subcommand, and reviewer detection checklist |
