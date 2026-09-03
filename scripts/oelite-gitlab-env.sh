@@ -46,6 +46,7 @@ _agents=(emma marcus daniel sophia jonathan olivia ethan maya victor grace felix
 _loaded=0
 _invalid=0
 _missing=0
+_revalidated=0  # number of agents re-validated live (subset or all of cache hit)
 
 # ── Cache helpers ──
 _pat_cache_age() {
@@ -105,7 +106,8 @@ if [[ "$_validate_pats" == "true" ]]; then
     # Only entries explicitly marked "valid" are trusted from cache.
     # Missing, empty, or "invalid" cache entries trigger live re-validation for
     # that specific agent so transient failures never permanently lock out a PAT.
-    _tmpdir=$(mktemp -d)  # shared with re-validation path below
+    local _tmpdir
+    _tmpdir=$(mktemp -d)
     local -a _revalidate_pids _revalidate_agents
 
     for agent in ${(k)_pats}; do
@@ -114,6 +116,7 @@ if [[ "$_validate_pats" == "true" ]]; then
         _loaded=$((_loaded + 1))
         _cache_entries+=("$agent:valid")
       else
+        _revalidated=$((_revalidated + 1))
         # Cache miss, empty entry, or previously cached failure — re-validate live.
         (
           _status=$(curl -s -o /dev/null -w "%{http_code}" \
@@ -232,10 +235,16 @@ if [[ $_missing -gt 0 || $_invalid -gt 0 ]]; then
   echo "Run 'security find-generic-password -s oelite-gitlab-<agent> -a oelite -w' to inspect a PAT." >&2
 else
   if [[ "$_cache_fresh" == "true" ]]; then
-    echo "[OK] $_loaded GitLab PATs loaded and validated (cache hit, TTL ${_pat_cache_ttl}s)." >&2
+    if (( _revalidated == 0 )); then
+      echo "[OK] $_loaded GitLab PATs loaded and validated (cache hit, TTL ${_pat_cache_ttl}s)." >&2
+    elif (( _revalidated == ${#_pats[@]} )); then
+      echo "[OK] $_loaded GitLab PATs loaded and validated (cache was stale/empty — all re-validated)." >&2
+    else
+      echo "[OK] $_loaded GitLab PATs loaded and validated (cache hit; ${_revalidated} agent(s) re-validated)." >&2
+    fi
   else
     echo "[OK] $_loaded GitLab PATs loaded and validated." >&2
   fi
 fi
 
-unset _agents _loaded _invalid _missing _validate_pats _pat_cache_ttl _pat_cache_file _cache_age _cache_fresh _cache_entries _pats _pids _revalidate_pids _revalidate_agents _tmpdir _valid_entries _status agent var_name alias_name pat cached
+unset _agents _loaded _invalid _missing _revalidated _validate_pats _pat_cache_ttl _pat_cache_file _cache_age _cache_fresh _cache_entries _pats _pids _revalidate_pids _revalidate_agents _tmpdir _valid_entries _status agent var_name alias_name pat cached
