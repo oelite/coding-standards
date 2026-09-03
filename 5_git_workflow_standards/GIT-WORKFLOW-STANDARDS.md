@@ -306,6 +306,7 @@ All worktrees live inside the repo under `.worktrees/`:
 
 ```
 helios/core/.worktrees/daniel/
+helios/nexus/.worktrees/marcus-18/
 jupiter/ec-nx-01/.worktrees/sophia/
 uranus/origin-auth/.worktrees/maya/
 ```
@@ -323,6 +324,7 @@ Each agent gets **ONE worktree per issue** per repo. The worktree path includes 
 ```
 helios/core/.worktrees/daniel-42/       # Daniel working on issue #42
 helios/core/.worktrees/daniel-57/       # Daniel working on issue #57 (parallel)
+helios/nexus/.worktrees/marcus-18/      # Marcus working on issue #18
 jupiter/ec-nx-01/.worktrees/sophia-15/  # Sophia working on issue #15
 ```
 

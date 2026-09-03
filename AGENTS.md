@@ -335,7 +335,7 @@ MANDATORY: Read .oe-scope in your worktree to restore full task context after co
 
 | Family | Repos |
 |--------|-------|
-| **Helios** | `core/`, `kortex/`, `oesterling/`, `compass/`, `k8s/` |
+| **Helios** | `core/`, `nexus/`, `kortex/`, `oesterling/`, `compass/`, `k8s/` |
 | **Jupiter** | `ec-std-01`, `ec-nx-01`, `occ`, `bizsmart`, `apex/`, `apps-ec-store`, `apps-biz-suite` |
 | **Mercury** | `runners/Backplane`, `DataSync`, `LoadBalanceHealthCheckker`, `SubscriptionBilling` |
 | **Uranus** | `origin-auth/`, `restme/`, `restme-dapper/`, `orion/`, `stella/`, `hermes/`, `lattice/`, `quantrix/`, `slate/`, `arc-cli/`, `arc-agents/` |
@@ -350,6 +350,7 @@ The table above lists **local sub-repository folders** inside the monorepo conta
 | Local Folder | GitLab Project Path |
 |--------------|---------------------|
 | `helios/core/` | `oelite/helios/core` |
+| `helios/nexus/` | `oelite/helios/nexus` |
 | `uranus/origin-auth/` | `oelite/uranus/origin-auth` |
 | `jupiter/ec-nx-01/` | `oelite/jupiter/ec-nx-01` |
 | `mercury/runners/Backplane/` | `oelite/mercury/runners/Backplane` |
