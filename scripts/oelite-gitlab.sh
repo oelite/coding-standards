@@ -733,13 +733,26 @@ OE_SCOPE
   fi
 
   # ── Install pre-commit hook (worktree enforcement) ──
+  # In a worktree, $wt_path/.git is a file (gitdir pointer), not a directory.
+  # The real gitdir comes from `git rev-parse --git-dir`, which is the only
+  # path where `hooks/` is actually a directory.
   local hook_src="$SCRIPT_DIR/hooks/pre-commit"
-  local hook_dst="$wt_path/.git/hooks/pre-commit"
+  local hook_gitdir hook_dst
+  hook_gitdir=$(git -C "$wt_path" rev-parse --git-dir 2>/dev/null || true)
+  if [[ -z "$hook_gitdir" ]]; then
+    hook_dst="$wt_path/.git/hooks/pre-commit"
+  else
+    # Resolve relative paths (e.g. ".git") against the worktree root.
+    case "$hook_gitdir" in
+      /*) hook_dst="$hook_gitdir/hooks/pre-commit" ;;
+      *)  hook_dst="$wt_path/$hook_gitdir/hooks/pre-commit" ;;
+    esac
+  fi
   if [[ -f "$hook_src" ]]; then
     mkdir -p "$(dirname "$hook_dst")"
     cp "$hook_src" "$hook_dst"
     chmod +x "$hook_dst"
-    echo "  Hook:   pre-commit hook installed (worktree + branch guard)"
+    echo "  Hook:   pre-commit hook installed at $hook_dst"
   else
     echo "  [WARN] Pre-commit hook source not found at: $hook_src" >&2
   fi

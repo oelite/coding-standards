@@ -46,6 +46,7 @@ _agents=(emma marcus daniel sophia jonathan olivia ethan maya victor grace felix
 _loaded=0
 _invalid=0
 _missing=0
+_revalidated=0  # number of agents re-validated live (subset or all of cache hit)
 
 # ── Cache helpers ──
 _pat_cache_age() {
@@ -102,22 +103,74 @@ _cache_entries=()
 if [[ "$_validate_pats" == "true" ]]; then
   if [[ "$_cache_fresh" == "true" ]]; then
     # ── Cache hit: use cached validation results, skip curl entirely ──
+    # Only entries explicitly marked "valid" are trusted from cache.
+    # Missing, empty, or "invalid" cache entries trigger live re-validation for
+    # that specific agent so transient failures never permanently lock out a PAT.
+    local _tmpdir
+    _tmpdir=$(mktemp -d)
+    local -a _revalidate_pids _revalidate_agents
+
     for agent in ${(k)_pats}; do
       cached=$(_pat_cache_get "$agent")
       if [[ "$cached" == "valid" ]]; then
         _loaded=$((_loaded + 1))
         _cache_entries+=("$agent:valid")
       else
-        # Cached as invalid — unset the PAT
-        _invalid=$((_invalid + 1))
-        var_name="OELITE_PAT_${agent:u}"
-        alias_name="OELITE_PAT_${agent[1]:u}${agent[2,-1]:l}"
-        unset "$var_name"
-        unset "$alias_name"
-        echo "[FAIL] PAT for $agent is invalid or expired (cached result). Remove from Keychain and re-add." >&2
-        _cache_entries+=("$agent:invalid")
+        _revalidated=$((_revalidated + 1))
+        # Cache miss, empty entry, or previously cached failure — re-validate live.
+        (
+          _status=$(curl -s -o /dev/null -w "%{http_code}" \
+            --header "PRIVATE-TOKEN: ${_pats[$agent]}" \
+            "$OELITE_GITLAB_API/user" 2>/dev/null) || true
+          echo "$_status" > "$_tmpdir/$agent"
+        ) &
+        _revalidate_pids+=($!)
+        _revalidate_agents+=("$agent")
       fi
     done
+
+    # Wait for live re-validation jobs (if any spawned)
+    if (( ${#_revalidate_pids[@]} > 0 )); then
+      for pid in $_revalidate_pids; do
+        wait "$pid" 2>/dev/null || true
+      done
+
+      for agent in $_revalidate_agents; do
+        local _status=""
+        [[ -f "$_tmpdir/$agent" ]] && _status=$(< "$_tmpdir/$agent")
+        if [[ "$_status" == "200" ]]; then
+          _loaded=$((_loaded + 1))
+          _cache_entries+=("$agent:valid")
+        else
+          # PAT failed live check — unset it so callers don't use a broken token.
+          # HTTP 401 = genuine invalid PAT; everything else = transient failure.
+          var_name="OELITE_PAT_${agent:u}"
+          alias_name="OELITE_PAT_${agent[1]:u}${agent[2,-1]:l}"
+          unset "$var_name"
+          unset "$alias_name"
+          if [[ "$_status" == "401" ]]; then
+            _invalid=$((_invalid + 1))
+            echo "[FAIL] PAT for $agent is invalid or expired (HTTP 401). Remove from Keychain and re-add." >&2
+            # Do NOT cache a genuine 401 as valid — next live check will confirm.
+            # We simply omit the entry so the next source triggers re-validation again.
+          else
+            echo "[WARN] PAT for $agent failed live validation (HTTP ${_status:-curl-err}). Will retry on next load." >&2
+          fi
+        fi
+      done
+
+      # Write cache: only include agents whose live check returned 200.
+      # Transient failures and 401s are excluded from cache so they re-validate next time.
+      local -a _valid_cache_entries
+      for entry in "${_cache_entries[@]}"; do
+        [[ "$entry" == *":valid" ]] && _valid_cache_entries+=("$entry")
+      done
+      if (( ${#_valid_cache_entries[@]} > 0 )); then
+        printf '%s\n' "${_valid_cache_entries[@]}" | sort > "$_pat_cache_file"
+      fi
+
+      rm -rf "$_tmpdir"
+    fi
   else
     # ── Cache miss: validate all PATs in parallel ──
     local _tmpdir
@@ -137,30 +190,35 @@ if [[ "$_validate_pats" == "true" ]]; then
       wait "$pid" 2>/dev/null || true
     done
 
-    # Collect results
+    # Collect results and write cache
+    local -a _valid_entries
     for agent in ${(k)_pats}; do
       local _status=""
       [[ -f "$_tmpdir/$agent" ]] && _status=$(< "$_tmpdir/$agent")
       if [[ "$_status" == "200" ]]; then
         _loaded=$((_loaded + 1))
-        _cache_entries+=("$agent:valid")
+        _valid_entries+=("$agent:valid")
       else
-        _invalid=$((_invalid + 1))
         var_name="OELITE_PAT_${agent:u}"
         alias_name="OELITE_PAT_${agent[1]:u}${agent[2,-1]:l}"
         unset "$var_name"
         unset "$alias_name"
-        echo "[FAIL] PAT for $agent is invalid or expired (HTTP $_status on /api/v4/user). Remove from Keychain and re-add." >&2
-        _cache_entries+=("$agent:invalid")
+        if [[ "$_status" == "401" ]]; then
+          _invalid=$((_invalid + 1))
+          echo "[FAIL] PAT for $agent is invalid or expired (HTTP 401). Remove from Keychain and re-add." >&2
+        else
+          echo "[WARN] PAT for $agent failed live validation (HTTP ${_status:-curl-err}). Will retry on next load." >&2
+        fi
+        # Transient failures are NOT cached — they re-validate next time.
+        # Genuine 401s are NOT cached either — next live check will confirm.
       fi
     done
 
-    # Write cache file for future loads
-    if (( ${#_cache_entries[@]} > 0 )); then
-      printf '%s\n' "${_cache_entries[@]}" | sort > "$_pat_cache_file"
+    # Write cache: only successful validations. Never cache failures.
+    if (( ${#_valid_entries[@]} > 0 )); then
+      printf '%s\n' "${_valid_entries[@]}" | sort > "$_pat_cache_file"
     fi
 
-    # Cleanup temp files
     rm -rf "$_tmpdir"
   fi
 else
@@ -177,10 +235,16 @@ if [[ $_missing -gt 0 || $_invalid -gt 0 ]]; then
   echo "Run 'security find-generic-password -s oelite-gitlab-<agent> -a oelite -w' to inspect a PAT." >&2
 else
   if [[ "$_cache_fresh" == "true" ]]; then
-    echo "[OK] $_loaded GitLab PATs loaded and validated (cache hit, TTL ${_pat_cache_ttl}s)." >&2
+    if (( _revalidated == 0 )); then
+      echo "[OK] $_loaded GitLab PATs loaded and validated (cache hit, TTL ${_pat_cache_ttl}s)." >&2
+    elif (( _revalidated == ${#_pats[@]} )); then
+      echo "[OK] $_loaded GitLab PATs loaded and validated (cache was stale/empty — all re-validated)." >&2
+    else
+      echo "[OK] $_loaded GitLab PATs loaded and validated (cache hit; ${_revalidated} agent(s) re-validated)." >&2
+    fi
   else
     echo "[OK] $_loaded GitLab PATs loaded and validated." >&2
   fi
 fi
 
-unset _agents _loaded _invalid _missing _validate_pats _pat_cache_ttl _pat_cache_file _cache_age _cache_fresh _cache_entries _pats _pids _tmpdir _status agent var_name alias_name pat cached
+unset _agents _loaded _invalid _missing _revalidated _validate_pats _pat_cache_ttl _pat_cache_file _cache_age _cache_fresh _cache_entries _pats _pids _revalidate_pids _revalidate_agents _tmpdir _valid_entries _status agent var_name alias_name pat cached
