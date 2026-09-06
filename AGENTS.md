@@ -381,7 +381,7 @@ The wrapper is the only supported interface for issues, worktrees, MRs, comments
 | `issue-comment <project> <iid> <agent> <msg>` | Comment on issue as agent |
 | `issue-status <project> <iid> <agent> <opened|closed>` | Open or close issue as agent |
 | `worktree-sync` | Safe sync — updates local develop WITHOUT checking it out (avoids footgun) |
-| `worktree-create <agent> <branch> [base] [--issue <iid>] [--no-issue]` | Create worktree (issue-keyed for parallel same-agent work, or legacy) |
+| `worktree-create <agent> <branch> [--base <base>] [--issue <iid>] [--no-issue]` | Create worktree (issue-keyed; --base for non-develop cutoffs) |
 | `worktree-list` | List active worktrees |
 | `worktree-remove <worktree-id>` | Remove worktree (worktree-id = agent or agent-issue) |
 | `worktree-owner <worktree-id> [new-owner]` | View or update worktree owner DNA (commit attribution) |
