@@ -54,6 +54,12 @@ url_encode_path() {
   echo "${1//\//%2F}"
 }
 
+# URL-encodes a query-string value (not a path). Preserves alphanumerics and / .
+# Uses Python urllib.parse.quote to handle spaces, &, #, +, quotes, etc.
+url_encode_query() {
+  python3 -c "import urllib.parse, sys; print(urllib.parse.quote(sys.argv[1], safe=''))" "$1"
+}
+
 get_pat() {
   local agent="$1"
   local var_name="OELITE_PAT_${agent:u}"
@@ -197,6 +203,67 @@ parse_worktree_id() {
   echo "$agent $issue"
 }
 
+# Scans for orphan worktree directories on disk (not tracked by git).
+# An orphan is a .worktrees/<agent>* directory that exists on disk but is NOT
+# in git's worktree list — e.g. from a failed worktree-create, manual deletion,
+# or interrupted operation. Prints orphan paths (one per line) to stdout.
+# Exits 0 if no orphans found, 1 if orphans found.
+detect_orphan_worktrees() {
+  local agent="$1"
+  local root
+  root=$(main_repo_root 2>/dev/null || true)
+  if [[ -z "$root" ]]; then
+    return 0
+  fi
+
+  local wt_base="$root/.worktrees"
+  if [[ ! -d "$wt_base" ]]; then
+    return 0
+  fi
+
+  # Use Python for reliable symlink resolution, path comparisons, and subprocess
+  # interaction — avoids zsh local-scoping quirks and multi-line string edge cases.
+  python3 -c "
+import os, sys, subprocess, json
+
+agent = sys.argv[1]
+root = os.path.realpath(sys.argv[2])
+wt_base = os.path.join(root, '.worktrees')
+
+# Gather git-tracked worktrees inside .worktrees/ (use realpath for consistency)
+tracked = set()
+try:
+    result = subprocess.run(
+        ['git', '-C', root, 'worktree', 'list', '--porcelain'],
+        capture_output=True, text=True, check=True
+    )
+    for line in result.stdout.splitlines():
+        if line.startswith('worktree '):
+            p = os.path.realpath(line[len('worktree '):].strip())
+            if p.startswith(wt_base + os.sep):
+                tracked.add(p)
+except Exception:
+    pass
+
+# Scan disk for agent-prefixed dirs not in tracked set
+orphans = []
+if os.path.isdir(wt_base):
+    for entry in os.scandir(wt_base):
+        if not entry.is_dir():
+            continue
+        if not entry.name.startswith(agent):
+            continue
+        p = os.path.realpath(entry.path)
+        if p not in tracked:
+            orphans.append(p)
+
+for o in orphans:
+    print(o)
+
+sys.exit(1 if orphans else 0)
+" "$agent" "$root" 2>/dev/null
+}
+
 print_separator() {
   printf '%0.s─' {1..$1}
   printf '\n'
@@ -261,7 +328,9 @@ cmd_issues() {
   local endpoint="/projects/$encoded_path/issues?scope=all&state=opened&per_page=100"
 
   if [[ -n "$label_filter" ]]; then
-    endpoint+="&labels=$label_filter"
+    local encoded_label
+    encoded_label=$(url_encode_query "$label_filter")
+    endpoint+="&labels=$encoded_label"
   fi
 
   if [[ -n "$assignee_filter" ]]; then
@@ -524,18 +593,40 @@ print(json.dumps({'labels': labels}))
 cmd_worktree_create() {
   local agent="$1"
   local branch="$2"
-  local base_branch="${3:-develop}"
+  local base_branch="develop"
   local owner="$agent"
   local issue=""
   local no_issue=false
   local force_preflight=false
 
+  if [[ -z "$agent" || -z "$branch" ]]; then
+    echo "[ERROR] worktree-create requires: <agent> <branch> [--base <branch>] [--issue <iid>] [--no-issue] [--owner <agent>] [--force]" >&2
+    return 1
+  fi
+
   validate_agent "$agent" || return 1
 
-  shift 3 2>/dev/null || shift $#
+  # Backward-compat: if $3 is set and does NOT start with '--', treat it as
+  # the legacy positional base_branch. This preserves the documented call form
+  # `worktree-create <agent> <branch> <base> --issue <iid>` while also allowing
+  # the new form `worktree-create <agent> <branch> --issue <iid>` (no base).
+  if [[ -n "${3:-}" && "$3" != --* ]]; then
+    base_branch="$3"
+    shift 3
+  else
+    shift 2
+  fi
 
   while [[ $# -gt 0 ]]; do
     case "$1" in
+      --base)
+        if [[ -z "${2:-}" ]]; then
+          echo "[ERROR] --base requires a value (branch name)" >&2
+          return 1
+        fi
+        base_branch="$2"
+        shift 2
+        ;;
       --owner)
         if [[ -z "${2:-}" ]]; then
           echo "[ERROR] --owner requires a value" >&2
@@ -575,7 +666,7 @@ cmd_worktree_create() {
     echo "       If this work genuinely does not require an issue ticket," >&2
     echo "       re-run with --no-issue to bypass this warning:" >&2
     echo "" >&2
-    echo "         oelite-gitlab.sh worktree-create $agent $branch $base_branch --no-issue" >&2
+    echo "         oelite-gitlab.sh worktree-create $agent $branch --no-issue" >&2
     echo "" >&2
     echo "[ERROR] Refusing to create worktree without --issue or --no-issue." >&2
     return 1
@@ -585,14 +676,17 @@ cmd_worktree_create() {
   # Per the worktree-cleanup hard gate, agents should clean up after each task.
   # This check is advisory only — pass --force to skip the warning for spike work.
   if ! $force_preflight; then
-    local preflight_root preflight_wt_path preflight_wt_branch preflight_stale=false
+    local preflight_root preflight_root_resolved preflight_wt_path preflight_wt_branch preflight_stale=false
     preflight_root=$(main_repo_root 2>/dev/null || true)
     if [[ -n "$preflight_root" && -d "$preflight_root" ]]; then
+      # Resolve symlinks (e.g. macOS /tmp → /private/tmp) so the path comparison
+      # below matches whatever 'git worktree list --porcelain' returns.
+      preflight_root_resolved=$(python3 -c "import os, sys; print(os.path.realpath(sys.argv[1]))" "$preflight_root" 2>/dev/null || echo "$preflight_root")
       local preflight_line
       while IFS= read -r preflight_line; do
         case "$preflight_line" in
           "")  # Record delimiter — evaluate the worktree we just finished parsing
-            if [[ -n "$preflight_wt_path" && "$preflight_wt_path" == "$preflight_root/.worktrees/$agent"* ]]; then
+            if [[ -n "$preflight_wt_path" && "$preflight_wt_path" == "$preflight_root_resolved/.worktrees/$agent"* ]]; then
               if $preflight_stale; then
                 echo "" >&2
                 echo "[WARN] Stale worktree found for agent '$agent':" >&2
@@ -623,7 +717,7 @@ cmd_worktree_create() {
       done < <(git -C "$preflight_root" worktree list --porcelain 2>/dev/null)
 
       # Handle the last record (no trailing blank line)
-      if [[ -n "$preflight_wt_path" && "$preflight_wt_path" == "$preflight_root/.worktrees/$agent"* ]]; then
+      if [[ -n "$preflight_wt_path" && "$preflight_wt_path" == "$preflight_root_resolved/.worktrees/$agent"* ]]; then
         if $preflight_stale; then
           echo "" >&2
           echo "[WARN] Stale worktree found for agent '$agent':" >&2
@@ -666,6 +760,36 @@ cmd_worktree_create() {
 
   if [[ -d "$wt_path" ]]; then
     echo "[ERROR] Worktree already exists for $wt_suffix at $wt_path" >&2
+    return 1
+  fi
+
+  # ── Orphan worktree collision check ──
+  # Detect orphaned worktree directories (e.g. from failed/interrupted operations)
+  # before attempting git worktree add. An orphan is a .worktrees/<agent>* dir on disk
+  # that is not tracked by git — git would refuse with "fatal: '<path>' already exists".
+  # Suggest cleanup so the user is not stuck.
+  local orphans=""
+  detect_orphan_worktrees "$agent" > /tmp/oelite-orphans-$$.txt 2>/dev/null || true
+  orphans=$(</tmp/oelite-orphans-$$.txt)
+  rm -f /tmp/oelite-orphans-$$.txt
+  if [[ -n "$orphans" ]]; then
+    echo "[ERROR] Orphaned worktree directory detected for agent '$agent':" >&2
+    while IFS= read -r line; do
+      [[ -n "$line" ]] && echo "       $line" >&2
+    done <<< "$orphans"
+    echo "" >&2
+    echo "[ERROR] git worktree add would fail because the directory already exists." >&2
+    echo "       This is typically caused by a failed or interrupted worktree-create." >&2
+    echo "" >&2
+    echo "       To clean up and proceed, run:" >&2
+    echo "         oelite-gitlab.sh worktree-cleanup $agent --delete-branch" >&2
+    echo "" >&2
+    echo "       Or remove manually:" >&2
+    while IFS= read -r line; do
+      [[ -n "$line" ]] && echo "         rm -rf \"$line\"" >&2
+    done <<< "$orphans"
+    echo "" >&2
+    echo "[ERROR] Refusing to create worktree on top of orphan directory." >&2
     return 1
   fi
 
@@ -1353,14 +1477,18 @@ cmd_mr_update() {
   encoded_path=$(url_encode_path "$project_path")
 
   local data
-  data=$(python3 -c "
+  # Use stdin to pass title/description into Python — avoids shell-variable interpolation
+  # in Python source, which would break on single-quotes in titles (e.g. "don't break").
+  data=$(printf '%s\n%s' "$title" "$description" | python3 -c "
 import json, sys
+lines = sys.stdin.read().split('\n', 1)
+t = lines[0]
+desc = lines[1] if len(lines) > 1 else ''
 payload = {}
-if '$title':
-  payload['title'] = '$title'
-desc = '''$description'''
+if t:
+    payload['title'] = t
 if desc:
-  payload['description'] = desc
+    payload['description'] = desc
 print(json.dumps(payload))
 ")
 
@@ -2082,9 +2210,12 @@ COMMANDS:
     Update issue status (opened or closed) as the specified agent.
     Example: oelite-gitlab.sh issue-status uranus/origin-auth 42 emma closed
 
-  worktree-create <agent> <branch> [base-branch] [--issue <iid>] [--no-issue] [--owner <team-member>] [--force]
+  worktree-create <agent> <branch> [--base <branch>] [--issue <iid>] [--no-issue] [--owner <team-member>] [--force]
     Create a git worktree for an agent with per-worktree identity.
-    Default base-branch is develop.
+    Default base branch is 'develop'. For backward compatibility, you may also
+    pass base as a 3rd positional argument (e.g. <agent> <branch> <base> --issue N).
+    --base <branch>: Branch to base the new worktree on (default: develop).
+                     Use this for feature/release/maintenance branch cutoffs.
     --issue <iid>: GitLab issue number. Creates .worktrees/<agent>-<issue>.
                    Required by default (Issue-First workflow). Enables parallel
                    same-agent worktrees for different issues.
@@ -2095,7 +2226,8 @@ COMMANDS:
              When omitted, the agent IS the owner.
     --force: Skip the pre-flight check that warns about stale worktrees
              for the same agent (per §1.8). Use only for spike work.
-    Example: oelite-gitlab.sh worktree-create daniel feature/US-042-auth develop --issue 42
+    Example: oelite-gitlab.sh worktree-create daniel feature/US-042-auth --issue 42
+    Example: oelite-gitlab.sh worktree-create daniel feature/x --base develop --issue 42
     Example: oelite-gitlab.sh worktree-create sophia feature/auth --issue 15 --owner daniel
     Example: oelite-gitlab.sh worktree-create marcus feature/spike --no-issue
 
