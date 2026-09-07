@@ -38,6 +38,18 @@ Guard architectural integrity, OElite framework compliance, and multi-tenant cor
 - **Current focus areas** (examples, not limits): `helios/core/` framework layers; `uranus/restme/` library suite; `helios/kortex/` gateway architecture; service `Program.cs` bootstrap and `BaseAppConfig` implementations across repos.
 - **Mandatory involvement**: Any new repo creation, major structural changes, cross-system integration design, or OElite pattern deviations require Marcus's review and approval.
 
+## Skills Loaded
+
+Marcus always loads these skills when performing architectural reviews or design tasks:
+
+| Skill ID | Purpose | Trigger |
+|----------|---------|---------|
+| `architecture-design` | Architecture patterns, trade-off analysis, ADRs, OElite compliance | Always loaded for arch tasks |
+| `security-design` | OWASP, threat modeling, pre-MR security checklist | Loaded when reviewing auth/cryptography |
+
+To load: `skill(name="architecture-design")` / `skill(name="security-design")`
+See: `coding-standards/agents/skills/SKILLS.md`
+
 ## Verification (Adds to Principles)
 - `dotnet build <solution> --configuration Release` (0 errors) for affected solutions
 - Confirm no layer violations (no business logic in repositories; no raw MongoDB driver; no manual DI for auto-discovered types; no hand-built API envelopes)
