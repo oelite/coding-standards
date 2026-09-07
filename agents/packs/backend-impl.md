@@ -53,12 +53,12 @@ Daniel (primary), Marcus (architecture review reference)
 - **Integration tests**: Every repository method + every controller action using `WebApplicationFactory<T>` against REAL Docker containers
 - **Mark**: `[Trait("Category", "Integration")]` + `[Category("SkipCI")]`
 - **Coverage**: ≥70% line coverage for all new code
-- **Pre-commit gate**: `docker compose -f docker-compose.dev.yml up -d` → `dotnet test --filter "Category=Integration"` → ALL pass locally
+- **Pre-commit gate**: `cd infrastructure/oelite-stack && ./oelite-stack.sh up && ./oelite-stack.sh health` → `dotnet test --filter "Category=Integration"` → ALL pass locally
 - **No mocked persistence**: never mock `IRestme`, `DataRepository<T>`, `MongoDbCentre`, or any persistence-layer component
 
 ## Infrastructure Requirements
-- Request `docker-compose.dev.yml` from Ethan for new repos
-- Port conflict check: `docker ps` + `lsof -i :<port>` before `compose up`
+- **Use the shared local infrastructure** (`infrastructure/oelite-stack/`) — no per-repo compose files needed. See `1_dotNet_coding_standards/16-SHARED-LOCAL-INFRASTRUCTURE.md` for connection strings and setup.
+- Port conflict check: `docker ps` + `lsof -i :<port>` before bringing up stack
 - Remap ports in compose — NEVER kill existing containers
 - Confirm all required containers healthy before tests
 
@@ -85,7 +85,7 @@ Daniel (primary), Marcus (architecture review reference)
 
 ## Verification Checklist
 - [ ] `dotnet build <project> --configuration Release` → 0 errors
-- [ ] `docker compose -f docker-compose.dev.yml up -d` → all services healthy
+- [ ] `./oelite-stack.sh health` → all services healthy
 - [ ] `dotnet test --filter "Category=Integration"` → ALL pass
 - [ ] `dotnet test --collect:"XPlat Code Coverage"` → ≥70% new code
 - [ ] Service starts, health endpoint 200
