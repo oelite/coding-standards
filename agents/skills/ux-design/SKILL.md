@@ -301,13 +301,7 @@ toast.error('Could not save your changes', {
 
 ---
 
-### 2.10 Help and Documentation (Recovery from Errors)
-
-**Definition:** Even better than good error messages is a careful design which prevents a problem from occurring in the first place — combined with undo and recovery.
-
-*Note: this overlaps with 2.4 Error Prevention and 2.2 User Control — see those sections for detailed examples.*
-
-**Pattern:** Every destructive or irreversible action should have either a confirmation (before action) OR an undo (after action) — preferably both.
+> **Note on confirmation/undo:** Section 2.2 (User Control and Freedom) above already covers the pattern. To recap: every destructive or irreversible action should have either a confirmation (before action) OR an undo (after action) — preferably both. The `AlertDialog` example in 2.2 and the toast-with-undo pattern there are the canonical implementations.
 
 ---
 
