@@ -52,7 +52,7 @@ for entry in "${PROJECTS[@]}"; do
   # Switch to the project DB and create a collection marker (ensures DB exists)
   $mongosh_cmd --eval "
     db = db.getSiblingDB('$db');
-    db.createCollection('_init_marker', { strict: false });
+    try { db.createCollection('_init_marker'); } catch (e) { if (!/already exists/i.test(e.message)) throw e; }
   " >/dev/null 2>&1
 
   # Create the per-project user (scoped to the project DB only)

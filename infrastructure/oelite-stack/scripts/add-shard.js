@@ -23,6 +23,6 @@ if (shardIds.indexOf('shard1ReplSet') !== -1) {
 // Final cluster status
 print('Cluster status:');
 print('  mongos: oelite-mongos:27017 (version ' + db.version() + ')');
-var st = sh.status();
-print('  shards: ' + st.shards.length + ' registered');
+var shStatus = db.adminCommand({ listShards: 1 });
+print('  shards: ' + (shStatus.shards ? shStatus.shards.length : 0) + ' registered');
 print('  databases: ' + Object.keys(db.adminCommand({ listDatabases: 1 }).databases).length + '\n');

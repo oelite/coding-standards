@@ -36,7 +36,7 @@ All app code connects to these **fixed canonical endpoints**:
 |---|---|---|
 | MongoDB | `mongodb://localhost:27017/?directConnection=true` | via mongos (sharded) |
 | Redis | `localhost:6379` | SELECT db number per project |
-| ClickHouse | `localhost:8123` (HTTP) / `localhost:9000` (native) | |
+| ClickHouse | `localhost:8123` (HTTP) | Native TCP 9000 internal-only |
 | Kafka | `localhost:9092` | KRaft mode (no ZK) |
 | RabbitMQ | `localhost:5672` (AMQP), `15672` (UI) | User: `oelite`, Pass: `oelite123` |
 | MinIO | `localhost:9000` (API), `9001` (Console) | User: `oelite`, Pass: `oelite123` |
@@ -67,7 +67,7 @@ mongodb://oelite_obelisk:oelite_obelisk_dev@localhost:27017/obelisk?authSource=o
 │  └─────────────────────────┘    ┌──────────────────────┐    │
 │                                 │ ClickHouse 26.5      │    │
 │  ┌─────────────────────────┐    │  HTTP: 8123          │    │
-│  │ Kafka 8.3 (KRaft)       │    │  Native: 9000        │    │
+│  │ Kafka 8.3 (KRaft)       │    │  Native: internal    │    │
 │  │  localhost:9092         │    │  db per project      │    │
 │  │  topic prefix per proj  │    └──────────────────────┘    │
 │  └─────────────────────────┘                                 │
@@ -84,10 +84,10 @@ mongodb://oelite_obelisk:oelite_obelisk_dev@localhost:27017/obelisk?authSource=o
 
 | Service | Memory | CPU |
 |---|---|---|
-| mongo-configsvr×3 | 256 MB each | 0.5 each |
+| mongo-configsvr×3 | 512 MB each | 0.5 each |
 | mongo-shard-1 (primary) | 512 MB | 1.0 |
-| mongo-shard-1 (secondary) | 256 MB | 0.5 |
-| mongo-mongos | 256 MB | 0.5 |
+| mongo-shard-1 (secondary/arb) | 512 MB | 0.5 |
+| mongo-mongos | 512 MB | 0.5 |
 | redis | 512 MB | 0.5 |
 | clickhouse | 1024 MB | 1.0 |
 | kafka | 1024 MB | 1.0 |

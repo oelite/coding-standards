@@ -35,15 +35,15 @@ services:
     container_name: oelite-mongo-configsvr-1
     hostname: oelite-configsvr-1
     command: ["mongod", "--configsvr", "--replSet", "configReplSet", "--port", "27019",
-              "--bind_ip_all", "--keyFile", "/data/mongo.key", "--shardsvr"]
+              "--bind_ip_all"]
     volumes:
       - oelite-mongo-configsvr1-data:/data/db
-      - oelite-mongo-shared:/data/mongo.key:ro
+      - ./.mongo.key:/data/mongo.key:ro
     ports:
       - "27019:27019"
-    mem_limit: 256m
+    mem_limit: 512m
     healthcheck:
-      test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping')"]
+      test: ["CMD", "mongosh", "--quiet", "--host", "oelite-configsvr-1", "--port", "27019", "--eval", "db.adminCommand('ping')"]
       interval: 10s
       timeout: 5s
       retries: 12
@@ -56,15 +56,15 @@ services:
     container_name: oelite-mongo-configsvr-2
     hostname: oelite-configsvr-2
     command: ["mongod", "--configsvr", "--replSet", "configReplSet", "--port", "27019",
-              "--bind_ip_all", "--keyFile", "/data/mongo.key", "--shardsvr"]
+              "--bind_ip_all"]
     volumes:
       - oelite-mongo-configsvr2-data:/data/db
-      - oelite-mongo-shared:/data/mongo.key:ro
+      - ./.mongo.key:/data/mongo.key:ro
     ports:
       - "27029:27019"
-    mem_limit: 256m
+    mem_limit: 512m
     healthcheck:
-      test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping')"]
+      test: ["CMD", "mongosh", "--quiet", "--host", "oelite-configsvr-2", "--port", "27019", "--eval", "db.adminCommand('ping')"]
       interval: 10s
       timeout: 5s
       retries: 12
@@ -77,15 +77,15 @@ services:
     container_name: oelite-mongo-configsvr-3
     hostname: oelite-configsvr-3
     command: ["mongod", "--configsvr", "--replSet", "configReplSet", "--port", "27019",
-              "--bind_ip_all", "--keyFile", "/data/mongo.key", "--shardsvr"]
+              "--bind_ip_all"]
     volumes:
       - oelite-mongo-configsvr3-data:/data/db
-      - oelite-mongo-shared:/data/mongo.key:ro
+      - ./.mongo.key:/data/mongo.key:ro
     ports:
       - "27039:27019"
-    mem_limit: 256m
+    mem_limit: 512m
     healthcheck:
-      test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping')"]
+      test: ["CMD", "mongosh", "--quiet", "--host", "oelite-configsvr-3", "--port", "27019", "--eval", "db.adminCommand('ping')"]
       interval: 10s
       timeout: 5s
       retries: 12
@@ -98,15 +98,15 @@ services:
     container_name: oelite-mongo-shard1-primary
     hostname: oelite-shard-1
     command: ["mongod", "--shardsvr", "--replSet", "shard1ReplSet", "--port", "27018",
-              "--bind_ip_all", "--keyFile", "/data/mongo.key"]
+              "--bind_ip_all"]
     volumes:
       - oelite-mongo-shard1-data:/data/db
-      - oelite-mongo-shared:/data/mongo.key:ro
+      - ./.mongo.key:/data/mongo.key:ro
     ports:
       - "27018:27018"
     mem_limit: 512m
     healthcheck:
-      test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping')"]
+      test: ["CMD", "mongosh", "--quiet", "--host", "oelite-shard-1", "--port", "27018", "--eval", "db.adminCommand('ping')"]
       interval: 10s
       timeout: 5s
       retries: 12
@@ -118,17 +118,17 @@ services:
     image: mongo:8.0
     container_name: oelite-mongo-shard1-secondary
     hostname: oelite-shard-1-arb
-    # priority=0, votes=0 makes this a non-electable arbiter (avoids election issues)
+    # priority=0, votes=0 is set in init-shard.js (non-electable arbiter)
     command: ["mongod", "--shardsvr", "--replSet", "shard1ReplSet", "--port", "27018",
-              "--bind_ip_all", "--keyFile", "/data/mongo.key", "--votes", "0", "--priority", "0"]
+              "--bind_ip_all"]
     volumes:
       - oelite-mongo-shard1-arb-data:/data/db
-      - oelite-mongo-shared:/data/mongo.key:ro
+      - ./.mongo.key:/data/mongo.key:ro
     ports:
       - "27028:27018"
-    mem_limit: 256m
+    mem_limit: 512m
     healthcheck:
-      test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping')"]
+      test: ["CMD", "mongosh", "--quiet", "--host", "oelite-shard-1-arb", "--port", "27018", "--eval", "db.adminCommand('ping')"]
       interval: 10s
       timeout: 5s
       retries: 12
@@ -142,13 +142,13 @@ services:
     hostname: oelite-mongos
     command: ["mongos",
               "--configdb", "configReplSet/oelite-configsvr-1:27019,oelite-configsvr-2:27019,oelite-configsvr-3:27019",
-              "--bind_ip_all", "--keyFile", "/data/mongo.key",
+              "--bind_ip_all",
               "--port", "27017"]
     volumes:
-      - oelite-mongo-shared:/data/mongo.key:ro
+      - ./.mongo.key:/data/mongo.key:ro
     ports:
       - "27017:27017"
-    mem_limit: 256m
+    mem_limit: 512m
     depends_on:
       mongo-configsvr-1:
         condition: service_healthy
@@ -161,7 +161,7 @@ services:
       mongo-shard-1-secondary:
         condition: service_healthy
     healthcheck:
-      test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping')"]
+      test: ["CMD", "mongosh", "--quiet", "--host", "oelite-mongos", "--port", "27017", "--eval", "db.adminCommand('ping')"]
       interval: 10s
       timeout: 5s
       retries: 12
@@ -187,7 +187,8 @@ services:
         condition: service_healthy
     volumes:
       - ./scripts:/scripts
-    entrypoint: ["mongosh", "--host", "oelite-configsvr-1", "--quiet",
+      - ./.mongo.key:/data/mongo.key:ro
+    entrypoint: ["mongosh", "--host", "oelite-configsvr-1", "--port", "27019", "--quiet",
                  "--file", "/scripts/init-csrs.js"]
     networks: [oelite-infra]
     restart: "no"
@@ -201,7 +202,8 @@ services:
         condition: service_healthy
     volumes:
       - ./scripts:/scripts
-    entrypoint: ["mongosh", "--host", "oelite-shard-1", "--quiet",
+      - ./.mongo.key:/data/mongo.key:ro
+    entrypoint: ["mongosh", "--host", "oelite-shard-1", "--port", "27018", "--quiet",
                  "--file", "/scripts/init-shard.js"]
     networks: [oelite-infra]
     restart: "no"
@@ -217,7 +219,8 @@ services:
         condition: service_completed_successfully
     volumes:
       - ./scripts:/scripts
-    entrypoint: ["mongosh", "--host", "oelite-mongos", "--quiet",
+      - ./.mongo.key:/data/mongo.key:ro
+    entrypoint: ["mongosh", "--host", "oelite-mongos", "--port", "27017", "--quiet",
                  "--file", "/scripts/add-shard.js"]
     networks: [oelite-infra]
     restart: "no"
@@ -231,6 +234,9 @@ services:
         condition: service_healthy
       add-shard-init:
         condition: service_completed_successfully
+    environment:
+      OELITE_MONGO_HOST: oelite-mongos
+      OELITE_MONGO_PORT: "27017"
     volumes:
       - ./scripts:/scripts
     entrypoint: ["bash", "/scripts/init-per-project-dbs.sh"]
@@ -277,7 +283,6 @@ services:
     hostname: oelite-clickhouse
     ports:
       - "8123:8123"
-      - "9000:9000"
     mem_limit: 1024m
     environment:
       CLICKHOUSE_DB: default
@@ -393,7 +398,6 @@ volumes:
   oelite-mongo-configsvr1-data:
   oelite-mongo-configsvr2-data:
   oelite-mongo-configsvr3-data:
-  oelite-mongo-shared:
   oelite-mongo-shard1-data:
   oelite-mongo-shard1-arb-data:
   oelite-redis-data:

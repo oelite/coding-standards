@@ -1,3 +1,5 @@
 .worktrees/
 .DS_Store
 .oe-scope
+*.key
+.mongo.key
