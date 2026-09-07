@@ -84,10 +84,10 @@ mongodb://oelite_obelisk:oelite_obelisk_dev@localhost:27017/obelisk?authSource=o
 
 | Service | Memory | CPU |
 |---|---|---|
-| mongo-configsvr×3 | 256 MB each | 0.5 each |
+| mongo-configsvr×3 | 512 MB each | 0.5 each |
 | mongo-shard-1 (primary) | 512 MB | 1.0 |
-| mongo-shard-1 (secondary) | 256 MB | 0.5 |
-| mongo-mongos | 256 MB | 0.5 |
+| mongo-shard-1 (secondary/arb) | 512 MB | 0.5 |
+| mongo-mongos | 512 MB | 0.5 |
 | redis | 512 MB | 0.5 |
 | clickhouse | 1024 MB | 1.0 |
 | kafka | 1024 MB | 1.0 |
