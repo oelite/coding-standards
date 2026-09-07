@@ -295,6 +295,102 @@ Your first output MUST be the bootstrap verification block (including SCOPE veri
 
 ---
 
+## 🎯 SKILLS ARCHITECTURE
+
+Skills are **portable, loadable capabilities** that any agent can pull in on demand
+without bloating role files. A skill is a folder under `coding-standards/agents/skills/<skill-id>/`
+containing a `SKILL.md` file (and optionally templates, scripts, or reference material).
+The format follows the **OpenAgentSkill / agentskills.io** convention so skills are
+discoverable, composable, and tool-agnostic.
+
+### What a Skill Is
+
+A skill is a **self-contained unit of expertise** that:
+- Has a clear, narrow purpose
+- Declares who loads it by default and who loads it on demand
+- Provides standards, patterns, checklists, or workflows that are stable across roles
+- Can be combined with other skills (e.g., a backend reviewer can load `formatting` +
+  `architecture-design` + `security-design`)
+
+A skill is **NOT**:
+- A role definition (those live in `agents/roles/`)
+- A task-type workflow (those live in `agents/packs/`)
+- An application-specific pattern (those live in `<repo>/.ai/standards/`)
+
+### Where Skills Live
+
+| Type | Path | Owner |
+|------|------|-------|
+| **OElite skills** (in-repo, canonical) | `coding-standards/agents/skills/<skill-id>/SKILL.md` | Designated role (per registry) |
+| **Built-in OpenCode skills** | Shipped with OpenCode; accessed via `skill` tool | OpenCode |
+
+### The Skills Registry
+
+The single source of truth for every skill is:
+
+📄 **`coding-standards/agents/skills/SKILLS.md`**
+
+This file lists every OElite skill (planned + active) and every built-in OpenCode
+skill available via the `skill` tool. Each entry records:
+- ID (kebab-case), name, one-line purpose
+- Trigger phrases (phrases that should auto-load the skill)
+- Default loaders (which roles always load it) vs. on-demand loaders
+- Location path
+- **Status** (`[ ] planned` → `[x] active`) — flipped when SKILL.md is delivered
+
+### How to Discover Skills
+
+1. Read `coding-standards/agents/skills/SKILLS.md` to see the full registry.
+3. Pick the skill(s) that match the current task's trigger phrases or scope.
+
+### How to Load a Skill
+
+**Option A — `skill` tool (OpenCode built-in):**
+```
+skill(name="architecture-design")
+skill(name="security-design")
+```
+
+**Option B — `load_skills` in `task()` delegations:**
+When spawning a subagent, pass skill names that the subagent should load:
+```markdown
+Use task() with:
+  load_skills: ["architecture-design", "security-design"]
+```
+
+**Option C — Manual `read`:**
+For OElite skills (in-repo), simply read the SKILL.md file as part of bootstrap:
+```
+Read: coding-standards/agents/skills/architecture-design/SKILL.md
+```
+
+### How to Create a New Skill
+
+1. **Search `SKILLS.md` first.** If a related skill exists (even planned), add to it
+   rather than creating a duplicate.
+2. **Open a GitLab issue** describing the skill (purpose, audience, trigger phrases).
+3. **Create the folder:**
+   ```
+   coding-standards/agents/skills/<skill-id>/
+   ```
+4. **Create `SKILL.md`** following the template documented in `SKILLS.md` § "How to
+   Create a New Skill" (Purpose, When to Load, Standards & Rules, Verification).
+5. **Register the skill** in `SKILLS.md` with all required fields.
+6. **Update role files** to reference the skill via `load_skills` instead of inlining content.
+
+### 🚨 Non-Negotiable Rule
+
+> **Every new cross-cutting capability MUST be created as a skill, not duplicated in
+> role files.** Role files reference skills via `load_skills`, they do NOT inline
+> skill content. If you find yourself writing the same content into multiple role
+> files, stop and create a skill instead.
+
+This rule keeps role files lean (~50 lines each) and prevents the same standard from
+drifting across copies. If a role needs specialized knowledge, load the skill —
+don't paste it in.
+
+---
+
 ## 🔄 CONTINUED SESSION RULE
 
 When continuing a session (e.g., resuming from a handoff or re-invoking a role after context compaction):
