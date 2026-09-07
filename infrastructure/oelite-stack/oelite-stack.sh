@@ -18,9 +18,23 @@ ensure_keyfile() {
   fi
 }
 
+# Ensure .env.local exists with random credentials (first run only)
+ensure_secrets() {
+  if [ ! -f .env.local ] || [ ! -s .env.local ]; then
+    echo "[secrets] Generating .env.local with random credentials..."
+    ./scripts/generate-secrets.sh
+  fi
+}
+
+# Clean up secrets on full reset (preserves keyfile generation)
+clean_secrets() {
+  rm -f .env.local
+}
+
 case "$cmd" in
   up)
     ensure_keyfile
+    ensure_secrets
     echo "Starting OElite shared infrastructure..."
     docker compose -f docker-compose.shared.yml up -d
     echo ""
@@ -33,6 +47,7 @@ case "$cmd" in
 
   init)
     ensure_keyfile
+    ensure_secrets
     echo "Running one-time init (MongoDB CSRS → shard → add-shard → per-project DBs, RabbitMQ vhosts, MinIO buckets)..."
     docker compose -f docker-compose.shared.yml --profile init up
     echo ""
@@ -45,11 +60,11 @@ case "$cmd" in
     ;;
 
   clean)
-    echo "WARNING: This will DELETE all OElite data volumes."
+    echo "WARNING: This will DELETE all OElite data volumes and credentials."
     read -p "Type 'yes' to continue: " confirm
     if [ "$confirm" = "yes" ]; then
       docker compose -f docker-compose.shared.yml down -v
-      rm -f .mongo.key
+      rm -f .mongo.key .env.local
       echo "Cleaned."
     else
       echo "Aborted."
@@ -58,6 +73,13 @@ case "$cmd" in
 
   health)
     ./scripts/health-check.sh
+    ;;
+
+  secrets)
+    ./scripts/generate-secrets.sh --rotate
+    echo ""
+    echo "Secrets rotated. Restart services to pick up new credentials."
+    echo "  ./oelite-stack.sh down && ./oelite-stack.sh up && ./oelite-stack.sh init"
     ;;
 
   status)
@@ -73,17 +95,22 @@ case "$cmd" in
 OElite Shared Local Infrastructure Manager
 
 Usage:
-  ./oelite-stack.sh up        Start all services
-  ./oelite-stack.sh init      Initialize MongoDB sharding + per-project DBs + MinIO buckets
+  ./oelite-stack.sh up        Start all services (generates .env.local if missing)
+  ./oelite-stack.sh init      Initialize DBs, users, vhosts, buckets (read-only-safe)
   ./oelite-stack.sh down      Stop all services (preserves volumes)
   ./oelite-stack.sh health    Run health checks against all services
   ./oelite-stack.sh status    Show running containers
   ./oelite-stack.sh logs      Tail logs (optionally: ./oelite-stack.sh logs oelite-mongos)
-  ./oelite-stack.sh clean     DELETE all data volumes (irreversible)
+  ./oelite-stack.sh secrets   Rotate all credentials (regenerates .env.local)
+  ./oelite-stack.sh clean     DELETE all data volumes + credentials (irreversible)
 
 First-time setup:
   ./oelite-stack.sh up
   ./oelite-stack.sh init
+
+Secrets management:
+  ./oelite-stack.sh secrets         Regenerate all random credentials
+  ./scripts/generate-secrets.sh --print  View current credentials (SENSITIVE)
 EOF
     ;;
 esac
