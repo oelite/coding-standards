@@ -26,9 +26,6 @@ ensure_secrets() {
   fi
 }
 
-clean_secrets() {
-}
-
 case "$cmd" in
   up)
     ensure_keyfile
@@ -58,9 +55,9 @@ case "$cmd" in
     ;;
 
   clean)
-echo "WARNING: This will DELETE all OElite data volumes."
-echo "Your .env and .mongo.key credentials are preserved (gitignored)."
-read -p "Type 'yes' to continue: " confirm
+    echo "WARNING: This will DELETE all OElite data volumes."
+    echo "Your .env and .mongo.key credentials are preserved (gitignored)."
+    read -p "Type 'yes' to continue: " confirm
     if [ "$confirm" = "yes" ]; then
       docker compose -f docker-compose.shared.yml down -v
       echo "Cleaned."
@@ -101,8 +98,8 @@ Usage:
   ./oelite-stack.sh health    Run health checks against all services
   ./oelite-stack.sh status    Show running containers
   ./oelite-stack.sh logs      Tail logs (optionally: ./oelite-stack.sh logs oelite-mongos)
-  ./oelite-stack.sh secrets   Rotate all credentials (regenerates .env)
-  ./oelite-stack.sh clean     DELETE all data volumes + credentials (irreversible)
+   ./oelite-stack.sh secrets   Rotate all credentials (regenerates .env)
+   ./oelite-stack.sh clean     DELETE all data volumes (.env/.mongo.key preserved)
 
 First-time setup:
   ./oelite-stack.sh up
