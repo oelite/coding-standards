@@ -62,15 +62,17 @@ Integration tests exercise **data access** — repositories, API endpoints, serv
 
 **Prerequisites before running:**
 ```bash
-# Step 1: Verify required services are healthy
-docker compose -f docker-compose.dev.yml ps
+# Step 1: Verify the shared local infrastructure is healthy
+cd infrastructure/oelite-stack && ./oelite-stack.sh health
 
-# Step 2: If any required service is down, start it
-docker compose -f docker-compose.dev.yml up -d mongodb redis clickhouse
+# Step 2: If any required service is down, start the shared stack
+cd infrastructure/oelite-stack && ./oelite-stack.sh up && ./oelite-stack.sh init
 
 # Step 3: Run integration tests
 dotnet test --filter "Category=Integration"
 ```
+
+> The shared stack (see `16-SHARED-LOCAL-INFRASTRUCTURE.md`) is machine-wide and shared across all repos/worktrees. It does not need to be started per-worktree.
 
 **Test project structure:**
 ```
@@ -242,12 +244,12 @@ public class TestDataSeeder
 Before pushing to remote (MR), Daniel MUST execute this exact sequence:
 
 ```bash
-# Step 1: Start Docker infrastructure
-docker compose -f docker-compose.dev.yml up -d
+# Step 1: Verify the shared local infrastructure is healthy (or start it)
+cd infrastructure/oelite-stack && ./oelite-stack.sh health
+# If unhealthy: ./oelite-stack.sh up && ./oelite-stack.sh init
 
-# Step 2: Verify all services are healthy
-docker compose -f docker-compose.dev.yml ps
-# All required services must show "healthy"
+# Step 2: All required services must show "healthy"
+# (./oelite-stack.sh health exits non-zero if any service is down)
 
 # Step 3: Run unit tests (CI mode — no Docker required)
 dotnet test --configuration Release --filter "Category!=Integration"
@@ -300,7 +302,7 @@ test:
 
 Before declaring any backend change "done", Daniel MUST confirm:
 
-- [ ] `docker compose -f docker-compose.dev.yml ps` shows all required services healthy
+- [ ] `cd infrastructure/oelite-stack && ./oelite-stack.sh health` exits 0 (all shared services healthy)
 - [ ] `dotnet test --filter "Category!=Integration"` → 0 failures
 - [ ] `dotnet test --filter "Category=Integration"` → 0 failures
 - [ ] `dotnet test --collect:"XPlat Code Coverage"` → >=70% line coverage

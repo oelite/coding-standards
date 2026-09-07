@@ -30,7 +30,9 @@ Ethan (primary), Marcus (architecture review)
 ## Standards to Read (via tools)
 - `coding-standards/1_dotNet_coding_standards/05,11`
 - `coding-standards/5_git_workflow_standards/GIT-WORKFLOW-STANDARDS.md`
-- Target repo `.gitlab-ci.yml`, `Dockerfile`, `docker-compose*.yml`, `k8s/`, `NuGet.config`
+- Target repo `.gitlab-ci.yml`, `Dockerfile`, `k8s/`, `NuGet.config`
+- `infrastructure/oelite-stack/` — the shared local development infrastructure (canonical reference)
+- `coding-standards/1_dotNet_coding_standards/16-SHARED-LOCAL-INFRASTRUCTURE.md` — the standard
 
 ## Scope
 - Docker / Docker Compose images
@@ -38,11 +40,11 @@ Ethan (primary), Marcus (architecture review)
 - K8s deployment validation
 - Environment consistency
 - Observability wiring
-- Local development infrastructure (`docker-compose.dev.yml`)
+- **Shared local development infrastructure** (`infrastructure/oelite-stack/`) — machine-wide singleton, NOT per-repo
 
 ## Docker Compose Standards
-- Standardized versions (verified 2026-06-20):
-  - MongoDB: `mongo:8.0`
+- Standardized versions (verified 2026-06-20, applied to the shared stack):
+  - MongoDB: `mongo:8.0` (sharded replica set: configsvr×3 + shard1 + mongos)
   - Redis: `redis:8.8-alpine`
   - ClickHouse: `clickhouse/clickhouse-server:26.5`
   - Kafka: `confluentinc/cp-kafka:8.3.0` (NOT `apache/kafka`)
@@ -51,8 +53,8 @@ Ethan (primary), Marcus (architecture review)
   - MinIO: `minio/minio:RELEASE.2025-09-07T16-13-09Z`
 - **Never use `latest` tags**
 - Minimal service principle: only include services actively consumed by app code (verified by `.csproj` references and actual source usage)
-- **Version Update Process**: When a new major/minor version is released, Ethan verifies compatibility with OElite.Restme providers; update this section in AGENTS.md, then update all `docker-compose.dev.yml` files in the codebase; all repos MUST converge within the same release cycle.
-- Port conflict handling: check before starting, remap if needed — NEVER kill existing containers
+- **Version Update Process**: When a new major/minor version is released, Ethan verifies compatibility with OElite.Restme providers; update the shared `infrastructure/oelite-stack/docker-compose.shared.yml`; all repos converge automatically because they share the stack.
+- **No per-repo `docker-compose.dev.yml` files** — the shared stack owns MongoDB, Redis, ClickHouse, Kafka, RabbitMQ, MinIO. Per-repo compose files are prohibited (see standard 16).
 
 ## CI/CD Pipeline Requirements
 - Stage pattern: `version → build → test → pack/deploy → build_docker → deploy_k8s`
@@ -65,8 +67,8 @@ Ethan (primary), Marcus (architecture review)
 
 ## Verification Checklist
 - [ ] `docker build -f <Dockerfile> .` succeeds
-- [ ] `docker compose -f docker-compose.dev.yml up` starts all services; health checks pass
-- [ ] No port conflicts (remapped if needed)
+- [ ] `cd infrastructure/oelite-stack && ./oelite-stack.sh up && ./oelite-stack.sh init` starts all shared services; health checks pass
+- [ ] No per-repo `docker-compose.dev.yml` was added (grep across monorepo)
 - [ ] Health endpoint responds 200
 - [ ] K8s rollout status succeeds
 - [ ] CI pipeline configured to skip integration/E2E tests

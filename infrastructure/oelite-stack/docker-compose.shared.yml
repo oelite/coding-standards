@@ -1,0 +1,408 @@
+# OElite Shared Local Infrastructure Stack
+#
+# One-time machine setup. Spins up a SINGLE MongoDB (sharded replica set),
+# Redis, ClickHouse, Kafka, RabbitMQ, and MinIO shared across ALL repos and
+# worktrees.  Per-project isolation is achieved via database/namespace
+# separation, NOT via separate container instances.
+#
+# Usage:
+#   cd infrastructure/oelite-stack
+#   ./oelite-stack.sh up          # Start all services
+#   ./oelite-stack.sh health      # Check health of all services
+#   ./oelite-stack.sh down        # Stop all services
+#   docker compose --profile init up  # Run init containers (MongoDB shard + MinIO buckets)
+#
+# Connection strings (all via mongos — app code unchanged):
+#   MongoDB:  mongodb://localhost:27017/?directConnection=true
+#   Redis:    localhost:6379
+#   ClickHouse: localhost:8123 (HTTP), localhost:9000 (TCP)
+#   Kafka:    localhost:9092
+#   RabbitMQ: localhost:5672,  management: localhost:15672
+#   MinIO:    localhost:9000  (API),  localhost:9001 (Console)
+#
+# IMPORTANT: Never run `docker compose up` directly. Use oelite-stack.sh which
+# handles health-check sequencing and the MongoDB init container.
+
+services:
+
+  # ─── MongoDB Sharded Replica Set ──────────────────────────────────────────
+  # Production parity: 3-node config server replica set + 1 shard replica set.
+  # mongos (router) is the single entry point for ALL client connections.
+  # DO NOT expose mongod processes directly to application code.
+
+  mongo-configsvr-1:
+    image: mongo:8.0
+    container_name: oelite-mongo-configsvr-1
+    hostname: oelite-configsvr-1
+    command: ["mongod", "--configsvr", "--replSet", "configReplSet", "--port", "27019",
+              "--bind_ip_all", "--keyFile", "/data/mongo.key", "--shardsvr"]
+    volumes:
+      - oelite-mongo-configsvr1-data:/data/db
+      - oelite-mongo-shared:/data/mongo.key:ro
+    ports:
+      - "27019:27019"
+    mem_limit: 256m
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping')"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 30s
+    networks:
+      - oelite-infra
+
+  mongo-configsvr-2:
+    image: mongo:8.0
+    container_name: oelite-mongo-configsvr-2
+    hostname: oelite-configsvr-2
+    command: ["mongod", "--configsvr", "--replSet", "configReplSet", "--port", "27019",
+              "--bind_ip_all", "--keyFile", "/data/mongo.key", "--shardsvr"]
+    volumes:
+      - oelite-mongo-configsvr2-data:/data/db
+      - oelite-mongo-shared:/data/mongo.key:ro
+    ports:
+      - "27029:27019"
+    mem_limit: 256m
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping')"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 30s
+    networks:
+      - oelite-infra
+
+  mongo-configsvr-3:
+    image: mongo:8.0
+    container_name: oelite-mongo-configsvr-3
+    hostname: oelite-configsvr-3
+    command: ["mongod", "--configsvr", "--replSet", "configReplSet", "--port", "27019",
+              "--bind_ip_all", "--keyFile", "/data/mongo.key", "--shardsvr"]
+    volumes:
+      - oelite-mongo-configsvr3-data:/data/db
+      - oelite-mongo-shared:/data/mongo.key:ro
+    ports:
+      - "27039:27019"
+    mem_limit: 256m
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping')"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 30s
+    networks:
+      - oelite-infra
+
+  mongo-shard-1-primary:
+    image: mongo:8.0
+    container_name: oelite-mongo-shard1-primary
+    hostname: oelite-shard-1
+    command: ["mongod", "--shardsvr", "--replSet", "shard1ReplSet", "--port", "27018",
+              "--bind_ip_all", "--keyFile", "/data/mongo.key"]
+    volumes:
+      - oelite-mongo-shard1-data:/data/db
+      - oelite-mongo-shared:/data/mongo.key:ro
+    ports:
+      - "27018:27018"
+    mem_limit: 512m
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping')"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 30s
+    networks:
+      - oelite-infra
+
+  mongo-shard-1-secondary:
+    image: mongo:8.0
+    container_name: oelite-mongo-shard1-secondary
+    hostname: oelite-shard-1-arb
+    # priority=0, votes=0 makes this a non-electable arbiter (avoids election issues)
+    command: ["mongod", "--shardsvr", "--replSet", "shard1ReplSet", "--port", "27018",
+              "--bind_ip_all", "--keyFile", "/data/mongo.key", "--votes", "0", "--priority", "0"]
+    volumes:
+      - oelite-mongo-shard1-arb-data:/data/db
+      - oelite-mongo-shared:/data/mongo.key:ro
+    ports:
+      - "27028:27018"
+    mem_limit: 256m
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping')"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 30s
+    networks:
+      - oelite-infra
+
+  mongo-mongos:
+    image: mongo:8.0
+    container_name: oelite-mongos
+    hostname: oelite-mongos
+    command: ["mongos",
+              "--configdb", "configReplSet/oelite-configsvr-1:27019,oelite-configsvr-2:27019,oelite-configsvr-3:27019",
+              "--bind_ip_all", "--keyFile", "/data/mongo.key",
+              "--port", "27017"]
+    volumes:
+      - oelite-mongo-shared:/data/mongo.key:ro
+    ports:
+      - "27017:27017"
+    mem_limit: 256m
+    depends_on:
+      mongo-configsvr-1:
+        condition: service_healthy
+      mongo-configsvr-2:
+        condition: service_healthy
+      mongo-configsvr-3:
+        condition: service_healthy
+      mongo-shard-1-primary:
+        condition: service_healthy
+      mongo-shard-1-secondary:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping')"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 60s
+    networks:
+      - oelite-infra
+
+  # ─── Init Jobs (profile=init only, run once) ────────────────────────────
+  #
+  # MongoDB init must run in strict order:
+  #   1. init-csrs   → configsvr replica set on configsvr-1
+  #   2. init-shard  → shard1 replica set on shard-1
+  #   3. add-shard   → mongos: adds shard1 to cluster (mongos context)
+  #   4. per-project → mongos: creates project users + databases
+  #
+  # Each job waits for its dependency to be healthy before starting.
+
+  csrs-init:
+    image: mongo:8.0
+    container_name: oelite-csrs-init
+    depends_on:
+      mongo-configsvr-1:
+        condition: service_healthy
+    volumes:
+      - ./scripts:/scripts
+    entrypoint: ["mongosh", "--host", "oelite-configsvr-1", "--quiet",
+                 "--file", "/scripts/init-csrs.js"]
+    networks: [oelite-infra]
+    restart: "no"
+    profiles: [init]
+
+  shard-init:
+    image: mongo:8.0
+    container_name: oelite-shard-init
+    depends_on:
+      mongo-shard-1-primary:
+        condition: service_healthy
+    volumes:
+      - ./scripts:/scripts
+    entrypoint: ["mongosh", "--host", "oelite-shard-1", "--quiet",
+                 "--file", "/scripts/init-shard.js"]
+    networks: [oelite-infra]
+    restart: "no"
+    profiles: [init]
+
+  add-shard-init:
+    image: mongo:8.0
+    container_name: oelite-add-shard-init
+    depends_on:
+      mongo-mongos:
+        condition: service_healthy
+      shard-init:
+        condition: service_completed_successfully
+    volumes:
+      - ./scripts:/scripts
+    entrypoint: ["mongosh", "--host", "oelite-mongos", "--quiet",
+                 "--file", "/scripts/add-shard.js"]
+    networks: [oelite-infra]
+    restart: "no"
+    profiles: [init]
+
+  db-init:
+    image: mongo:8.0
+    container_name: oelite-db-init
+    depends_on:
+      mongo-mongos:
+        condition: service_healthy
+      add-shard-init:
+        condition: service_completed_successfully
+    volumes:
+      - ./scripts:/scripts
+    entrypoint: ["bash", "/scripts/init-per-project-dbs.sh"]
+    networks: [oelite-infra]
+    restart: "no"
+    profiles: [init]
+
+  rabbitmq-init:
+    image: curlimages/curl:latest
+    container_name: oelite-rabbitmq-init
+    depends_on:
+      oelite-rabbitmq:
+        condition: service_healthy
+    volumes:
+      - ./scripts:/scripts
+    entrypoint: ["/bin/sh", "/scripts/init-rabbitmq.sh"]
+    networks: [oelite-infra]
+    restart: "no"
+    profiles: [init]
+
+  # ─── Redis ────────────────────────────────────────────────────────────────
+  oelite-redis:
+    image: redis:8.8-alpine
+    container_name: oelite-redis
+    hostname: oelite-redis
+    command: ["redis-server", "--save", "60", "1", "--loglevel", "notice"]
+    ports:
+      - "6379:6379"
+    mem_limit: 512m
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    volumes:
+      - oelite-redis-data:/data
+    networks:
+      - oelite-infra
+
+  # ─── ClickHouse ───────────────────────────────────────────────────────────
+  oelite-clickhouse:
+    image: clickhouse/clickhouse-server:26.5
+    container_name: oelite-clickhouse
+    hostname: oelite-clickhouse
+    ports:
+      - "8123:8123"
+      - "9000:9000"
+    mem_limit: 1024m
+    environment:
+      CLICKHOUSE_DB: default
+      CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT: "1"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q --spider http://localhost:8123/ping || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    volumes:
+      - oelite-clickhouse-data:/var/lib/clickhouse
+      - ./scripts/init-clickhouse.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    networks:
+      - oelite-infra
+
+  # ─── Kafka (KRaft mode — no Zookeeper dependency) ───────────────────────
+  oelite-kafka:
+    image: confluentinc/cp-kafka:8.3.0
+    container_name: oelite-kafka
+    hostname: oelite-kafka
+    environment:
+      KAFKA_NODE_ID: "1"
+      KAFKA_PROCESS_ROLES: broker,controller
+      KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:9092,CONTROLLER://0.0.0.0:9093
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://localhost:9092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@oelite-kafka:9093
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: "1"
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: "1"
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: "1"
+      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: "0"
+      CLUSTER_ID: MkU3OEVBNTcwNTJENDM2Qk
+    ports:
+      - "9092:9092"
+    mem_limit: 1024m
+    healthcheck:
+      test: ["CMD-SHELL", "kafka-topics --bootstrap-server localhost:9092 --list 2>/dev/null"]
+      interval: 15s
+      timeout: 10s
+      retries: 10
+      start_period: 60s
+    volumes:
+      - oelite-kafka-data:/var/lib/kafka/data
+    networks:
+      - oelite-infra
+
+  # ─── RabbitMQ ─────────────────────────────────────────────────────────────
+  oelite-rabbitmq:
+    image: rabbitmq:4.3-management-alpine
+    container_name: oelite-rabbitmq
+    hostname: oelite-rabbitmq
+    environment:
+      RABBITMQ_DEFAULT_USER: oelite
+      RABBITMQ_DEFAULT_PASS: oelite123
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    mem_limit: 512m
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "check_running"]
+      interval: 15s
+      timeout: 10s
+      retries: 5
+    volumes:
+      - oelite-rabbitmq-data:/var/lib/rabbitmq
+    networks:
+      - oelite-infra
+
+  # ─── MinIO (S3-compatible, multi-tenant buckets) ─────────────────────────
+  oelite-minio:
+    image: minio/minio:RELEASE.2025-09-07T16-13-09Z
+    container_name: oelite-minio
+    hostname: oelite-minio
+    command: ["server", "/data", "--console-address", ":9001"]
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    mem_limit: 512m
+    environment:
+      MINIO_ROOT_USER: oelite
+      MINIO_ROOT_PASSWORD: oelite123
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 15s
+      timeout: 10s
+      retries: 5
+    volumes:
+      - oelite-minio-data:/data
+    networks:
+      - oelite-infra
+
+  # Runs ONCE on first `docker compose --profile init up`.
+  # Creates per-project buckets (origin-auth, apex, obelisk, synapse, etc.)
+  oelite-minio-init:
+    image: minio/mc:RELEASE.2025-08-13T08-35-41Z
+    container_name: oelite-minio-init
+    depends_on:
+      oelite-minio:
+        condition: service_healthy
+    volumes:
+      - ./scripts/init-minio.sh:/init.sh:ro
+    entrypoint: ["/bin/sh", "/init.sh"]
+    networks:
+      - oelite-infra
+    restart: "no"
+    profiles:
+      - init
+
+# ─── Named Volumes ─────────────────────────────────────────────────────────
+volumes:
+  oelite-mongo-configsvr1-data:
+  oelite-mongo-configsvr2-data:
+  oelite-mongo-configsvr3-data:
+  oelite-mongo-shared:
+  oelite-mongo-shard1-data:
+  oelite-mongo-shard1-arb-data:
+  oelite-redis-data:
+  oelite-clickhouse-data:
+  oelite-kafka-data:
+  oelite-rabbitmq-data:
+  oelite-minio-data:
+
+# ─── Network ────────────────────────────────────────────────────────────────
+networks:
+  oelite-infra:
+    driver: bridge

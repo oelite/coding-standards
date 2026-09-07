@@ -13,7 +13,7 @@
 | **Worktree Identity** | `scripts/oelite-gitlab.sh worktree-create <role> <branch>` BEFORE any edit | Pre-commit hook blocks commits outside worktree or on protected branches |
 | **Sync First** | `scripts/oelite-gitlab.sh worktree-sync` BEFORE worktree creation (safe sync — does NOT checkout develop) | Manual verification in bootstrap; `worktree-create` warns if develop is stale |
 | **Zero Mock Data** | No fake/placeholder/TODO/hard-coded data in delivered code | Olivia rejects; Grace/Felix reject |
-| **Zero Mock Persistence** | Integration/E2E tests use REAL Docker infra (`docker-compose.dev.yml`) | CI skips via `[Trait("Category","Integration")]` + `@skipCI` |
+| **Zero Mock Persistence** | Integration/E2E tests use REAL Docker infra (shared `infrastructure/oelite-stack/` stack — see `16-SHARED-LOCAL-INFRASTRUCTURE.md`) | CI skips via `[Trait("Category","Integration")]` + `@skipCI` |
 | **No Type Suppression** | `as any`, `@ts-ignore`, `@ts-expect-error` = blocked | LSP diagnostics + code review |
 | **Verification Mandatory** | Build + tests + health check = required before "done" | Role-specific verification checklists |
 | **Issue-First** | No work begins (no worktree, no code, no exploration) until a GitLab issue ticket exists and meets Definition of Ready (`TASK-TEMPLATES.md` §1), created using `ISSUE-MR-TEMPLATES.md` | Bootstrap refuses to proceed without issue IID; reviewers reject MRs with no linked issue |
@@ -110,7 +110,7 @@ Start empty, load from API, render explicit loading/empty/error states. If an AP
 - Coverage: happy path, null/empty, invalid, boundary, error
 
 ### Integration Tests (Data Layer)
-- **MUST run against REAL Docker containers** (`docker-compose.dev.yml`)
+- **MUST run against REAL Docker containers** (shared `infrastructure/oelite-stack/` — see `16-SHARED-LOCAL-INFRASTRUCTURE.md`)
 - MongoDB, Redis, ClickHouse, OpenSearch, RabbitMQ, Kafka, MinIO
 - Mark: `[Trait("Category", "Integration")]` + `[Category("SkipCI")]`
 - CI runs: `dotnet test --filter "Category!=Integration"`
