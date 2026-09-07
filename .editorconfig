@@ -1,0 +1,117 @@
+# OElite Platform — Canonical Code Formatting Standard
+# Derived from JetBrains Rider / WebStorm / IntelliJ defaults.
+# This file is the single source of truth for all OElite platform code.
+# Per-repo .editorconfig files MUST NOT duplicate these rules.
+# They may extend only for documented exceptions via .ai/standards/.
+#
+# Reference: https://www.jetbrains.com/help/rider/Using_EditorConfig.html
+
+root = true
+
+[*]
+charset = utf-8
+end_of_line = lf
+insert_final_newline = true
+trim_trailing_whitespace = true
+indent_style = space
+max_line_length = 120
+
+# === C# / .NET (JetBrains Rider defaults)
+# Reference: https://www.jetbrains.com/help/rider/Settings_Code_Style_CSHARP.html
+[*.cs]
+indent_size = 4
+tab_width = 4
+csharp_new_line_before_open_brace = all
+csharp_new_line_before_else = true
+csharp_new_line_before_catch = true
+csharp_new_line_before_finally = true
+csharp_indent_case_contents = true
+csharp_indent_switch_labels = true
+csharp_space_after_cast = true
+csharp_space_after_keywords_in_control_flow_statements = true
+csharp_space_between_method_declaration_parameter_list_parentheses = false
+csharp_space_between_method_call_name_and_opening_parenthesis = false
+csharp_using_directive_placement = outside_namespace:warning
+csharp_prefer_braces = true:warning
+csharp_style_var_for_built_in_types = false:suggestion
+csharp_style_var_when_type_is_apparent = true:suggestion
+csharp_style_var_elsewhere = false:suggestion
+dotnet_sort_system_directives_first = true
+dotnet_separate_import_directive_groups = true
+resharper_csharp_brace_style = end_of_line
+resharper_csharp_blank_lines_around_invocable = 1
+
+# === TypeScript / TSX / JavaScript (WebStorm defaults)
+# Reference: https://www.jetbrains.com/help/webstorm/settings-code-style-typescript.html
+[*.{ts,tsx,js,jsx}]
+indent_size = 2
+tab_width = 2
+ij_javascript_use_explicit_semicolons = true
+ij_javascript_quote_style = single
+ij_javascript_import_sort_members = true
+ij_javascript_align_object_properties = on_value
+ij_javascript_keep_indents_on_empty_lines = false
+ij_typescript_use_explicit_semicolons = true
+ij_typescript_quote_style = single
+ij_typescript_import_sort_members = true
+ij_typescript_align_object_properties = on_value
+
+# === SCSS / CSS (WebStorm defaults)
+# Reference: https://www.jetbrains.com/help/idea/code-style-css.html
+[*.{scss,sass,css}]
+indent_size = 2
+tab_width = 2
+ij_css_keep_indents_on_empty_lines = false
+ij_css_align_closing_brace_with_properties = false
+ij_css_blank_lines_around_nested_rule = 1
+ij_scss_blank_lines_around_nested_rule = 1
+
+# === HTML / Angular templates (WebStorm defaults)
+# Reference: https://www.jetbrains.com/help/idea/code-style-html.html
+[*.{html,htm}]
+indent_size = 2
+tab_width = 2
+ij_html_keep_indents_on_empty_lines = false
+ij_html_align_attributes = true
+ij_html_keep_blank_lines = 1
+max_line_length = off
+
+# === JSON (WebStorm defaults)
+# Reference: https://www.jetbrains.com/help/idea/code-style-json.html
+[*.json]
+indent_size = 2
+tab_width = 2
+ij_json_keep_blank_lines = 0
+max_line_length = off
+
+# === YAML (WebStorm defaults)
+# Reference: https://www.jetbrains.com/help/idea/code-style-yaml.html
+[*.{yml,yaml}]
+indent_size = 2
+tab_width = 2
+indent_style = space
+ij_yaml_keep_indents_on_empty_lines = false
+max_line_length = off
+
+# === Markdown — relaxed (JetBrains default: no trailing spaces, no wrap)
+[*.md]
+trim_trailing_whitespace = false
+max_line_length = off
+
+# === Python (WebStorm / IntelliJ default — PEP 8 alignment)
+# Reference: https://www.jetbrains.com/help/idea/code-style-python.html
+[*.py]
+indent_size = 4
+tab_width = 4
+ij_python_use_explicit_semicolons = false
+ij_python_blank_lines_around_class = 1
+ij_python_blank_lines_around_method = 1
+max_line_length = 100
+
+# === Shell / Bash (WebStorm defaults)
+# Reference: https://www.jetbrains.com/help/idea/code-style-shell.html
+[*.{sh,bash,zsh}]
+indent_size = 2
+tab_width = 2
+ij_shell_keep_indents_on_empty_lines = false
+shellshfmt_posix = true
