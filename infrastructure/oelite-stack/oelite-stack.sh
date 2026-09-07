@@ -33,10 +33,10 @@ case "$cmd" in
 
   init)
     ensure_keyfile
-    echo "Running one-time init (MongoDB shard + per-project DBs + MinIO buckets)..."
+    echo "Running one-time init (MongoDB CSRS → shard → add-shard → per-project DBs, RabbitMQ vhosts, MinIO buckets)..."
     docker compose -f docker-compose.shared.yml --profile init up
     echo ""
-    ./scripts/init-per-project-dbs.sh
+    echo "Init complete. Run './oelite-stack.sh health' to verify."
     ;;
 
   down)

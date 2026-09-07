@@ -169,23 +169,87 @@ services:
     networks:
       - oelite-infra
 
-  # Runs ONCE on first `docker compose --profile init up`.
-  # Initializes replica sets, adds shard, creates per-project databases.
-  mongo-init:
+  # ─── Init Jobs (profile=init only, run once) ────────────────────────────
+  #
+  # MongoDB init must run in strict order:
+  #   1. init-csrs   → configsvr replica set on configsvr-1
+  #   2. init-shard  → shard1 replica set on shard-1
+  #   3. add-shard   → mongos: adds shard1 to cluster (mongos context)
+  #   4. per-project → mongos: creates project users + databases
+  #
+  # Each job waits for its dependency to be healthy before starting.
+
+  csrs-init:
     image: mongo:8.0
-    container_name: oelite-mongo-init
+    container_name: oelite-csrs-init
     depends_on:
-      mongo-mongos:
+      mongo-configsvr-1:
         condition: service_healthy
     volumes:
       - ./scripts:/scripts
-    entrypoint: ["mongosh", "--host", "oelite-mongos", "--quiet",
-                 "/scripts/init-mongo-shard.js"]
-    networks:
-      - oelite-infra
+    entrypoint: ["mongosh", "--host", "oelite-configsvr-1", "--quiet",
+                 "--file", "/scripts/init-csrs.js"]
+    networks: [oelite-infra]
     restart: "no"
-    profiles:
-      - init
+    profiles: [init]
+
+  shard-init:
+    image: mongo:8.0
+    container_name: oelite-shard-init
+    depends_on:
+      mongo-shard-1-primary:
+        condition: service_healthy
+    volumes:
+      - ./scripts:/scripts
+    entrypoint: ["mongosh", "--host", "oelite-shard-1", "--quiet",
+                 "--file", "/scripts/init-shard.js"]
+    networks: [oelite-infra]
+    restart: "no"
+    profiles: [init]
+
+  add-shard-init:
+    image: mongo:8.0
+    container_name: oelite-add-shard-init
+    depends_on:
+      mongo-mongos:
+        condition: service_healthy
+      shard-init:
+        condition: service_completed_successfully
+    volumes:
+      - ./scripts:/scripts
+    entrypoint: ["mongosh", "--host", "oelite-mongos", "--quiet",
+                 "--file", "/scripts/add-shard.js"]
+    networks: [oelite-infra]
+    restart: "no"
+    profiles: [init]
+
+  db-init:
+    image: mongo:8.0
+    container_name: oelite-db-init
+    depends_on:
+      mongo-mongos:
+        condition: service_healthy
+      add-shard-init:
+        condition: service_completed_successfully
+    volumes:
+      - ./scripts:/scripts
+    entrypoint: ["bash", "/scripts/init-per-project-dbs.sh"]
+    networks: [oelite-infra]
+    restart: "no"
+    profiles: [init]
+
+  rabbitmq-init:
+    image: curlimages/curl:latest
+    container_name: oelite-rabbitmq-init
+    depends_on:
+      oelite-rabbitmq:
+        condition: service_healthy
+    volumes:
+      - ./scripts:/scripts
+    entrypoint: ["/bin/sh", "/scripts/init-rabbitmq.sh"]
+    networks: [oelite-infra]
+    restart: "no"
+    profiles: [init]
 
   # ─── Redis ────────────────────────────────────────────────────────────────
   oelite-redis:

@@ -95,7 +95,7 @@ mongodb://oelite_obelisk:oelite_obelisk_dev@localhost:27017/obelisk?authSource=o
 | minio | 512 MB | 0.5 |
 | **Total** | **~5 GB** | **~6 cores** |
 
-Tested on: 23 GB RAM, 8+ core machines. On 8 GB machines, see [LITE-MODE.md](LITE-MODE.md) (TODO: future).
+Tested on: 23 GB RAM, 8+ core machines. On 8 GB machines: reduce replica set members or run fewer services (TODO: document LITE-MODE procedure).
 
 ## Commands
 
