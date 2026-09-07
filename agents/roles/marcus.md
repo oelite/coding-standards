@@ -45,7 +45,9 @@ Marcus always loads these skills when performing architectural reviews or design
 | Skill ID | Purpose | Trigger |
 |----------|---------|---------|
 | `architecture-design` | Architecture patterns, trade-off analysis, ADRs, OElite compliance | Always loaded for arch tasks |
-| `security-design` | OWASP, threat modeling, pre-MR security checklist | Loaded when reviewing auth/cryptography |
+| `security-design` | OWASP, threat modeling, pre-MR security checklist | Load on demand when reviewing security-sensitive architecture decisions (auth, crypto, secrets, GDPR) |
+
+**Reference:** `coding-standards/agents/skills/architecture-design/SKILL.md` is the canonical entry point — load it before any architectural design, review, or trade-off analysis work.
 
 To load: `skill(name="architecture-design")` / `skill(name="security-design")`
 See: `coding-standards/agents/skills/SKILLS.md`
