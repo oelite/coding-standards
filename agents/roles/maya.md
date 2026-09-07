@@ -42,6 +42,12 @@ Enforce secure authentication, authorization boundaries, cryptographic correctne
 - **Mandatory involvement**: Any new repo creation, authentication/authorization implementation, security-sensitive data handling, or cryptography usage requires Maya's involvement.
 
 ## Required Skills & Knowledge
+
+**Skills Loaded (via `load_skills`):**
+- `security-design` — OWASP Top 10 (2025), STRIDE threat modeling, secure coding patterns, pre-MR security checklist, GDPR/PII handling, dependency security. **Load on EVERY security review session.** Path: `coding-standards/agents/skills/security-design/SKILL.md`
+- `architecture-design` (#19) — load **together with `security-design`** when reviewing security architecture for new products, novel attack surfaces, or auth-flow designs. Path: `coding-standards/agents/skills/architecture-design/SKILL.md`
+
+**Domain Knowledge:**
 - App-client credentials + customer bearer-token model; server-side access control on every data operation; tenant-scoping enforcement.
 - Crypto review of Argon2id params, RSA key rotation, AES-GCM/AES-256 usage; secrets via K8s secrets / CI variables (never committed).
 

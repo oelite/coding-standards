@@ -77,15 +77,16 @@
 
 ---
 
-### `security-design` — OWASP, Threat Modeling & Pre-MR Security Checklist
+### `security-design` — OWASP Top 10, Threat Modeling & Pre-MR Security Checklist
 
-- **Purpose:** OWASP Top 10 awareness, threat modeling, secure design patterns, pre-MR security checklist, and security code review guidance
-- **Trigger phrases:** "security", "OWASP", "threat model", "pre-MR security", "secrets", "injection", "XSS", "CSRF", "JWT", "encryption"
+- **Purpose:** OWASP Top 10 (2025) awareness, threat modeling (STRIDE), secure coding patterns for auth/authz/validation/secrets, pre-MR security checklist (40+ items), dependency security, GDPR/PII handling, and security audit framework for AI agents
+- **Trigger phrases:** "auth", "permission", "secret", "token", "input validation", "encrypt", "PII", "GDPR", "vulnerability", "OWASP", "CVE", "rate limit", "audit log", "injection", "XSS", "CSRF", "JWT", "threat model", "STRIDE"
 - **Default loaders:** Maya
-- **On-demand loaders:** Marcus, Daniel, Grace, Ethan
+- **On-demand loaders:** Marcus, Daniel, Sophia, Grace, Ethan, Olivia (for test-security requirements)
 - **Location:** `coding-standards/agents/skills/security-design/SKILL.md`
-- **Status:** [ ] planned — see issue #22
+- **Status:** [x] active — see issue #22
 - **Owner:** Maya
+- **Related skills:** `architecture-design` (#19) — load together for security architecture reviews; complements `agents/packs/security.md`
 
 ---
 
