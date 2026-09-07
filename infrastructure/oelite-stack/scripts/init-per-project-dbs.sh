@@ -84,7 +84,7 @@ for entry in "${PROJECTS[@]}"; do
     mongosh -u "$ADMIN_USER" -p "$ADMIN_PASS" $mongosh_auth_base --eval '
     db = db.getSiblingDB(process.env.MONGO_PROJECT_DB);
     try { db.createCollection("_init_marker"); } catch (e) { if (!/already exists/i.test(e.message)) throw e; }
-  ' >/dev/null 2>&1
+  ' >/dev/null 2>&1 || true
 
   # Create the per-project user (scoped to the project DB only)
   MONGO_PROJECT_DB="$db" MONGO_PROJECT_USER="$user" MONGO_PROJECT_PASS="$pass" \
@@ -104,7 +104,7 @@ for entry in "${PROJECTS[@]}"; do
         throw e;
       }
     }
-  ' 2>/dev/null
+  ' 2>/dev/null || true
 
   echo "  -> mongodb://$user:$pass@$MONGO_HOST:$MONGO_PORT/$db?authSource=$db"
   echo ""
