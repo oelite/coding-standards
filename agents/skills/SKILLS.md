@@ -67,13 +67,14 @@
 
 ### `frontend-design` — Design Aesthetic, Tokens & Component Library
 
-- **Purpose:** Frontend design aesthetic, design tokens, Shadcn/ui patterns, typography scale, brand consistency, visual QA
-- **Trigger phrases:** "frontend design", "design tokens", "Shadcn", "typography", "brand", "visual QA", "UI aesthetic"
+- **Purpose:** OElite design aesthetic, design tokens, Shadcn/ui patterns, typography scale, brand consistency, anti-pattern catalog, before/after examples
+- **Trigger phrases:** "frontend design", "design tokens", "Shadcn", "typography", "brand", "visual QA", "UI aesthetic", "styling", "component", "responsive", "animation", "spacing", "color"
 - **Default loaders:** Sophia, Felix
 - **On-demand loaders:** Jonathan, Isabella
 - **Location:** `coding-standards/agents/skills/frontend-design/SKILL.md`
-- **Status:** [ ] planned — see issue #21
+- **Status:** [x] active — see issue #21
 - **Owner:** Sophia
+- **Sister skill:** `ux-design` (#20, Jonathan) — **load together for any user-facing feature**; `frontend-design` covers the visual/structural layer, `ux-design` covers usability, WCAG, and interaction patterns
 
 ---
 

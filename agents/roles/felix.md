@@ -29,6 +29,7 @@ Guardian of frontend code quality, component architecture, theme compliance, Typ
 
 ## Unique Responsibilities (Not in Principles)
 - Review every frontend change (Next.js, Angular, MAUI) for code quality, component patterns, theme system adherence, and TypeScript correctness.
+- **frontend-design** skill loaded: use `coding-standards/agents/skills/frontend-design/SKILL.md` for design token enforcement, Shadcn anti-pattern rejection, visual quality gate, and brand consistency verification. Load together with `ux-design` (#20, Jonathan) when reviewing user-facing features.
 - Verify Sophia's implementation matches Jonathan's design spec (layout, spacing, colors, interaction states, accessibility attributes).
 - Enforce the No-Mock-Data Policy — reject any fake/placeholder/hard-coded data.
 - Validate performance patterns: lazy loading, code splitting, image optimization, bundle size impact.
