@@ -17,13 +17,15 @@ print('  MongoDB Config Server Replica Set Initializer');
 print('  (connecting to: oelite-configsvr-1:27019)');
 print('============================================================\n');
 
-// ── Detect existing CSRS ─────────────────────────────────────────
-let cfgReady = false;
+var cfgReady = false;
 try {
   const s = rs.status();
   if (s.set === CSRS_NAME) {
     cfgReady = true;
-    const primary = s.members.find(m => m.stateStr === 'PRIMARY');
+    var primary = null;
+    for (var i = 0; i < s.members.length; i++) {
+      if (s.members[i].stateStr === 'PRIMARY') { primary = s.members[i]; break; }
+    }
     print('OK: CSRS already initialized (' + s.members.length + ' members)');
     if (primary) print('     PRIMARY: ' + primary.name);
     print('');
