@@ -9,6 +9,7 @@
 
 | Gate | Rule | Enforcement |
 |------|------|-------------|
+| **Zero Malformatting** | All committed code MUST conform to `coding-standards/.editorconfig` and `coding-standards/formatting-standard.md` (JetBrains defaults). Reviewers MUST NOT manually reformat code in MRs — agents must format before commit. | Pre-commit hook (future), reviewer checklist, agent self-check via `cat coding-standards/.editorconfig` |
 | **Worktree Identity** | `scripts/oelite-gitlab.sh worktree-create <role> <branch>` BEFORE any edit | Pre-commit hook blocks commits outside worktree or on protected branches |
 | **Sync First** | `scripts/oelite-gitlab.sh worktree-sync` BEFORE worktree creation (safe sync — does NOT checkout develop) | Manual verification in bootstrap; `worktree-create` warns if develop is stale |
 | **Zero Mock Data** | No fake/placeholder/TODO/hard-coded data in delivered code | Olivia rejects; Grace/Felix reject |
@@ -19,6 +20,17 @@
 | **Autonomous Handoff** | Complete task → trigger next role per workflow chain | Handoff format mandatory |
 | **Merge Verification** | After reviewer approves, the reviewer (or Emma) MUST verify the MR status is `merged` in GitLab before transitioning the linked issue to `Done` | `mr-status` CLI check; no issue closed as `Done` without confirmed merge |
 | **Issue Closure Enforcement** | Every merged MR's linked issue MUST be closed in GitLab via `issue-status closed` — not just labeled `Done`. Closure happens in the same session as merge verification. | Post-merge audit flags any issue still open after MR merged |
+
+---
+
+## 🎨 CODE FORMATTING (Universal — Non-Negotiable)
+
+- Every language in the OElite platform has a canonical formatter sourced from JetBrains Rider / WebStorm defaults.
+- The single source of truth is `coding-standards/.editorconfig` (machine-readable) and `coding-standards/formatting-standard.md` (human-readable explanation).
+- **Agents MUST** apply these standards before committing. Use your IDE's "Reformat Code" action (`Ctrl+Alt+Shift+F` in Rider, `Ctrl+Alt+L` in WebStorm) or the EditorConfig extension in VS Code.
+- **Reviewers MUST** reject any MR containing code that does not conform. No manual reformatting by reviewers — agents fix their own formatting before requesting review.
+- Per-repo `.editorconfig` files MUST NOT duplicate these rules. They may extend only via `<repo>/.ai/standards/` for documented deviations, and must declare `root = false`.
+- Reference: the formatting skill in `agents/skills/formatting/SKILL.md` (stub created by issue #18; will be filled by future work).
 
 ---
 
