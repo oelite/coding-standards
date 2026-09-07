@@ -60,7 +60,7 @@
 - **Default loaders:** Jonathan
 - **On-demand loaders:** Sophia, Felix, Isabella
 - **Location:** `coding-standards/agents/skills/ux-design/SKILL.md`
-- **Status:** [ ] planned — see issue #20
+- **Status:** [x] active — see issue #20
 - **Owner:** Jonathan
 
 ---
