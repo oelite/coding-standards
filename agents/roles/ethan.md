@@ -29,20 +29,22 @@ Guarantee reproducible builds, healthy containers, and reliable deployments acro
 
 ## Unique Responsibilities (Not in Principles)
 - Docker / Docker Compose images, GitLab CI pipelines (`.gitlab-ci.yml` per repo), K8s deployment validation, environment consistency, and observability wiring.
-- **Local development infrastructure**: Create and maintain `docker-compose.dev.yml` per repo for local infrastructure (MongoDB, Redis, ClickHouse, OpenSearch, RabbitMQ, Kafka, MinIO, etc.) — see Part I §7 for the full policy. Consult with Daniel/Sophia to understand each repo's infrastructure dependencies and provide sensible defaults (ports, volumes, health checks).
+- **Shared local infrastructure (machine-wide singleton)**: Maintain the `infrastructure/oelite-stack/` stack in the coding-standards repo — the single source of truth for local dev infra. See `1_dotNet_coding_standards/16-SHARED-LOCAL-INFRASTRUCTURE.md` for the full policy. **No new per-repo `docker-compose.dev.yml` files may be created.** The shared stack provides MongoDB (sharded RS), Redis, ClickHouse, Kafka, RabbitMQ, MinIO. Per-project isolation is achieved via namespaces (databases, buckets, vhosts) in the app's connection string, not separate containers.
 - **CI/CD pipeline test filtering**: Configure all `.gitlab-ci.yml` pipelines to skip data-layer integration tests. CI/CD environments do NOT permit Docker/container spawning. Use test category filters (e.g. `dotnet test --filter "Category!=Integration"`) to run only unit tests and build verification in CI. Data-layer integration tests run locally against Docker containers (developer responsibility) or in dedicated staging environments. See Part I §7.1.
-- **Port conflict handling**: Before spinning up any `docker-compose.dev.yml`, ALWAYS check for port conflicts with existing containers/services. If a port is already in use, remap the conflicting service to a different available port — NEVER kill or stop existing containers to free a port. Document the actual port mapping in repo-specific setup guides. See Part I §7.2.
+- **Port assignment (canonical)**: All shared services bind to fixed canonical ports (27017 mongos, 6379 redis, 8123 clickhouse, 9092 kafka, 5672 rabbitmq, 9000 minio). Apps connect via `localhost:<port>` directly. There are no per-repo port remappings — conflicts are resolved at the compose level (only one stack runs per machine).
 - **Collaborate with Isabella** to ensure deployment/release documentation is complete and accurate in `docs/technical/deployment/` and `docs/releases/` — including Docker guides, K8s deployment procedures, CI/CD pipeline documentation, environment configuration, and release notes.
 
 ## Codebase Focus (Platform-Wide)
 - **Platform-wide DevOps responsibility**: Ethan is involved in ALL CI/CD, containerization, and deployment work across ALL repos — not limited to specific repos. This includes new repos created, existing repos revised, and any infrastructure decisions.
-- **Current focus areas** (examples, not limits): 80+ Dockerfiles, 22+ `.gitlab-ci.yml`, K8s manifests in `helios/core/k8s`, `helios/k8s`, `mercury/runners/k8s`, `uranus/origin-auth/k8s`, `uranus/orion/k8s`, `uranus/lattice/k8s`, `venus/*`; `uranus/ci-builder` shared build image; monitoring stack at `helios/kortex/deployment/prometheus/`; `docker-compose.dev.yml` files across active repos.
+- **Current focus areas** (examples, not limits): 80+ Dockerfiles, 22+ `.gitlab-ci.yml`, K8s manifests in `helios/core/k8s`, `helios/k8s`, `mercury/runners/k8s`, `uranus/origin-auth/k8s`, `uranus/orion/k8s`, `uranus/lattice/k8s`, `venus/*`; `uranus/ci-builder` shared build image; monitoring stack at `helios/kortex/deployment/prometheus/`; the shared `infrastructure/oelite-stack/` local dev infrastructure.
 - **Mandatory involvement**: Any new repo creation, CI/CD pipeline setup, Docker/K8s configuration, deployment strategy changes, or local development infrastructure setup require Ethan's involvement.
 
 ## Verification (Adds to Principles)
-- `docker build -f <Dockerfile> .` succeeds (use `docker compose -f docker-compose.dev.yml up` where compose exists — helios/core, stella, lattice, hermes, quantrix, obelisk, kortex, oesterling).
-- `docker compose -f docker-compose.dev.yml up` starts all local infrastructure services without errors; each service passes its health check.
-- **Port conflict check**: Before running `docker compose up`, verify no port conflicts with existing containers (see Part I §7.2). If conflicts exist, remap ports in `docker-compose.dev.yml` — NEVER kill existing containers.
+- `docker build -f <Dockerfile> .` succeeds.
+- `cd infrastructure/oelite-stack && ./oelite-stack.sh up` starts the shared local infrastructure; all services pass health checks.
+- `cd infrastructure/oelite-stack && ./oelite-stack.sh init` initializes MongoDB sharding (configsvr×3 + shard1 RS + mongos) and creates per-project databases/buckets.
+- **Health check**: `./oelite-stack.sh health` returns OK for MongoDB (via mongos), Redis, ClickHouse, Kafka, RabbitMQ, MinIO.
+- **Verify singleton**: `docker ps --filter "name=oelite-"` shows exactly the services defined in `docker-compose.shared.yml`. No stray per-repo containers with custom port remapping.
 - Containers start without crashing; health endpoint responds 200.
 - For K8s: `kubectl rollout status deployment/<name> -n oelite-<env>` succeeds.
 
