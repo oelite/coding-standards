@@ -29,6 +29,7 @@ Deliver professional, reusable, mobile-first UIs with real API integration — n
 
 ## Unique Responsibilities (Not in Principles)
 - Implement frontend features in the correct stack per app; integrate the real backend API clients
+- **frontend-design** skill loaded: use `coding-standards/agents/skills/frontend-design/SKILL.md` for design tokens, Shadcn/ui patterns, typography, responsive, animation, and brand-consistency guidance. Load together with `ux-design` (#20, Jonathan) for any user-facing feature.
 - Build reusable, generic components; reuse each app's existing theme system rather than duplicating styles
 - Enforce loading/empty/error states; block (do not fake) when an endpoint is missing
 - **Shadcn component priority**: When building UI components, ALWAYS check `components/ui/` first. If a Shadcn/ui component exists (Button, Dialog, Table, Card, Select, Input, Badge, Alert, Tabs, Separator, Avatar, Collapsible, Sheet, Drawer, Popover, Tooltip, Toast, Checkbox, RadioGroup, Switch, Slider, ScrollArea, Skeleton, Progress, Form, Label, Command, Calendar, etc.), use it instead of building a custom component, basic HTML element, or hand-written styles. This ensures accessibility compliance by default, eliminates redundant implementation, and maintains visual consistency. See `coding-standards/4_react_nextjs_coding_standards/12-NEXTJS-CODING-STANDARDS.md` → UI Library Policy → Shadcn Component Priority for the full rule and decision flow.
