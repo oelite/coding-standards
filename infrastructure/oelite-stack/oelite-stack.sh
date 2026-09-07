@@ -27,7 +27,6 @@ ensure_secrets() {
 }
 
 clean_secrets() {
-  rm -f .env
 }
 
 case "$cmd" in
@@ -59,11 +58,11 @@ case "$cmd" in
     ;;
 
   clean)
-    echo "WARNING: This will DELETE all OElite data volumes and credentials."
-    read -p "Type 'yes' to continue: " confirm
+echo "WARNING: This will DELETE all OElite data volumes."
+echo "Your .env and .mongo.key credentials are preserved (gitignored)."
+read -p "Type 'yes' to continue: " confirm
     if [ "$confirm" = "yes" ]; then
       docker compose -f docker-compose.shared.yml down -v
-      rm -f .mongo.key .env
       echo "Cleaned."
     else
       echo "Aborted."
@@ -77,8 +76,10 @@ case "$cmd" in
   secrets)
     ./scripts/generate-secrets.sh --rotate
     echo ""
-    echo "Secrets rotated. Restart services to pick up new credentials."
-    echo "  ./oelite-stack.sh down && ./oelite-stack.sh up && ./oelite-stack.sh init"
+    echo "Secrets rotated. Credentials are stored in .env and seeded into"
+    echo "data volumes (e.g. the MongoDB root user). A simple restart is NOT"
+    echo "enough — use clean+re-up to pick up new credentials:"
+    echo "  ./oelite-stack.sh clean && ./oelite-stack.sh up && ./oelite-stack.sh init"
     ;;
 
   status)

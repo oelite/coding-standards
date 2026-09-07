@@ -35,7 +35,7 @@ check "MongoDB shard1-primary (27018)" "docker exec oelite-mongo-shard1-primary 
 check "MongoDB shard1-secondary (27018)" "docker exec oelite-mongo-shard1-secondary mongosh --quiet --port 27018 --eval 'db.adminCommand({ping:1})' >/dev/null 2>&1"
 check "MongoDB mongos (27017)" "docker exec oelite-mongos mongosh --quiet --port 27017 --eval 'db.adminCommand({ping:1})' >/dev/null 2>&1"
 
-# Redis — requires password (requirepass)
+# Redis — requires password (set via --requirepass at startup)
 REDIS_P="${REDIS_PASSWORD:-}"
 check "Redis" "docker exec oelite-redis redis-cli --raw -a '$REDIS_P' ping | grep -q PONG"
 
