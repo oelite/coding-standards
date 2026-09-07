@@ -38,8 +38,8 @@ All app code connects to these **fixed canonical endpoints**:
 | Redis | `localhost:6379` | SELECT db number per project |
 | ClickHouse | `localhost:8123` (HTTP) | Native TCP 9000 internal-only |
 | Kafka | `localhost:9092` | KRaft mode (no ZK) |
-| RabbitMQ | `localhost:5672` (AMQP), `15672` (UI) | User: `oelite`, Pass: `oelite123` |
-| MinIO | `localhost:9000` (API), `9001` (Console) | User: `oelite`, Pass: `oelite123` |
+| RabbitMQ | `localhost:5672` (AMQP), `15672` (UI) | User + pass in `.env` |
+| MinIO | `localhost:9000` (API), `9001` (Console) | User + pass in `.env` |
 
 ### Per-Project MongoDB Connection
 
@@ -51,6 +51,53 @@ mongodb://oelite_apex:oelite_apex_dev@localhost:27017/apex?authSource=apex
 mongodb://oelite_obelisk:oelite_obelisk_dev@localhost:27017/obelisk?authSource=obelisk
 ... (see init-per-project-dbs.sh for full list)
 ```
+
+## Secrets Management
+
+**No credentials are committed to the repo.** Each developer generates random
+credentials on first `up` and stores them in a per-machine, gitignored file.
+
+| File | Committed? | Purpose |
+|---|---|---|
+| `.env.example` | yes | Schema + key names only (no values) |
+| `.env` | **no** (gitignored) | Real random credentials for THIS machine |
+| `.mongo.key` | **no** (gitignored) | MongoDB cluster auth key (binary, 756 bytes) |
+
+### How it works
+
+1. **First run** (`./oelite-stack.sh up` on a fresh clone):
+   - `./scripts/generate-secrets.sh` creates `.env` with random passwords
+     for: MongoDB root, ClickHouse admin, Redis, RabbitMQ, MinIO.
+   - `chmod 600` is applied (owner read/write only).
+2. **Subsequent runs** — existing `.env` is preserved; credentials are NOT
+   regenerated unless you ask. This means your password stays the same across
+   restarts.
+3. **Per-service consumption** — every service container mounts `.env`
+   via `env_file: .env` in `docker-compose.shared.yml`. Init scripts
+   (`init-per-project-dbs.sh`, `init-rabbitmq.sh`, `init-minio.sh`) read the
+   same env vars and use them to create per-project users.
+
+### Common operations
+
+```bash
+# View current credentials (SENSITIVE — do not share or commit)
+./scripts/generate-secrets.sh --print
+
+# Rotate ALL secrets (regenerates random passwords, requires service restart)
+./oelite-stack.sh secrets
+
+# Rotate just one secret manually
+./scripts/generate-secrets.sh --rotate
+
+# Full reset (removes volumes AND credentials)
+./oelite-stack.sh clean && ./oelite-stack.sh up && ./oelite-stack.sh init
+```
+
+### Adding a new service to the secrets flow
+
+If you add a service that needs a credential, edit `scripts/generate-secrets.sh`:
+add the key name to the `SECRETS=(...)` array at the bottom. Then add the
+key to `.env.example` (committed) with an empty value.
 
 ## Topology
 
