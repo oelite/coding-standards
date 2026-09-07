@@ -18,17 +18,16 @@ ensure_keyfile() {
   fi
 }
 
-# Ensure .env.local exists with random credentials (first run only)
+# Ensure .env exists with random credentials (first run only)
 ensure_secrets() {
-  if [ ! -f .env.local ] || [ ! -s .env.local ]; then
-    echo "[secrets] Generating .env.local with random credentials..."
+  if [ ! -f .env ] || [ ! -s .env ]; then
+    echo "[secrets] Generating .env with random credentials..."
     ./scripts/generate-secrets.sh
   fi
 }
 
-# Clean up secrets on full reset (preserves keyfile generation)
 clean_secrets() {
-  rm -f .env.local
+  rm -f .env
 }
 
 case "$cmd" in
@@ -64,7 +63,7 @@ case "$cmd" in
     read -p "Type 'yes' to continue: " confirm
     if [ "$confirm" = "yes" ]; then
       docker compose -f docker-compose.shared.yml down -v
-      rm -f .mongo.key .env.local
+      rm -f .mongo.key .env
       echo "Cleaned."
     else
       echo "Aborted."

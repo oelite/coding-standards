@@ -19,7 +19,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 STACK_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
-ENV_FILE="$STACK_DIR/.env.local"
+ENV_FILE="$STACK_DIR/.env"
 ENV_EXAMPLE="$STACK_DIR/.env.example"
 cd "$STACK_DIR"
 
@@ -120,8 +120,7 @@ rotate_if_requested() {
 # ─── print-only mode ───────────────────────────────────────────────────────
 if [ "$PRINT" -eq 1 ]; then
   if [ ! -f "$ENV_FILE" ]; then
-    echo "(no .env.local yet — run ./scripts/generate-secrets.sh)"
-    exit 0
+  echo "(no .env yet — run ./scripts/generate-secrets.sh)"
   fi
   echo "Current .env.local (sensitive values — do not share):"
   cat "$ENV_FILE"

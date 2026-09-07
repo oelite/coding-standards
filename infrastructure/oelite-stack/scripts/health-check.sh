@@ -1,16 +1,14 @@
 #!/bin/bash
 # Health check for OElite shared infrastructure
 # Verifies all services are reachable and responding via docker exec.
-# Credentials are sourced from .env.local (gitignored) for services that
+# Credentials are sourced from .env (gitignored) for services that
 # require authentication (Redis, ClickHouse, MongoDB root).
 set -eu
 
-# Load credentials from .env.local if present
 STACK_DIR="$(cd "$(dirname "$0")/.." && pwd)"
-ENV_FILE="$STACK_DIR/.env.local"
+ENV_FILE="$STACK_DIR/.env"
 if [ -f "$ENV_FILE" ]; then
   set -a
-  # shellcheck disable=SC1090
   . "$ENV_FILE"
   set +a
 fi

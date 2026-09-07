@@ -1,6 +1,6 @@
 .worktrees/
 .DS_Store
 .oe-scope
-.env.local
+.env
 .mongo.key
 *.key
