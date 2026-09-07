@@ -44,7 +44,9 @@ case "$cmd" in
     ensure_keyfile
     ensure_secrets
     echo "Running one-time init (MongoDB CSRS → shard → add-shard → per-project DBs, RabbitMQ vhosts, MinIO buckets)..."
-    docker compose -f docker-compose.shared.yml --profile init up
+    docker compose -f docker-compose.shared.yml --profile init up --abort-on-container-exit
+    # Remove exited init containers after they complete their one-shot work
+    docker compose -f docker-compose.shared.yml --profile init down --rmi local 2>/dev/null || true
     echo ""
     echo "Init complete. Run './oelite-stack.sh health' to verify."
     ;;

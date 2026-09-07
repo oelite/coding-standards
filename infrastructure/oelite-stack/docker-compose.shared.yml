@@ -300,7 +300,7 @@ services:
       CLICKHOUSE_DB: default
       CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT: "1"
     healthcheck:
-      test: ["CMD-SHELL", "curl -sf http://localhost:8123/ping >/dev/null 2>&1"]
+      test: ["CMD-SHELL", "wget -q -O - http://localhost:8123/ping >/dev/null 2>&1"]
       interval: 10s
       timeout: 5s
       retries: 5
