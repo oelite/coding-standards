@@ -94,13 +94,13 @@ case "$cmd" in
 OElite Shared Local Infrastructure Manager
 
 Usage:
-  ./oelite-stack.sh up        Start all services (generates .env.local if missing)
+  ./oelite-stack.sh up        Start all services (generates .env if missing)
   ./oelite-stack.sh init      Initialize DBs, users, vhosts, buckets (read-only-safe)
   ./oelite-stack.sh down      Stop all services (preserves volumes)
   ./oelite-stack.sh health    Run health checks against all services
   ./oelite-stack.sh status    Show running containers
   ./oelite-stack.sh logs      Tail logs (optionally: ./oelite-stack.sh logs oelite-mongos)
-  ./oelite-stack.sh secrets   Rotate all credentials (regenerates .env.local)
+  ./oelite-stack.sh secrets   Rotate all credentials (regenerates .env)
   ./oelite-stack.sh clean     DELETE all data volumes + credentials (irreversible)
 
 First-time setup:

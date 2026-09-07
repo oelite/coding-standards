@@ -1,15 +1,17 @@
 #!/bin/bash
 # OElite Shared Local Infrastructure — secret bootstrap
 #
-# Generates a per-machine `.env.local` with random credentials for every service.
+# Generates a per-machine `.env` with random credentials for every service.
 # Runs ONCE per machine (or whenever secrets are rotated).
 #
 # - `.env.example`  → committed, contains schema + key names
-# - `.env.local`    → gitignored, contains real credentials for THIS machine
+# - `.env`          → gitignored, contains real credentials for THIS machine
+#                     Docker Compose reads `.env` automatically for ${VAR}
+#                     interpolation, and services get values via env_file.
 # - `.mongo.key`    → generated alongside by oelite-stack.sh (cluster auth)
 #
 # Usage:
-#   ./scripts/generate-secrets.sh          # create .env.local if missing
+#   ./scripts/generate-secrets.sh          # create .env if missing
 #   ./scripts/generate-secrets.sh --rotate # regenerate ALL secrets
 #   ./scripts/generate-secrets.sh --print  # just print the current values
 #
@@ -47,10 +49,10 @@ ensure_example() {
     cat > "$ENV_EXAMPLE" <<'EOF'
 # OElite Shared Stack — env schema
 #
-# Copy this file to `.env.local` (gitignored) and let
+# Copy this file to `.env` (gitignored) and let
 # `./scripts/generate-secrets.sh` fill in random values on first run.
 #
-# All variables are read by docker-compose.shared.yml via `env_file: .env.local`
+# All variables are read by docker-compose.shared.yml via `env_file: .env`
 # and by the init scripts.
 
 # ─── MongoDB (root) ──────────────────────────────────────────────────────
@@ -87,7 +89,7 @@ EOF
 }
 
 read_value() {
-  # read a KEY=value line from .env.local; empty if missing
+  # read a KEY=value line from .env; empty if missing
   local key="$1"
   if [ -f "$ENV_FILE" ]; then
     grep -E "^${key}=" "$ENV_FILE" 2>/dev/null | head -1 | cut -d= -f2-
@@ -95,7 +97,7 @@ read_value() {
 }
 
 write_value() {
-  # upsert KEY=value in .env.local, preserving comments and other keys
+  # upsert KEY=value in .env, preserving comments and other keys
   local key="$1" value="$2" file="$3"
   if grep -qE "^${key}=" "$file" 2>/dev/null; then
     # portable in-place edit (BSD/GNU)
@@ -120,9 +122,10 @@ rotate_if_requested() {
 # ─── print-only mode ───────────────────────────────────────────────────────
 if [ "$PRINT" -eq 1 ]; then
   if [ ! -f "$ENV_FILE" ]; then
-  echo "(no .env yet — run ./scripts/generate-secrets.sh)"
+    echo "(no .env yet — run ./scripts/generate-secrets.sh)"
+    exit 0
   fi
-  echo "Current .env.local (sensitive values — do not share):"
+  echo "Current .env (sensitive values — do not share):"
   cat "$ENV_FILE"
   exit 0
 fi
