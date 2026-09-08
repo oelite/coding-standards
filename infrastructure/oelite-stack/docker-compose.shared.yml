@@ -12,13 +12,22 @@
 #   ./oelite-stack.sh down        # Stop all services
 #   docker compose --profile init up  # Run init containers (MongoDB shard + MinIO buckets)
 #
-# Connection strings (all via mongos — app code unchanged):
+#   Connection strings (all via mongos — app code unchanged):
 #   MongoDB:  mongodb://localhost:27017/?directConnection=true
 #   Redis:    localhost:6379
 #   ClickHouse: localhost:8123 (HTTP), localhost:9000 (TCP)
 #   Kafka:    localhost:9092
 #   RabbitMQ: localhost:5672,  management: localhost:15672
 #   MinIO:    localhost:9000  (API),  localhost:9001 (Console)
+#
+#   Debug / Monitoring UIs (opt-in via --profile ui):
+#   ./oelite-stack.sh up --with-ui
+#   RedisInsight:     http://localhost:5540
+#   Kafka UI:         http://localhost:8080
+#   chmonitor:        http://localhost:3000
+#   MongoStudio:      http://localhost:3141
+#   RabbitMQ Mgmt:    http://localhost:15672
+#   MinIO Console:    http://localhost:9001
 #
 # IMPORTANT: Never run `docker compose up` directly. Use oelite-stack.sh which
 # handles health-check sequencing and the MongoDB init container.
@@ -172,6 +181,32 @@ services:
     networks:
       - oelite-infra
 
+  # ─── MongoStudio (MongoDB Web UI) ───────────────────────────────────────────
+  # MongoDB GUI: schema explorer, aggregation builder, data editor, index management.
+  # Access: http://localhost:3141 (via --profile ui)
+  oelite-mongostudio:
+    image: beztebya666/mongostudio:2.6.0
+    container_name: oelite-mongostudio
+    hostname: oelite-mongostudio
+    ports:
+      - "3141:3001"
+    mem_limit: 512m
+    depends_on:
+      mongo-mongos:
+        condition: service_healthy
+    environment:
+      - MONGODB_URI=mongodb://${MONGO_ROOT_USER}:${MONGO_ROOT_PASSWORD}@oelite-mongos:27017/?directConnection=true
+      - ADMIN_ACCESS_KEY=${MONGODB_ADMIN_ACCESS_KEY}
+      - RI_APP_HOST=0.0.0.0
+    env_file:
+      - .env
+    volumes:
+      - oelite-mongostudio-data:/app/data
+    networks:
+      - oelite-infra
+    restart: unless-stopped
+    profiles: [ui]
+
   # ─── Init Jobs (profile=init only, run once) ────────────────────────────
   #
   # MongoDB init must run in strict order:
@@ -286,6 +321,29 @@ services:
     networks:
       - oelite-infra
 
+  # ─── RedisInsight (Redis Web UI) ──────────────────────────────────────────
+  # Official Redis GUI: key browser, Workbench CLI, profiler, slowlog, modules.
+  # Access: http://localhost:5540 (via --profile ui)
+  oelite-redisinsight:
+    image: redis/redisinsight:1.34
+    container_name: oelite-redisinsight
+    hostname: oelite-redisinsight
+    ports:
+      - "5540:5540"
+    mem_limit: 256m
+    depends_on:
+      oelite-redis:
+        condition: service_healthy
+    environment:
+      RI_APP_HOST: 0.0.0.0
+      RI_STORAGE: /data
+    volumes:
+      - oelite-redisinsight-data:/data
+    networks:
+      - oelite-infra
+    restart: unless-stopped
+    profiles: [ui]
+
   # ─── ClickHouse ───────────────────────────────────────────────────────────
   oelite-clickhouse:
     image: clickhouse/clickhouse-server:26.5
@@ -309,6 +367,30 @@ services:
       - ./scripts/init-clickhouse.sql:/docker-entrypoint-initdb.d/init.sql:ro
     networks:
       - oelite-infra
+
+  # ─── chmonitor (ClickHouse Web UI) ──────────────────────────────────────────
+  # Purpose-built ClickHouse dashboard: queries, merges, replication, health.
+  # Reads system tables directly — no exporters needed.
+  # Access: http://localhost:3000 (via --profile ui)
+  oelite-chmonitor:
+    image: ghcr.io/chmonitor/chmonitor:v0.3.0
+    container_name: oelite-chmonitor
+    hostname: oelite-chmonitor
+    ports:
+      - "3000:3000"
+    mem_limit: 256m
+    depends_on:
+      oelite-clickhouse:
+        condition: service_healthy
+    environment:
+      CLICKHOUSE_HOST: oelite-clickhouse
+      CLICKHOUSE_PORT: "8123"
+      CLICKHOUSE_USER: ${CLICKHOUSE_ADMIN_USER:-default}
+      CLICKHOUSE_PASSWORD: ${CLICKHOUSE_ADMIN_PASSWORD}
+    networks:
+      - oelite-infra
+    restart: unless-stopped
+    profiles: [ui]
 
   # ─── Kafka (KRaft mode — no Zookeeper dependency) ───────────────────────
   oelite-kafka:
@@ -342,6 +424,29 @@ services:
       - oelite-kafka-data:/var/lib/kafka/data
     networks:
       - oelite-infra
+
+  # ─── Kafka UI (Kafka Web UI) ──────────────────────────────────────────────
+  # Multi-cluster Kafka management: topics, consumer groups, lag, messages.
+  # Access: http://localhost:8080 (via --profile ui)
+  oelite-kafka-ui:
+    image: provectuslabs/kafka-ui:v0.7.2
+    container_name: oelite-kafka-ui
+    hostname: oelite-kafka-ui
+    ports:
+      - "8080:8080"
+    mem_limit: 512m
+    depends_on:
+      oelite-kafka:
+        condition: service_healthy
+    environment:
+      KAFKA_CLUSTERS_0_NAME: oelite
+      KAFKA_CLUSTERS_0_BOOTSTRAP_SERVERS: oelite-kafka:9092
+      KAFKA_CLUSTERS_0_READ_ONLY: "true"
+      DYNAMIC_CONFIG_ENABLED: "true"
+    networks:
+      - oelite-infra
+    restart: unless-stopped
+    profiles: [ui]
 
   # ─── RabbitMQ ─────────────────────────────────────────────────────────────
   oelite-rabbitmq:
@@ -417,6 +522,8 @@ volumes:
   oelite-kafka-data:
   oelite-rabbitmq-data:
   oelite-minio-data:
+  oelite-redisinsight-data:
+  oelite-mongostudio-data:
 
 # ─── Network ────────────────────────────────────────────────────────────────
 networks:
