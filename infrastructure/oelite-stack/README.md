@@ -52,6 +52,33 @@ mongodb://oelite_obelisk:oelite_obelisk_dev@localhost:27017/obelisk?authSource=o
 ... (see init-per-project-dbs.sh for full list)
 ```
 
+## Debug / Monitoring UIs
+
+The shared stack includes web-based UIs for inspecting and monitoring all services. All are
+optional — disable them by overriding the compose profile if you need to conserve resources:
+
+```bash
+# Start without UI containers (resource-constrained machines)
+docker compose -f docker-compose.shared.yml --profile no-ui up -d
+```
+
+| Service | URL | Tool | Description |
+|---|---|---|---|
+| Redis | http://localhost:5540 | RedisInsight | Key browser, CLI, slowlog, memory analyzer |
+| Kafka | http://localhost:8080 | Kafka UI | Topics, consumer groups, lag, message browser |
+| ClickHouse | http://localhost:3000 | chmonitor | Queries, merges, replication, cluster health |
+| MongoDB | http://localhost:3141 | MongoStudio | Schema, collections, aggregation builder |
+| RabbitMQ | http://localhost:15672 | *(built-in management UI)* | Queues, exchanges, vhosts, message inspector |
+| MinIO | http://localhost:9001 | *(built-in console)* | Bucket browser, object inspector |
+
+### Connecting UIs to Services
+
+- **RedisInsight**: Auto-discovers the Redis instance. If prompted, connect to `oelite-redis:6379` with password from `.env` (`REDIS_PASSWORD`).
+- **Kafka UI**: Cluster `oelite` is auto-configured in `docker-compose.shared.yml`.
+- **chmonitor**: Configured via environment variables to point at `oelite-clickhouse:8123`.
+- **MongoStudio**: Connects to `oelite-mongos:27017` using root credentials from `.env`.
+  - Set `MONGODB_ADMIN_ACCESS_KEY` in `.env` for admin access (generate with `./scripts/generate-secrets.sh --rotate mongold`).
+
 ## Secrets Management
 
 **No credentials are committed to the repo.** Each developer generates random
@@ -140,9 +167,15 @@ key to `.env.example` (committed) with an empty value.
 | kafka | 1024 MB | 1.0 |
 | rabbitmq | 512 MB | 0.5 |
 | minio | 512 MB | 0.5 |
-| **Total** | **~5 GB** | **~6 cores** |
+| **UI Services** | | |
+| redisinsight | 256 MB | 0.25 |
+| kafka-ui | 256 MB | 0.25 |
+| chmonitor | 256 MB | 0.25 |
+| mongostudio | 256 MB | 0.25 |
+| **Total (all)** | **~7.5 GB** | **~8 cores** |
+| **Total (no-ui)** | **~5.5 GB** | **~7 cores** |
 
-Tested on: 23 GB RAM, 8+ core machines. On 8 GB machines: reduce replica set members or run fewer services (TODO: document LITE-MODE procedure).
+Tested on: 23 GB RAM, 8+ core machines. On 8 GB machines: use `--profile no-ui` to skip debug UIs.
 
 ## Commands
 

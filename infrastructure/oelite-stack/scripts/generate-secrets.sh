@@ -82,6 +82,10 @@ RABBITMQ_DEFAULT_PASS=
 # init-minio.sh then creates per-project buckets + service-account keys.
 MINIO_ROOT_USER=oelite
 MINIO_ROOT_PASSWORD=
+
+# ─── Web UI Access Keys ──────────────────────────────────────────────────
+# Used by MongoStudio to gate admin operations.
+MONGODB_ADMIN_ACCESS_KEY=
 EOF
     chmod 644 "$ENV_EXAMPLE"
     echo "[generate-secrets] wrote $ENV_EXAMPLE (committed example, no secrets)"
@@ -154,6 +158,7 @@ SECRETS=(
   REDIS_PASSWORD
   RABBITMQ_DEFAULT_PASS
   MINIO_ROOT_PASSWORD
+  MONGODB_ADMIN_ACCESS_KEY
 )
 
 for key in "${SECRETS[@]}"; do
