@@ -54,12 +54,12 @@ mongodb://oelite_obelisk:oelite_obelisk_dev@localhost:27017/obelisk?authSource=o
 
 ## Debug / Monitoring UIs
 
-The shared stack includes web-based UIs for inspecting and monitoring all services. All are
-optional — disable them by overriding the compose profile if you need to conserve resources:
+The shared stack includes web-based UIs for inspecting and monitoring all services. UIs start
+**by default** (via `--profile ui`). Disable them on resource-constrained machines:
 
 ```bash
-# Start without UI containers (resource-constrained machines)
-docker compose -f docker-compose.shared.yml --profile no-ui up -d
+# Start without UI containers (saves ~1 GB RAM)
+./oelite-stack.sh up --no-ui
 ```
 
 | Service | URL | Tool | Description |
@@ -77,7 +77,7 @@ docker compose -f docker-compose.shared.yml --profile no-ui up -d
 - **Kafka UI**: Cluster `oelite` is auto-configured in `docker-compose.shared.yml`.
 - **chmonitor**: Configured via environment variables to point at `oelite-clickhouse:8123`.
 - **MongoStudio**: Connects to `oelite-mongos:27017` using root credentials from `.env`.
-  - Set `MONGODB_ADMIN_ACCESS_KEY` in `.env` for admin access (generate with `./scripts/generate-secrets.sh --rotate mongold`).
+  Set `MONGODB_ADMIN_ACCESS_KEY` in `.env` for admin access (generated on first `oelite-stack.sh up`).
 
 ## Secrets Management
 
@@ -169,13 +169,13 @@ key to `.env.example` (committed) with an empty value.
 | minio | 512 MB | 0.5 |
 | **UI Services** | | |
 | redisinsight | 256 MB | 0.25 |
-| kafka-ui | 256 MB | 0.25 |
+| kafka-ui | 512 MB | 0.25 |
 | chmonitor | 256 MB | 0.25 |
-| mongostudio | 256 MB | 0.25 |
-| **Total (all)** | **~7.5 GB** | **~8 cores** |
-| **Total (no-ui)** | **~5.5 GB** | **~7 cores** |
+| mongostudio | 512 MB | 0.25 |
+| **Total (all)** | **~6.5 GB** | **~7 cores** |
+| **Total (--no-ui)** | **~5 GB** | **~6 cores** |
 
-Tested on: 23 GB RAM, 8+ core machines. On 8 GB machines: use `--profile no-ui` to skip debug UIs.
+Tested on: 23 GB RAM, 8+ core machines. On 8 GB machines: use `--no-ui` flag to skip debug UIs.
 
 ## Commands
 

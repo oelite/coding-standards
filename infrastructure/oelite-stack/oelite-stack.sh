@@ -9,6 +9,17 @@ cd "$SCRIPT_DIR"
 
 cmd="${1:-help}"
 
+# Parse global flags (must come before subcommands)
+WITH_UI=1
+shift_extra_args() {
+  shift
+}
+for arg in "$@"; do
+  case "$arg" in
+    --no-ui)  WITH_UI=0 ;;
+  esac
+done
+
 # Generate the keyfile for MongoDB if not present
 ensure_keyfile() {
   if [ ! -f .mongo.key ]; then
@@ -26,17 +37,29 @@ ensure_secrets() {
   fi
 }
 
+# Build compose profile args (UIs are opt-in via --profile ui)
+compose_profile_args() {
+  if [ "$WITH_UI" -eq 1 ]; then
+    echo "--profile ui"
+  fi
+}
+
 case "$cmd" in
   up)
     ensure_keyfile
     ensure_secrets
     echo "Starting OElite shared infrastructure..."
-    docker compose -f docker-compose.shared.yml up -d
+    docker compose -f docker-compose.shared.yml up -d $(compose_profile_args)
     echo ""
     echo "Waiting for health checks..."
     sleep 30
     ./scripts/health-check.sh || true
     echo ""
+    if [ "$WITH_UI" -eq 1 ]; then
+      echo "Run './oelite-stack.sh up --no-ui' to skip debug UIs (saves ~1 GB RAM)."
+    else
+      echo "Run './oelite-stack.sh up' to include debug UIs."
+    fi
     echo "Run './oelite-stack.sh init' to initialize MongoDB sharding and per-project DBs."
     ;;
 

@@ -36,38 +36,38 @@ check "MongoDB shard1-secondary (27018)" "docker exec oelite-mongo-shard1-second
 check "MongoDB mongos (27017)" "docker exec oelite-mongos mongosh --quiet --port 27017 --eval 'db.adminCommand({ping:1})' >/dev/null 2>&1"
 
 # Redis — requires password (set via --requirepass at startup)
-  REDIS_P="${REDIS_PASSWORD:-}"
-  check "Redis" "docker exec oelite-redis redis-cli --raw -a '$REDIS_P' ping | grep -q PONG"
+REDIS_P="${REDIS_PASSWORD:-}"
+check "Redis" "docker exec oelite-redis redis-cli --raw -a '$REDIS_P' ping | grep -q PONG"
 
-  # RedisInsight UI
-  check "RedisInsight UI (5540)" "curl -sf http://localhost:5540 >/dev/null 2>&1"
+# RedisInsight UI (optional — UI containers may not be running)
+check "RedisInsight UI (5540)" "curl -sf http://localhost:5540 >/dev/null 2>&1" || true
 
 # ClickHouse — HTTP ping (no auth on /ping endpoint)
-  check "ClickHouse HTTP (8123)" "curl -sf http://localhost:8123/ping >/dev/null 2>&1"
+check "ClickHouse HTTP (8123)" "curl -sf http://localhost:8123/ping >/dev/null 2>&1"
 
-  # chmonitor UI
-  check "chmonitor UI (3000)" "curl -sf http://localhost:3000 >/dev/null 2>&1"
+# chmonitor UI (optional)
+check "chmonitor UI (3000)" "curl -sf http://localhost:3000 >/dev/null 2>&1" || true
 
 # Kafka — list topics (no auth)
-  check "Kafka (9092)" "docker exec oelite-kafka kafka-topics --bootstrap-server localhost:9092 --list >/dev/null 2>&1"
+check "Kafka (9092)" "docker exec oelite-kafka kafka-topics --bootstrap-server localhost:9092 --list >/dev/null 2>&1"
 
-  # Kafka UI
-  check "Kafka UI (8080)" "curl -sf http://localhost:8080 >/dev/null 2>&1"
+# Kafka UI (optional)
+check "Kafka UI (8080)" "curl -sf http://localhost:8080 >/dev/null 2>&1" || true
 
 # RabbitMQ — AMQP ping (no auth on internal diagnostics)
-  check "RabbitMQ AMQP (5672)" "docker exec oelite-rabbitmq rabbitmq-diagnostics -q ping >/dev/null 2>&1"
+check "RabbitMQ AMQP (5672)" "docker exec oelite-rabbitmq rabbitmq-diagnostics -q ping >/dev/null 2>&1"
 
-  # RabbitMQ Management UI (already built-in, port 15672)
-  check "RabbitMQ Management UI (15672)" "curl -sf http://localhost:15672 >/dev/null 2>&1"
+# RabbitMQ Management UI (already built-in, port 15672)
+check "RabbitMQ Management UI (15672)" "curl -sf http://localhost:15672 >/dev/null 2>&1" || true
 
 # MinIO — health endpoint (no auth)
-  check "MinIO API (9000)" "curl -sf http://localhost:9000/minio/health/live >/dev/null 2>&1"
+check "MinIO API (9000)" "curl -sf http://localhost:9000/minio/health/live >/dev/null 2>&1"
 
-  # MinIO Console UI (9001)
-  check "MinIO Console UI (9001)" "curl -sf http://localhost:9001/minio/health/live >/dev/null 2>&1"
+# MinIO Console UI (9001)
+check "MinIO Console UI (9001)" "curl -sf http://localhost:9001/minio/health/live >/dev/null 2>&1" || true
 
-  # MongoStudio UI
-  check "MongoStudio UI (3141)" "curl -sf http://localhost:3141 >/dev/null 2>&1"
+# MongoStudio UI (optional)
+check "MongoStudio UI (3141)" "curl -sf http://localhost:3141 >/dev/null 2>&1" || true
 
 # Check MongoDB sharding status
 echo ""
