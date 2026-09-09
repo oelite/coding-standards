@@ -354,7 +354,7 @@ This ensures commits are attributed to the correct agent regardless of the host 
 3. WORK      cd .worktrees/<agent>-<iid>/ && make changes && commit
              → After compaction: cat .oe-scope to restore context
 4. PUSH      git push origin <branch>
-5. MR        scripts/oelite-gitlab.sh mr-create <project> <agent> <branch> develop "<title>"
+5. MR        scripts/oelite-gitlab.sh mr-create <project> <agent> <source-branch> develop "<title>" "[description]"
 6. REVIEW    Reviewer reviews → approves or requests changes
 7. FIX       If changes requested: fix in worktree → push → re-review
 8. MERGE     Auto-merge on approval + CI green (GitLab)
@@ -1158,7 +1158,7 @@ Push commits to the remote feature branch to back up work and enable MR creation
 ### Step 8: Create Merge Request
 
 ```bash
-scripts/oelite-gitlab.sh mr-create <project> <agent> <branch> develop "<title>" "[description]"
+scripts/oelite-gitlab.sh mr-create <project> <agent> <source-branch> develop "<title>" "[description]"
 ```
 
 Create an MR targeting `develop`. Include a descriptive title and optional description.
