@@ -92,12 +92,8 @@ The configuration system follows a strict priority order:
       "environment": "Production"
     },
     "data": {
-      "mongodb": {
-        "kortex": "mongodb://localhost:27017/kortex"
-      },
-      "redis": {
-        "kortex": "localhost:6379"
-      }
+      "mongodb": "mongodb://localhost:27017/kortex",
+      "redis": "localhost:6379"
     }
   },
   "logging": {
@@ -111,9 +107,7 @@ The configuration system follows a strict priority order:
 {
   "oelite": {
     "data": {
-      "mongodb": {
-        "kortex": "mongodb://dev-user:dev-pass@localhost:27017/kortex-dev"
-      }
+      "mongodb": "mongodb://dev-user:dev-pass@localhost:27017/kortex-dev"
     }
   },
   "logging": {
@@ -330,12 +324,8 @@ Development configurations should prioritize debugging and local development:
 {
   "oelite": {
     "data": {
-      "mongodb": {
-        "kortex": "mongodb://dev-user:dev-pass@localhost:27017/kortex-dev?authSource=admin"
-      },
-      "redis": {
-        "kortex": "localhost:6379,password=dev-password,abortConnect=False"
-      }
+      "mongodb": "mongodb://dev-user:dev-pass@localhost:27017/kortex-dev?authSource=admin",
+      "redis": "localhost:6379,password=dev-password,abortConnect=False"
     }
   },
   "kortex": {
@@ -380,12 +370,8 @@ Production configurations should prioritize security, performance, and monitorin
 {
   "oelite": {
     "data": {
-      "mongodb": {
-        "kortex": "mongodb://REPLACE_MONGO_USER:REPLACE_MONGO_PASSWORD@REPLACE_MONGO_HOST:27017/kortex?authSource=admin"
-      },
-      "redis": {
-        "kortex": "REPLACE_REDIS_HOST:6379,password=REPLACE_REDIS_PASSWORD,abortConnect=False"
-      }
+      "mongodb": "mongodb://REPLACE_MONGO_USER:REPLACE_MONGO_PASSWORD@REPLACE_MONGO_HOST:27017/kortex?authSource=admin",
+      "redis": "REPLACE_REDIS_HOST:6379,password=REPLACE_REDIS_PASSWORD,abortConnect=False"
     }
   },
   "kortex": {
@@ -444,8 +430,8 @@ Support runtime configuration through environment variables:
 ```bash
 # ✅ Production environment variable examples
 export ASPNETCORE_ENVIRONMENT=Production
-export OELITE__DATA__MONGODB__KORTEX="mongodb://prod-user:prod-pass@mongo.prod.com:27017/kortex?authSource=admin"
-export OELITE__DATA__REDIS__KORTEX="redis.prod.com:6379,password=prod-redis-pass,abortConnect=False"
+export OELITE__DATA__MONGODB="mongodb://prod-user:prod-pass@mongo.prod.com:27017/kortex?authSource=admin"
+export OELITE__DATA__REDIS="redis.prod.com:6379,password=prod-redis-pass,abortConnect=False"
 export KORTEX__AUTHENTICATION__JWTSECRET="super-secure-production-jwt-secret-key-32-chars-minimum"
 export KORTEX__CERTIFICATES__EMAIL="admin@production.com"
 ```
@@ -818,17 +804,11 @@ Never commit secrets to configuration files; use environment variables or secret
 {
   "oelite": {
     "data": {
-      "mongodb": {
-        "kortex": "REPLACE_MONGO_CONNECTION_STRING"
-      },
-      "redis": {
-        "kortex": "REPLACE_REDIS_CONNECTION_STRING"
-      }
+      "mongodb": "REPLACE_MONGO_CONNECTION_STRING",
+      "redis": "REPLACE_REDIS_CONNECTION_STRING"
     },
     "storage": {
-      "s3": {
-        "kortex": "AccessKeyId=REPLACE_S3_ACCESS_KEY;SecretAccessKey=REPLACE_S3_SECRET_KEY;ServiceUrl=REPLACE_S3_ENDPOINT"
-      }
+      "s3": "AccessKeyId=REPLACE_S3_ACCESS_KEY;SecretAccessKey=REPLACE_S3_SECRET_KEY;ServiceUrl=REPLACE_S3_ENDPOINT"
     }
   },
   "kortex": {
