@@ -94,6 +94,16 @@ The configuration system follows a strict priority order:
     "data": {
       "mongodb": "mongodb://localhost:27017/kortex",
       "redis": "localhost:6379"
+    },
+    "messages": {
+      "queues": {
+        "rabbitmq": {
+          "hostname": "amqp://localhost:5672",
+          "authUser": "guest",
+          "authSecret": "guest",
+          "vhost": "kortex-dev"
+        }
+      }
     }
   },
   "logging": {
@@ -107,13 +117,54 @@ The configuration system follows a strict priority order:
 {
   "oelite": {
     "data": {
-      "mongodb": "mongodb://dev-user:dev-pass@localhost:27017/kortex-dev"
+      "mongodb": "mongodb://dev-user:dev-pass@localhost:27017/kortex-dev",
+      "redis": "localhost:6379,password=dev-password,abortConnect=False"
+    },
+    "messages": {
+      "queues": {
+        "rabbitmq": {
+          "hostname": "amqp://localhost:5672",
+          "authUser": "dev-user",
+          "authSecret": "dev-secret",
+          "vhost": "kortex-dev"
+        }
+      }
     }
   },
   "logging": {
     "logLevel": {
       "default": "Debug",
       "microsoft": "Warning"
+    }
+  }
+}
+```
+
+## Messaging Configuration (Flat Keys)
+
+Messaging infrastructure uses a dedicated `messages` section. `data` is reserved for
+persistence/cache connections (MongoDB, Redis, ClickHouse); RabbitMQ is read from
+`messages`, not `data`.
+
+| Config Path | Description |
+|-------------|-------------|
+| `oelite:messages:queues:rabbitmq:hostname` | RabbitMQ hostname or AMQP connection string |
+| `oelite:messages:queues:rabbitmq:authUser` | Authentication username |
+| `oelite:messages:queues:rabbitmq:authSecret` | Authentication password |
+| `oelite:messages:queues:rabbitmq:vhost` | Virtual host for isolation |
+
+```json
+{
+  "oelite": {
+    "messages": {
+      "queues": {
+        "rabbitmq": {
+          "hostname": "amqp://localhost:5672",
+          "authUser": "guest",
+          "authSecret": "guest",
+          "vhost": "myapp-dev"
+        }
+      }
     }
   }
 }
