@@ -651,10 +651,10 @@ public class Program
     {
         var builder = WebApplication.CreateBuilder(args);
 
-        // Option 1: Redis distributed cache with OElite.Restme
+        // Option 1: Redis distributed cache with OElite.Restme (FLAT config pattern - no app suffix)
         builder.Services.AddRestmeRedisCache(options =>
         {
-            options.ConnectionString = builder.Configuration["oelite:data:redis:platform"];
+            options.ConnectionString = builder.Configuration["oelite:data:redis"];
             options.InstanceName = "myapp:";
         });
 

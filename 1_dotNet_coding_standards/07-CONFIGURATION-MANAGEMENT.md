@@ -83,27 +83,16 @@ The configuration system follows a strict priority order:
 3. **Environment Variables**: Highest priority (production secrets, runtime overrides)
 
 ```json
-// ✅ configs/appsettings.init.json (Base Configuration)
+// ✅ configs/appsettings.init.json (Base Configuration - FLAT structure, no app suffixes)
+// Note: oelite:data:mongodb is a PATH not a key. JSON uses nested objects.
 {
   "oelite": {
-    "application": {
-      "name": "kortex",
-      "version": "1.0.0",
-      "environment": "Production"
-    },
     "data": {
-      "mongodb": "mongodb://localhost:27017/kortex",
+      "mongodb": "mongodb://localhost:27017/origin_auth",
       "redis": "localhost:6379"
     },
-    "messages": {
-      "queues": {
-        "rabbitmq": {
-          "hostname": "amqp://localhost:5672",
-          "authUser": "guest",
-          "authSecret": "guest",
-          "vhost": "kortex-dev"
-        }
-      }
+    "storage": {
+      "s3": "AccessKeyId=LOCAL_ACCESS_KEY;SecretAccessKey=LOCAL_SECRET_KEY;ServiceUrl=http://localhost:9004;ForcePathStyle=true;BucketName=origin-auth-local"
     }
   },
   "logging": {
@@ -112,23 +101,14 @@ The configuration system follows a strict priority order:
     }
   }
 }
+```
 
-// ✅ configs/.dev/Development/appsettings.init.json (Environment Override)
+// ✅ configs/.dev/Development/appsettings.init.json (Environment Override - FLAT overrides)
 {
   "oelite": {
     "data": {
-      "mongodb": "mongodb://dev-user:dev-pass@localhost:27017/kortex-dev",
+      "mongodb": "mongodb://dev-user:dev-pass@localhost:27017/origin_auth",
       "redis": "localhost:6379,password=dev-password,abortConnect=False"
-    },
-    "messages": {
-      "queues": {
-        "rabbitmq": {
-          "hostname": "amqp://localhost:5672",
-          "authUser": "dev-user",
-          "authSecret": "dev-secret",
-          "vhost": "kortex-dev"
-        }
-      }
     }
   },
   "logging": {

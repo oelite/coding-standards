@@ -1,6 +1,6 @@
 # OElite Shared Local Infrastructure Stack
 
-One-time machine setup. A **singleton** Docker Compose stack providing MongoDB (sharded replica set), Redis, ClickHouse, Kafka, RabbitMQ, and MinIO, shared across **all** OElite repos and worktrees on this machine.
+One-time machine setup. A **singleton** Docker Compose stack providing MongoDB (sharded replica set), Redis, ClickHouse, Kafka, RabbitMQ, MinIO, and OpenSearch, shared across **all** OElite repos and worktrees on this machine.
 
 Per-project isolation is achieved via **namespaces** (databases, buckets, vhosts), **not** separate container instances.
 
@@ -40,17 +40,30 @@ All app code connects to these **fixed canonical endpoints**:
 | Kafka | `localhost:9092` | KRaft mode (no ZK) |
 | RabbitMQ | `localhost:5672` (AMQP), `15672` (UI) | User + pass in `.env` |
 | MinIO | `localhost:9000` (API), `9001` (Console) | User + pass in `.env` |
+| OpenSearch | `localhost:9200` | Single-node, no auth in dev |
 
-### Per-Project MongoDB Connection
+### Per-Project Onboarding
 
-After running `./oelite-stack.sh init`, each project has a dedicated user + database:
+The shared stack exposes only superuser credentials (in `.env`). Each project
+creates its own database, vhost, bucket, and per-project credentials during
+onboarding. Run the project-level init scripts from the project's own
+`.gitlab-ci.yml` or a project-local setup script:
 
+```bash
+# MongoDB — project DB + dedicated user (scoped to that DB only)
+./scripts/init-per-project-dbs.sh origin_auth
+
+# RabbitMQ — vhost + dedicated user
+./scripts/init-rabbitmq.sh origin_auth
+
+# MinIO — project bucket + service-account key
+./scripts/init-minio.sh oelite-origin-auth
 ```
-mongodb://oelite_origin_auth:oelite_origin_auth_dev@localhost:27017/origin_auth?authSource=origin_auth
-mongodb://oelite_apex:oelite_apex_dev@localhost:27017/apex?authSource=apex
-mongodb://oelite_obelisk:oelite_obelisk_dev@localhost:27017/obelisk?authSource=obelisk
-... (see init-per-project-dbs.sh for full list)
-```
+
+The scripts are idempotent and accept the project slug as the only argument.
+Project credentials are stored in the project's own gitignored secrets
+(`appsettings.init.json`, `.env`, etc.) — **never** in the shared
+`infrastructure/oelite-stack/.env`.
 
 ## Debug / Monitoring UIs
 
@@ -70,6 +83,7 @@ The shared stack includes web-based UIs for inspecting and monitoring all servic
 | MongoDB | http://localhost:3141 | MongoStudio | Schema, collections, aggregation builder |
 | RabbitMQ | http://localhost:15672 | *(built-in management UI)* | Queues, exchanges, vhosts, message inspector |
 | MinIO | http://localhost:9001 | *(built-in console)* | Bucket browser, object inspector |
+| OpenSearch | http://localhost:5601 | OpenSearch Dashboards | Index browser, Dev Tools console, visualizations |
 
 ### Connecting UIs to Services
 
@@ -94,15 +108,13 @@ credentials on first `up` and stores them in a per-machine, gitignored file.
 
 1. **First run** (`./oelite-stack.sh up` on a fresh clone):
    - `./scripts/generate-secrets.sh` creates `.env` with random passwords
-     for: MongoDB root, ClickHouse admin, Redis, RabbitMQ, MinIO.
+     for: MongoDB root, ClickHouse admin, Redis, RabbitMQ, MinIO, OpenSearch.
    - `chmod 600` is applied (owner read/write only).
 2. **Subsequent runs** — existing `.env` is preserved; credentials are NOT
    regenerated unless you ask. This means your password stays the same across
    restarts.
 3. **Per-service consumption** — every service container mounts `.env`
-   via `env_file: .env` in `docker-compose.shared.yml`. Init scripts
-   (`init-per-project-dbs.sh`, `init-rabbitmq.sh`, `init-minio.sh`) read the
-   same env vars and use them to create per-project users.
+   via `env_file: .env` in `docker-compose.shared.yml`.
 
 ### Common operations
 
@@ -145,14 +157,13 @@ key to `.env.example` (committed) with an empty value.
 │  │  localhost:9092         │    │  db per project      │    │
 │  │  topic prefix per proj  │    └──────────────────────┘    │
 │  └─────────────────────────┘                                 │
-│                                 ┌──────────────────────┐    │
-│  ┌─────────────────────────┐    │ RabbitMQ 4.3         │    │
-│  │ MinIO (S3)              │    │  AMQP: 5672          │    │
-│  │  API: 9000, Console:9001│    │  Mgmt UI: 15672      │    │
-│  │  bucket per project     │    │  vhost per project   │    │
-│  └─────────────────────────┘    └──────────────────────┘    │
+│  ┌─────────────────────────┐    ┌──────────────────────────────┐    ┌─────────────────────┐    │
+│  │ MinIO (S3)              │    │ RabbitMQ 4.3               │    │ OpenSearch 2.x        │    │
+│  │  API: 9000, Console:9001│    │  AMQP: 5672                │    │  API: 9200           │    │
+│  │  bucket per project     │    │  Mgmt UI: 15672            │    └─────────────────────┘    │
+│  └─────────────────────────┘    │  vhost per project        │                        │
+│                                 └──────────────────────────────┘                        │
 └──────────────────────────────────────────────────────────────┘
-```
 
 ## Resource Budget
 
@@ -167,13 +178,15 @@ key to `.env.example` (committed) with an empty value.
 | kafka | 1024 MB | 1.0 |
 | rabbitmq | 512 MB | 0.5 |
 | minio | 512 MB | 0.5 |
+| opensearch | 1024 MB | 1.0 |
 | **UI Services** | | |
 | redisinsight | 256 MB | 0.25 |
 | kafka-ui | 512 MB | 0.25 |
 | chmonitor | 256 MB | 0.25 |
 | mongostudio | 512 MB | 0.25 |
-| **Total (all)** | **~6.5 GB** | **~7 cores** |
-| **Total (--no-ui)** | **~5 GB** | **~6 cores** |
+| opensearch-dashboards | 512 MB | 0.25 |
+| **Total (all)** | **~8 GB** | **~8.5 cores** |
+| **Total (--no-ui)** | **~6 GB** | **~7 cores** |
 
 Tested on: 23 GB RAM, 8+ core machines. On 8 GB machines: use `--no-ui` flag to skip debug UIs.
 
@@ -181,7 +194,7 @@ Tested on: 23 GB RAM, 8+ core machines. On 8 GB machines: use `--no-ui` flag to 
 
 ```bash
 ./oelite-stack.sh up        # Start all services
-./oelite-stack.sh init      # Initialize sharding + per-project DBs + buckets
+./oelite-stack.sh init      # Initialize MongoDB sharding (CSRS → shard → add-shard)
 ./oelite-stack.sh down      # Stop all services
 ./oelite-stack.sh health    # Health check
 ./oelite-stack.sh status    # Show running containers
@@ -194,8 +207,11 @@ Tested on: 23 GB RAM, 8+ core machines. On 8 GB machines: use `--no-ui` flag to 
 If your repo currently has a per-repo `docker-compose.dev.yml`:
 
 1. **Delete** the file (or move to `archive/` for reference).
-2. **Update** your app's `appsettings.init.json` connection string to use the shared stack (see `init-per-project-dbs.sh` output for the exact string).
-3. **Add** your project to `init-per-project-dbs.sh` (one line) so a dedicated DB is created on init.
+2. **Update** your app's `appsettings.init.json` connection string to use the shared stack.
+3. **Run the project onboarding scripts** to create your database, vhost, bucket:
+   - MongoDB: `./scripts/init-per-project-dbs.sh your-project`
+   - RabbitMQ: `./scripts/init-rabbitmq.sh your-project`
+   - MinIO: `./scripts/init-minio.sh oelite-your-project`
 4. **No code changes required** — connection string points to the same `localhost:27017` (now via mongos).
 
 ## CI/CD
@@ -205,5 +221,5 @@ CI/CD pipelines **must not** spin up these services. Use `Category!=Integration`
 ## Related
 
 - Standard: `coding-standards/1_dotNet_coding_standards/16-SHARED-LOCAL-INFRASTRUCTURE.md`
-- Issue: `oelite/coding-standards#23` (US-INFRA-001)
+- Issue: `oelite/coding-standards#25` ([INFRA-002] Add OpenSearch)
 - Owner: **Ethan** (DevOps)

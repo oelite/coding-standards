@@ -1,7 +1,7 @@
 # OElite Shared Local Infrastructure Stack
 #
 # One-time machine setup. Spins up a SINGLE MongoDB (sharded replica set),
-# Redis, ClickHouse, Kafka, RabbitMQ, and MinIO shared across ALL repos and
+# Redis, ClickHouse, Kafka, RabbitMQ, MinIO, and OpenSearch shared across ALL repos and
 # worktrees.  Per-project isolation is achieved via database/namespace
 # separation, NOT via separate container instances.
 #
@@ -10,7 +10,7 @@
 #   ./oelite-stack.sh up          # Start all services
 #   ./oelite-stack.sh health      # Check health of all services
 #   ./oelite-stack.sh down        # Stop all services
-#   docker compose --profile init up  # Run init containers (MongoDB shard + MinIO buckets)
+#   docker compose --profile init up  # Run init containers (MongoDB shard + MinIO buckets + OpenSearch)
 #
 #   Connection strings (all via mongos — app code unchanged):
 #   MongoDB:  mongodb://localhost:27017/?directConnection=true
@@ -213,7 +213,9 @@ services:
   #   1. init-csrs   → configsvr replica set on configsvr-1
   #   2. init-shard  → shard1 replica set on shard-1
   #   3. add-shard   → mongos: adds shard1 to cluster (mongos context)
-  #   4. per-project → mongos: creates project users + databases
+  #
+  # Per-project databases/vhosts/buckets are created by each project during onboarding.
+  # See scripts/init-per-project-dbs.sh, init-rabbitmq.sh, and init-minio.sh.
   #
   # Each job waits for its dependency to be healthy before starting.
 
@@ -260,42 +262,6 @@ services:
       - ./.mongo.key:/data/mongo.key:ro
     entrypoint: ["mongosh", "--host", "oelite-mongos", "--port", "27017", "--quiet",
                  "--file", "/scripts/add-shard.js"]
-    networks: [oelite-infra]
-    restart: "no"
-    profiles: [init]
-
-  db-init:
-    image: mongo:8.0
-    container_name: oelite-db-init
-    depends_on:
-      mongo-mongos:
-        condition: service_healthy
-      add-shard-init:
-        condition: service_completed_successfully
-    env_file:
-      - .env
-
-    environment:
-      OELITE_MONGO_HOST: oelite-mongos
-      OELITE_MONGO_PORT: "27017"
-    volumes:
-      - ./scripts:/scripts
-    entrypoint: ["bash", "/scripts/init-per-project-dbs.sh"]
-    networks: [oelite-infra]
-    restart: "no"
-    profiles: [init]
-
-  rabbitmq-init:
-    image: curlimages/curl:latest
-    container_name: oelite-rabbitmq-init
-    depends_on:
-      oelite-rabbitmq:
-        condition: service_healthy
-    env_file:
-      - .env
-    volumes:
-      - ./scripts:/scripts
-    entrypoint: ["/bin/sh", "/scripts/init-rabbitmq.sh"]
     networks: [oelite-infra]
     restart: "no"
     profiles: [init]
@@ -491,24 +457,52 @@ services:
     networks:
       - oelite-infra
 
-  # Runs ONCE on first `docker compose --profile init up`.
-  # Creates per-project buckets (origin-auth, apex, obelisk, synapse, etc.)
-  oelite-minio-init:
-    image: minio/mc:RELEASE.2025-08-13T08-35-41Z
-    container_name: oelite-minio-init
-    depends_on:
-      oelite-minio:
-        condition: service_healthy
-    env_file:
-      - .env
+  # ─── OpenSearch (search & analytics engine) ───────────────────────────────────
+  # Lucene-based search engine with REST API. Single-node dev mode.
+  oelite-opensearch:
+    image: opensearchproject/opensearch:3.7.0
+    container_name: oelite-opensearch
+    hostname: oelite-opensearch
+    environment:
+      - discovery.type=single-node
+      - plugins.security.disabled=true
+      - OPENSEARCH_INITIAL_ADMIN_PASSWORD=OeliteAdmin123!
+      - OPENSEARCH_JAVA_OPTS=-Xms512m -Xmx512m
+      - ACTION_SEARCH_FOR_NATIVE_PLUGIN=false
+    ports:
+      - "9200:9200"
+    mem_limit: 1024m
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:9200/_cluster/health?wait_for_status=yellow&timeout=30s || exit 1"]
+      interval: 10s
+      timeout: 10s
+      retries: 10
+      start_period: 30s
     volumes:
-      - ./scripts/init-minio.sh:/init.sh:ro
-    entrypoint: ["/bin/sh", "/init.sh"]
+      - oelite-opensearch-data:/usr/share/opensearch/data
     networks:
       - oelite-infra
-    restart: "no"
+
+  # ─── OpenSearch Dashboards (UI for monitoring/searching) ─────────────────────
+  # Web UI for OpenSearch (similar to Kibana for Elasticsearch).
+  # Runs under `--profile ui` (opt-in).
+  oelite-opensearch-dashboards:
+    image: opensearchproject/opensearch-dashboards:3.7.0
+    container_name: oelite-opensearch-dashboards
+    hostname: oelite-opensearch-dashboards
+    environment:
+      - OPENSEARCH_HOSTS=["http://oelite-opensearch:9200"]
+      - DISABLE_SECURITY_DASHBOARDS_PLUGIN=true
+    ports:
+      - "5601:5601"
+    mem_limit: 512m
+    depends_on:
+      oelite-opensearch:
+        condition: service_healthy
+    networks:
+      - oelite-infra
     profiles:
-      - init
+      - ui
 
 # ─── Named Volumes ─────────────────────────────────────────────────────────
 volumes:
@@ -522,6 +516,7 @@ volumes:
   oelite-kafka-data:
   oelite-rabbitmq-data:
   oelite-minio-data:
+  oelite-opensearch-data:
   oelite-redisinsight-data:
   oelite-mongostudio-data:
 

@@ -49,12 +49,13 @@ Ethan (primary), Marcus (architecture review)
   - ClickHouse: `clickhouse/clickhouse-server:26.5`
   - Kafka: `confluentinc/cp-kafka:8.3.0` (NOT `apache/kafka`)
   - RabbitMQ: `rabbitmq:4.3-management-alpine`
-  - OpenSearch: `opensearchproject/opensearch:3.7`
+  - OpenSearch: `opensearchproject/opensearch:3.7.0`
+  - OpenSearch Dashboards: `opensearchproject/opensearch-dashboards:3.7.0` (profile: ui)
   - MinIO: `minio/minio:RELEASE.2025-09-07T16-13-09Z`
 - **Never use `latest` tags**
 - Minimal service principle: only include services actively consumed by app code (verified by `.csproj` references and actual source usage)
 - **Version Update Process**: When a new major/minor version is released, Ethan verifies compatibility with OElite.Restme providers; update the shared `infrastructure/oelite-stack/docker-compose.shared.yml`; all repos converge automatically because they share the stack.
-- **No per-repo `docker-compose.dev.yml` files** — the shared stack owns MongoDB, Redis, ClickHouse, Kafka, RabbitMQ, MinIO. Per-repo compose files are prohibited (see standard 16).
+- **No per-repo `docker-compose.dev.yml` files** — the shared stack owns MongoDB, Redis, ClickHouse, Kafka, RabbitMQ, MinIO, OpenSearch, OpenSearch Dashboards. Per-repo compose files are prohibited (see standard 16).
 
 ## CI/CD Pipeline Requirements
 - Stage pattern: `version → build → test → pack/deploy → build_docker → deploy_k8s`
@@ -68,6 +69,7 @@ Ethan (primary), Marcus (architecture review)
 ## Verification Checklist
 - [ ] `docker build -f <Dockerfile> .` succeeds
 - [ ] `cd infrastructure/oelite-stack && ./oelite-stack.sh up && ./oelite-stack.sh init` starts all shared services; health checks pass
+- [ ] `curl http://localhost:9200/_cluster/health` shows OpenSearch yellow/green status
 - [ ] No per-repo `docker-compose.dev.yml` was added (grep across monorepo)
 - [ ] Health endpoint responds 200
 - [ ] K8s rollout status succeeds

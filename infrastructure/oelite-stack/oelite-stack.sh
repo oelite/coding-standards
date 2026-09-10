@@ -49,7 +49,7 @@ case "$cmd" in
     ensure_keyfile
     ensure_secrets
     echo "Starting OElite shared infrastructure..."
-    docker compose -f docker-compose.shared.yml up -d $(compose_profile_args)
+    docker compose -f docker-compose.shared.yml $(compose_profile_args) up -d
     echo ""
     echo "Waiting for health checks..."
     sleep 30
@@ -66,10 +66,13 @@ case "$cmd" in
   init)
     ensure_keyfile
     ensure_secrets
-    echo "Running one-time init (MongoDB CSRS → shard → add-shard → per-project DBs, RabbitMQ vhosts, MinIO buckets)..."
+    echo "Running one-time init (MongoDB CSRS → shard → add-shard)..."
     docker compose -f docker-compose.shared.yml --profile init up
     echo ""
     echo "Init complete. Run './oelite-stack.sh health' to verify."
+    echo ""
+    echo "Per-project databases/vhosts/buckets are created by each project during onboarding."
+    echo "See scripts/init-per-project-dbs.sh, init-rabbitmq.sh, and init-minio.sh."
     ;;
 
   down)
