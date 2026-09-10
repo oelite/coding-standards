@@ -41,6 +41,7 @@ infrastructure/oelite-stack/  (in coding-standards repo)
 | Kafka | Topic prefix | `oelite.origin-auth.*` |
 | RabbitMQ | Virtual host | `/oelite/origin-auth` |
 | MinIO | Bucket-per-project | `oelite-origin-auth` |
+| OpenSearch | Index-per-project | `oelite-origin-auth-*` |
 
 ### MongoDB Is a Sharded Replica Set — Always
 
@@ -68,17 +69,17 @@ mongodb://localhost:27017/?directConnection=true
 
 ### ✅ REQUIRED
 
-1. **All dev work uses the shared stack.** No new `docker-compose.dev.yml` in any repo may redefine MongoDB, Redis, ClickHouse, Kafka, RabbitMQ, or MinIO.
-2. **One-time machine setup.** Each developer runs `./oelite-stack.sh up && ./oelite-stack.sh init` once per fresh machine clone.
+1. **All dev work uses the shared stack.** No new `docker-compose.dev.yml` in any repo may redefine MongoDB, Redis, ClickHouse, Kafka, RabbitMQ, MinIO, or OpenSearch.
+2. **One-time machine setup.** Each developer runs `./oelite-stack.sh up && ./oelite-stack.sh init` once per fresh machine clone. Per-project databases/vhosts/buckets are created by running the project onboarding scripts (see `scripts/init-per-project-dbs.sh`, `init-rabbitmq.sh`, `init-minio.sh`).
 3. **Connection strings use canonical ports** (27017, 6379, 9092, 5672, 9000, 8123).
-4. **Per-project databases/buckets/vhosts** are owned by the **application** (via `appsettings.init.json`), not the compose file.
+4. **Per-project databases/buckets/vhosts** are created by running the project onboarding scripts during project setup. Credentials are stored in the project's own gitignored secrets. Never committed to coding-standards.
 5. **Worktrees never spin up containers.** New worktrees connect to the existing singleton.
 6. **CI/CD skips integration tests** with `Category!=Integration` filter. CI never touches this stack.
 
 ### ❌ PROHIBITED
 
 1. **Per-repo MongoDB containers** in any `docker-compose*.yml`. The shared stack owns MongoDB.
-2. **Per-repo Redis/ClickHouse/Kafka/RabbitMQ/MinIO** instances. Use the shared stack.
+2. **Per-repo Redis/ClickHouse/Kafka/RabbitMQ/MinIO/OpenSearch** instances. Use the shared stack.
 3. **Port remapping** of the canonical ports (27017, 6379, 9092, etc.) per-repo. Conflict resolution is at the compose level, not the app level.
 4. **Connecting directly to mongod** processes (configsvr, shard). All app code MUST go through mongos on 27017.
 5. **Embedding infra credentials in repos.** Use the `.env.example` template; copy to `.env` (gitignored) for local overrides.
@@ -89,7 +90,10 @@ Existing repos with `docker-compose.dev.yml` migrate in 4 steps:
 
 1. **Delete** (or move to `archive/`) the existing `docker-compose.dev.yml`.
 2. **Update** `appsettings.init.json` (or equivalent) with the shared connection string.
-3. **Add** the project to `init-per-project-dbs.sh` (one line) to create its dedicated database on first init.
+3. **Run the project onboarding scripts** to create your database, vhost, bucket:
+   - MongoDB: `./scripts/init-per-project-dbs.sh <project>`
+   - RabbitMQ: `./scripts/init-rabbitmq.sh <project>`
+   - MinIO: `./scripts/init-minio.sh oelite-<project>`
 4. **Verify** by running the integration test suite against the shared stack.
 
 No application code changes are required — connection string is the only edit.
@@ -109,6 +113,7 @@ For every PR touching infra config, verify:
 - [ ] `./oelite-stack.sh health` returns OK for all services
 - [ ] `mongosh --host localhost:27017 --eval "sh.status()"` shows 1 shard registered
 - [ ] `redis-cli ping` returns PONG
+- [ ] `curl http://localhost:9200/_cluster/health` shows OpenSearch healthy
 - [ ] No new `docker-compose.dev.yml` was added to any repo (grep across monorepo)
 
 ## Handoff
@@ -120,3 +125,5 @@ After implementation, the **shared infrastructure** is owned by **Ethan** (DevOp
 | Date | Author | Change |
 |---|---|---|
 | 2026-09-07 | Ethan (Sisyphus) | Initial creation — replaces per-repo compose model. Issue #23. |
+| 2026-09-10 | Ethan (Sisyphus) | Add OpenSearch 3.7.0 + Dashboards UI to shared stack. Issue #25. |
+| 2026-09-10 | Ethan (Sisyphus) | Refactor init scripts to project-level; remove per-project hardcodings from shared infrastructure. |
