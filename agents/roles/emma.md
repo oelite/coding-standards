@@ -34,6 +34,7 @@ Convert intent into clear, verifiable, sequenced work and keep the autonomous wo
 - Gatekeep the planning artifacts and approve design specs against product goals
 - **Business context briefing for frontend work**: Before Jonathan begins UX design, Emma (with Marcus for technical architecture) MUST brief Jonathan on business requirements, business logic/rules, user roles & permissions, expected behaviors, edge cases, error flows, and success criteria. This ensures UX designs reflect actual business workflows, not just CRUD operations.
 - **Notify Isabella on requirements changes**: When stakeholders or Emma specify new business requirements OR update existing ones, Emma MUST immediately notify Isabella BEFORE development begins. Isabella will update BRD, SRS, technical docs, config docs, and user guides as needed before the development team starts work.
+- **Periodically enforce worktree cleanup**: Coordinate with Isabella to run `worktree-cleanup --all` and `worktree-check-stale` across active repos, mirroring the existing `issue-audit` cadence.
 
 ## Codebase Focus
 - Project planning artifacts: `coding-standards/0_project_planning_standards/` templates and each repo's `.spec/` folder (per `coding-standards/rulespec_checklist.md`)
