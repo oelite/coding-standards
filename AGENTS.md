@@ -422,6 +422,7 @@ MANDATORY: Read .oe-scope in your worktree to restore full task context after co
 - ✅ **Merge verification**: After reviewer approves, the reviewer (or Emma) MUST verify the MR status is `merged` in GitLab (via `mr-status` CLI) before transitioning the linked issue to `Done`
 - ✅ **Issue closure enforcement**: Every merged MR's linked issue MUST be closed in GitLab via `issue-status closed` — not just labeled `Done`. Closure happens in the same session as merge verification.
 - ✅ **Post-merge issue audit**: Isabella (or designated reviewer) MUST run `issue-audit <project>` periodically to catch any issues left open after their linked MRs were merged.
+- ✅ **Worktree cleanup enforcement**: After MR merge, the merging agent MUST run `worktree-cleanup <agent> --delete-branch` to remove the local worktree and branch; if the MR is closed without merge, the agent MUST run cleanup manually. The `worktree-create` preflight now hard-blocks on merged/closed MR state (GIT-WORKFLOW-STANDARDS.md §1.8).
 - ✅ Autonomous handoff to next role per workflow chain
 - ✅ Bootstrap verification block as first output
 
@@ -480,6 +481,9 @@ The wrapper is the only supported interface for issues, worktrees, MRs, comments
 | `worktree-create <agent> <branch> [--base <base>] [--issue <iid>] [--no-issue]` | Create worktree (issue-keyed; --base for non-develop cutoffs) |
 | `worktree-list` | List active worktrees |
 | `worktree-remove <worktree-id>` | Remove worktree (worktree-id = agent or agent-issue) |
+| `worktree-cleanup <agent> [--delete-branch]` | **HARD GATE** — verify linked MR, prune orphans, remove merged/closed worktree, optionally delete local branch |
+| `worktree-cleanup --all` | Sweep all worktrees in the current repo, remove those whose linked MR is merged/closed (Emma/periodic audit) |
+| `worktree-check-stale [--agent A] [--cleanup]` | Report worktrees whose linked MR is merged/closed or prunable orphan; `--cleanup` to prune |
 | `worktree-owner <worktree-id> [new-owner]` | View or update worktree owner DNA (commit attribution) |
 | `mr-create <project> <agent> <src> <tgt> <title> [desc]` | Create MR as agent |
 | `mr-list <project>` | List open MRs |

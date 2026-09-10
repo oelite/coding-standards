@@ -129,6 +129,8 @@ scripts/oelite-gitlab.sh issues <project>
 
 After `mr-status` confirms an MR is `merged` (or `closed`), the linked worktree and local feature branch MUST be removed **in the same session as the merge verification** — before the agent picks up the next task. Leaving worktrees behind is a prohibited pattern (see `PROHIBITED-PATTERNS.md` §9).
 
+**Machine enforcement (A1/A2):** As of this revision, `oelite-gitlab.sh` enforces this gate in two places: (1) `worktree-create` hard-blocks when the agent has a stale merged/closed worktree (§A1 preflight); (2) `mr-merge` auto-removes the merged source branch's local worktree on confirmed merge (§A2). The reviewer-reject path (§1.8 §9) is now machine-blocked at next-task creation time; Emma's periodic `worktree-cleanup --all` sweep remains the human-coordinated backstop for MRs merged outside these tools (e.g., Web UI).
+
 ### Why This Exists
 
 Without an enforced cleanup gate:
@@ -384,7 +386,7 @@ scripts/oelite-gitlab.sh worktree-list
 Review the output for worktrees with no recent activity. If a worktree is stale, remove it:
 
 ```bash
-scripts/oelite-gitlab.sh worktree-remove <agent>
+scripts/oelite-gitlab.sh worktree-cleanup <agent> --delete-branch
 ```
 
 ### 3.6 Forbidden: Native IDE/AI Worktree Tools (Hard Gate)

@@ -672,41 +672,62 @@ cmd_worktree_create() {
     return 1
   fi
 
-  # Pre-flight: warn about stale worktrees for the same agent (GIT-WORKFLOW-STANDARDS.md §1.8).
-  # Per the worktree-cleanup hard gate, agents should clean up after each task.
-  # This check is advisory only — pass --force to skip the warning for spike work.
-  if ! $force_preflight; then
-    local preflight_root preflight_root_resolved preflight_wt_path preflight_wt_branch preflight_stale=false
+   # Pre-flight: HARD GATE on stale worktrees for the same agent (GIT-WORKFLOW-STANDARDS.md §1.8).
+  # Blocks worktree creation when the agent has a worktree whose linked MR is
+  # already merged/closed, or whose dir is gone (prunable orphan) — the exact
+  # condition `worktree-cleanup --all` removes. An *open* MR (or a branch with
+  # no matching MR yet) is advisory, so legitimate parallel work is unaffected.
+  # Bypass: OELITE_HUMAN=1 (human maintenance) or --force (spike/parallel escape hatch).
+  local preflight_gitlab_project=""
+  preflight_gitlab_project=$(get_gitlab_project_path "$(main_repo_root 2>/dev/null || repo_root)" 2>/dev/null || true)
+  if ! $force_preflight && [[ -z "${OELITE_HUMAN:-}" ]]; then
+    local preflight_root preflight_root_resolved preflight_wt_path preflight_wt_branch preflight_stale=false preflight_blocked=false
     preflight_root=$(main_repo_root 2>/dev/null || true)
     if [[ -n "$preflight_root" && -d "$preflight_root" ]]; then
       # Resolve symlinks (e.g. macOS /tmp → /private/tmp) so the path comparison
       # below matches whatever 'git worktree list --porcelain' returns.
       preflight_root_resolved=$(python3 -c "import os, sys; print(os.path.realpath(sys.argv[1]))" "$preflight_root" 2>/dev/null || echo "$preflight_root")
-      local preflight_line
+      local preflight_line preflight_wt_state
+      # Classify a matching worktree: "orphan" | "merged" | "closed" | "open" | "not_found"
+      _preflight_classify() {
+        if $preflight_stale; then
+          echo "orphan"
+        else
+          get_mr_state_for_branch "$preflight_gitlab_project" "$preflight_wt_branch"
+        fi
+      }
+      _preflight_report() {
+        # $1 = wt_state
+        local wt_state="$1"
+        case "$wt_state" in
+          orphan|merged|closed)
+            preflight_blocked=true
+            echo "" >&2
+            echo "[BLOCKED] Stale worktree for agent '$agent' must be cleaned up first:" >&2
+            echo "       $preflight_wt_path (branch: $preflight_wt_branch, MR=$wt_state)" >&2
+            echo "       Per GIT-WORKFLOW-STANDARDS.md §1.8 (hard gate)." >&2
+            echo "" >&2
+            echo "       Run:  oelite-gitlab.sh worktree-cleanup $agent --delete-branch" >&2
+            echo "       Or:   oelite-gitlab.sh worktree-cleanup --all" >&2
+            echo "" >&2
+            echo "       To proceed anyway (spike/parallel work), re-run with --force," >&2
+            echo "       or set OELITE_HUMAN=1 for a human-maintenance session." >&2
+            ;;
+          *)
+            echo "" >&2
+            echo "[WARN] Active worktree exists for agent '$agent':" >&2
+            echo "       $preflight_wt_path (branch: $preflight_wt_branch, MR=$wt_state)" >&2
+            echo "       Per GIT-WORKFLOW-STANDARDS.md §1.8, clean up after each task." >&2
+            echo "" >&2
+            echo "       Run:  oelite-gitlab.sh worktree-cleanup $agent --delete-branch" >&2
+            ;;
+        esac
+      }
       while IFS= read -r preflight_line; do
         case "$preflight_line" in
           "")  # Record delimiter — evaluate the worktree we just finished parsing
             if [[ -n "$preflight_wt_path" && "$preflight_wt_path" == "$preflight_root_resolved/.worktrees/$agent"* ]]; then
-              if $preflight_stale; then
-                echo "" >&2
-                echo "[WARN] Stale worktree found for agent '$agent':" >&2
-                echo "       $preflight_wt_path (orphan, branch: $preflight_wt_branch)" >&2
-                echo "       Per GIT-WORKFLOW-STANDARDS.md §1.8, clean up before starting new work." >&2
-                echo "" >&2
-                echo "       Run:  oelite-gitlab.sh worktree-cleanup $agent --delete-branch" >&2
-                echo "       Or:   oelite-gitlab.sh worktree-check-stale --cleanup" >&2
-                echo "" >&2
-                echo "       To proceed anyway (e.g. spike work), re-run with --force." >&2
-              else
-                echo "" >&2
-                echo "[WARN] Active worktree exists for agent '$agent':" >&2
-                echo "       $preflight_wt_path (branch: $preflight_wt_branch)" >&2
-                echo "       Per GIT-WORKFLOW-STANDARDS.md §1.8, clean up after each task." >&2
-                echo "" >&2
-                echo "       Run:  oelite-gitlab.sh worktree-cleanup $agent --delete-branch" >&2
-                echo "" >&2
-                echo "       To proceed anyway (e.g. parallel task), re-run with --force." >&2
-              fi
+              _preflight_report "$(_preflight_classify)"
             fi
             preflight_wt_path=""; preflight_wt_branch=""; preflight_stale=false
             ;;
@@ -718,27 +739,13 @@ cmd_worktree_create() {
 
       # Handle the last record (no trailing blank line)
       if [[ -n "$preflight_wt_path" && "$preflight_wt_path" == "$preflight_root_resolved/.worktrees/$agent"* ]]; then
-        if $preflight_stale; then
-          echo "" >&2
-          echo "[WARN] Stale worktree found for agent '$agent':" >&2
-          echo "       $preflight_wt_path (orphan, branch: $preflight_wt_branch)" >&2
-          echo "       Per GIT-WORKFLOW-STANDARDS.md §1.8, clean up before starting new work." >&2
-          echo "" >&2
-          echo "       Run:  oelite-gitlab.sh worktree-cleanup $agent --delete-branch" >&2
-          echo "       Or:   oelite-gitlab.sh worktree-check-stale --cleanup" >&2
-          echo "" >&2
-          echo "       To proceed anyway (e.g. spike work), re-run with --force." >&2
-        else
-          echo "" >&2
-          echo "[WARN] Active worktree exists for agent '$agent':" >&2
-          echo "       $preflight_wt_path (branch: $preflight_wt_branch)" >&2
-          echo "       Per GIT-WORKFLOW-STANDARDS.md §1.8, clean up after each task." >&2
-          echo "" >&2
-          echo "       Run:  oelite-gitlab.sh worktree-cleanup $agent --delete-branch" >&2
-          echo "" >&2
-          echo "       To proceed anyway (e.g. parallel task), re-run with --force." >&2
-        fi
+        _preflight_report "$(_preflight_classify)"
       fi
+    fi
+
+    if $preflight_blocked; then
+      echo "[ERROR] Refusing to create worktree — stale worktree(s) for agent '$agent'. Run worktree-cleanup first." >&2
+      return 1
     fi
   fi
 
@@ -1096,6 +1103,41 @@ except Exception:
 
   echo "not_found"
   return 0
+}
+
+cleanup_local_worktree_for_branch() {
+  local root="$1" branch="$2"
+  [[ -z "$branch" ]] && return 0
+
+  local wt_path
+  wt_path=$(git -C "$root" worktree list --porcelain 2>/dev/null | awk -v b="$branch" '
+    /^worktree / { w=$2; br="" }
+    /^branch /   { split($0, a, "refs/heads/"); br = (a[2] != "" ? a[2] : "") }
+    /^$/         { if (br == b) print w }
+    END          { if (br == b) print w }
+  ' | head -1)
+
+  [[ -z "$wt_path" ]] && return 0
+
+  git -C "$root" worktree prune 2>/dev/null || true
+
+  local active_wt
+  active_wt=$(git -C "$root" rev-parse --show-toplevel 2>/dev/null || true)
+
+  if [[ "$wt_path" == "$active_wt" ]]; then
+    echo "  Skipping worktree remove — currently active: ${wt_path#$root/}"
+  elif [[ -d "$wt_path" ]]; then
+    git -C "$root" worktree remove "$wt_path" --force 2>&1 | sed 's/^/    /' || true
+    echo "  Removed worktree: ${wt_path#$root/}"
+  else
+    echo "  Worktree dir already gone: ${wt_path#$root/}"
+  fi
+
+  if git -C "$root" show-ref --verify --quiet "refs/heads/$branch"; then
+    if git -C "$root" branch -D "$branch" 2>/dev/null; then
+      echo "  Deleted local branch: $branch"
+    fi
+  fi
 }
 
 cmd_worktree_cleanup() {
@@ -1786,12 +1828,28 @@ cmd_mr_merge() {
   api_put "/projects/$encoded_path/merge_requests/$mr_iid/merge" "$pat" "$data"
 
   if [[ "$_API_STATUS" == "200" ]] || [[ "$_API_STATUS" == "201" ]]; then
-    local state merged_at
+    local state merged_at source_branch
     state=$(echo "$_API_RESPONSE" | json_get "state" "")
     merged_at=$(echo "$_API_RESPONSE" | json_get "merged_at" "")
+    source_branch=$(echo "$_API_RESPONSE" | json_get "source_branch" "")
     echo "[OK] MR !$mr_iid merged by $agent"
     echo "  State:      $state"
     echo "  Merged At:  $merged_at"
+    echo "  Source:     $source_branch"
+
+    local root
+    root=$(repo_root 2>/dev/null || true)
+    if [[ -z "${OELITE_HUMAN:-}" ]] && [[ -n "$source_branch" ]] && [[ -n "$root" ]]; then
+      if [[ "$state" == "merged" ]]; then
+        echo ""
+        echo "Cleaning up merged branch's local worktree (GIT-WORKFLOW-STANDARDS.md §1.8)..."
+        cleanup_local_worktree_for_branch "$root" "$source_branch"
+      else
+        echo ""
+        echo "[INFO] Merge is pending (state=$state). Run after it completes:"
+        echo "       oelite-gitlab.sh worktree-cleanup <agent> --delete-branch"
+      fi
+    fi
   else
     echo "[ERROR] Failed to merge MR !$mr_iid (HTTP $_API_STATUS)" >&2
     echo "$_API_RESPONSE" >&2

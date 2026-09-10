@@ -79,6 +79,12 @@ Every completed task MUST include the sections below. **Reviewers MUST reject an
   - Specific details Isabella needs to update the documentation accurately
 - **Isabella notified?** YES / NO
 
+### Cleanup Evidence
+- **Worktree cleanup performed**: YES / NO (mandatory if MR was merged/closed)
+- If YES, show the actual `worktree-cleanup` command output: branch deleted, worktree removed/pruned
+- If NO, state why (e.g., worktree not yet merged, `--force` was used, or cleanup deferred with approval)
+- **Reviewers MUST reject** any handoff that claims worktree cleanup without evidence or shows a stale worktree whose linked MR is already merged/closed.
+
 ### Risks
 - unresolved concerns · blocked items (e.g. missing endpoints, disabled CI)
 
@@ -252,7 +258,9 @@ scripts/oelite-gitlab.sh worktree-create daniel feature/US-001-auth
 | `worktree-create <agent> <branch> [base]` | Create worktree with agent identity |
 | `worktree-sync` | Safe sync — updates local develop WITHOUT checking it out (avoids footgun) |
 | `worktree-list` | List active worktrees |
-| `worktree-remove <agent>` | Remove worktree after MR merged |
+| `worktree-cleanup <agent> [--delete-branch]` | **HARD GATE** — verify linked MR, prune orphans, remove merged/closed worktree, optionally delete local branch |
+| `worktree-cleanup --all` | Sweep all worktrees in the current repo; remove those whose linked MR is merged/closed (Emma periodic sweep) |
+| `worktree-check-stale [--agent A] [--cleanup]` | Report worktrees whose linked MR is merged/closed or prunable orphan; `--cleanup` to prune |
 | `mr-create <project> <agent> <src> <tgt> <title> [desc]` | Create MR |
 | `mr-list <project>` | List open MRs |
 | `mr-comment <project> <iid> <agent> <msg>` | Comment on MR |
@@ -281,7 +289,7 @@ scripts/oelite-gitlab.sh mr-create <project> <agent> <branch> develop "<title>"
 # Wait for feedback; fix → push → re-review
 
 # ── Phase 5: After MR Approved + CI Green ──
-scripts/oelite-gitlab.sh worktree-remove <agent>
+scripts/oelite-gitlab.sh worktree-cleanup <agent> --delete-branch
 scripts/oelite-gitlab.sh worktree-sync
 ```
 
@@ -291,6 +299,7 @@ scripts/oelite-gitlab.sh worktree-sync
 3. **Create MR** targeting `develop`
 4. **No Local Merges** — all code enters `develop` through reviewed MRs
 5. **Sync After Merge** before next task
+6. **Worktree Cleanup (same session)** — after `mr-status` confirms `merged` (or `closed`), run `worktree-cleanup <agent> --delete-branch` in the same session. The `worktree-create` preflight now hard-blocks on stale merged/closed worktrees, so skipping cleanup will block the next task.
 
 ### GitLab Project Paths
 
@@ -319,3 +328,4 @@ Use `scripts/oelite-gitlab.sh issues oelite/<path>` with the GitLab path, not th
 - Never merge locally into `develop`
 - Never skip bootstrap verification
 - Never skip verification before declaring "done"
+- Never start a new task while leaving a worktree whose linked MR is merged or closed
