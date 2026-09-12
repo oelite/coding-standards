@@ -42,8 +42,10 @@ check "Redis" "docker exec oelite-redis redis-cli --raw -a '$REDIS_P' ping | gre
 # RedisInsight UI (optional — UI containers may not be running)
 check "RedisInsight UI (5540)" "curl -sf http://localhost:5540 >/dev/null 2>&1" || true
 
-# ClickHouse — HTTP ping (no auth on /ping endpoint)
-check "ClickHouse HTTP (8123)" "curl -sf http://localhost:8123/ping >/dev/null 2>&1"
+# ClickHouse — run an actual query (SELECT 1) so a memory-starved server
+# (Code 241 MEMORY_LIMIT_EXCEEDED) fails this check, unlike the old unauth /ping.
+check "ClickHouse (8123)" \
+  "docker exec oelite-clickhouse clickhouse-client --user '${CLICKHOUSE_ADMIN_USER:-oelite}' --password '${CLICKHOUSE_ADMIN_PASSWORD}' -q 'SELECT 1' >/dev/null 2>&1"
 
 # chmonitor UI (optional)
 check "chmonitor UI (3000)" "curl -sf http://localhost:3000 >/dev/null 2>&1" || true

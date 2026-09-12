@@ -1,0 +1,9 @@
+<?xml version="1.0"?>
+<clickhouse>
+  <profiles>
+    <default>
+      <max_memory_usage>1073741824</max_memory_usage>
+      <max_threads>8</max_threads>
+    </default>
+  </profiles>
+</clickhouse>
