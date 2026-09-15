@@ -317,12 +317,16 @@ services:
     hostname: oelite-clickhouse
     ports:
       - "8123:8123"
-    mem_limit: 2048m
+    mem_limit: 4096m
     env_file:
       - .env
     environment:
       CLICKHOUSE_DB: default
       CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT: "1"
+      # jemalloc page-return tuning. Must be set as process-start env: ClickHouse 26.5
+      # ignores the <jemalloc> config block (verified empirically, issues/28).
+      # background_thread:true makes decay run without waiting on app mallocs.
+      MALLOC_CONF: "dirty_decay_ms:1000,muzzy_decay_ms:1000,background_thread:true"
     healthcheck:
       # Run an actual query, not just /ping: a memory-starved ClickHouse returns
       # 241 MEMORY_LIMIT_EXCEEDED on even `SELECT 1`, so this check MUST fail open.
