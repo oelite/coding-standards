@@ -56,6 +56,8 @@ Ethan (primary), Marcus (architecture review)
 - Minimal service principle: only include services actively consumed by app code (verified by `.csproj` references and actual source usage)
 - **Version Update Process**: When a new major/minor version is released, Ethan verifies compatibility with OElite.Restme providers; update the shared `infrastructure/oelite-stack/docker-compose.shared.yml`; all repos converge automatically because they share the stack.
 - **No per-repo `docker-compose.dev.yml` files** — the shared stack owns MongoDB, Redis, ClickHouse, Kafka, RabbitMQ, MinIO, OpenSearch, OpenSearch Dashboards. Per-repo compose files are prohibited (see standard 16).
+- **Never create a second instance of a shared service** — not via a compose file, not via `docker run`, not via Testcontainers. If a service is down, recover it with `./oelite-stack.sh up` (idempotent); if that fails, escalate to Ethan via GitLab issue. Machine-enforced by `oelite-guard.sh` Gate E.
+- **App-only compose files are still fine** — a `docker-compose.yml` that runs your app, nginx, mailpit, or a UI is not a violation. Only the 7 shared services are restricted.
 
 ## CI/CD Pipeline Requirements
 - Stage pattern: `version → build → test → pack/deploy → build_docker → deploy_k8s`
@@ -71,6 +73,8 @@ Ethan (primary), Marcus (architecture review)
 - [ ] `cd infrastructure/oelite-stack && ./oelite-stack.sh up && ./oelite-stack.sh init` starts all shared services; health checks pass
 - [ ] `curl http://localhost:9200/_cluster/health` shows OpenSearch yellow/green status
 - [ ] No per-repo `docker-compose.dev.yml` was added (grep across monorepo)
+- [ ] **No per-repo shared-service containers running**: `docker ps --filter "name=oelite-"` shows only the shared stack; no stray `*-test-mongodb` / `apex-*` / `kortex-*` / `core-*` / `hermes-*` containers
+- [ ] **Gate E active**: creating a per-repo compose file with a shared service is blocked (exit 2)
 - [ ] Health endpoint responds 200
 - [ ] K8s rollout status succeeds
 - [ ] CI pipeline configured to skip integration/E2E tests

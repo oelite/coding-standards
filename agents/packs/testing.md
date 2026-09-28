@@ -164,10 +164,12 @@ Every CRUD test MUST verify data survives page refresh:
 
 ### Integration Tests (Data Layer)
 - **REAL Docker containers** — zero mocks
+- **Run against the SHARED singleton stack** (`infrastructure/oelite-stack/` — see `16-SHARED-LOCAL-INFRASTRUCTURE.md`)
+- **NEVER create a per-repo container** for MongoDB/Redis/ClickHouse/Kafka/RabbitMQ/MinIO/OpenSearch: no per-repo `docker-compose*.yml`, no `docker run <shared-service>`, no Testcontainers fixture. If a shared service is down, **restart the shared stack** (`./oelite-stack.sh up`) — never create a replacement. Enforced by `oelite-guard.sh` Gate E.
 - Every repository method + controller action
 - Mark: `[Trait("Category", "Integration")]` + `[Category("SkipCI")]`
 - CI runs: `dotnet test --filter "Category!=Integration"`
-- Confirm containers healthy before running tests
+- Confirm containers healthy before running tests: `./oelite-stack.sh health`
 
 ### E2E Browser Tests (Playwright)
 - **MANDATORY for all web apps**
@@ -354,7 +356,8 @@ Every feature must document:
 - [ ] Test count meets Gate 3 minimums
 - [ ] No-op tests rejected
 - [ ] All user story acceptance criteria covered
-- [ ] Docker infrastructure confirmed healthy before tests
+- [ ] Docker infrastructure confirmed healthy before tests (`./oelite-stack.sh health` exit 0)
+- [ ] **No per-repo shared-service containers started** — tests ran against the shared stack (`docker ps --filter "name=oelite-"` shows only the singleton)
 - [ ] Business logic validation tests cover all business rules
 - [ ] Accessibility tests pass (aXe scan, keyboard nav, ARIA, contrast)
 - [ ] User journey tests cover happy path, branching, error recovery, permission-based, cancellation

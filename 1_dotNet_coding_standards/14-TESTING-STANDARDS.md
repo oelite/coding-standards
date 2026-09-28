@@ -56,6 +56,7 @@ Integration tests exercise **data access** — repositories, API endpoints, serv
 - MUST use `[Trait("Category", "Integration")]` on test classes/methods
 - MUST use `[Category("SkipCI")]` to exclude from CI/CD
 - MUST run against **real Docker containers** (MongoDB, Redis, ClickHouse, etc.)
+- **MUST run against the SHARED singleton stack** (`infrastructure/oelite-stack/`) — never against per-repo containers
 - Must seed real test data before each test
 - Must NOT use `FakeMongoCollection<T>`, `InMemoryDatabase`, or mock `IRestme`
 - Must NOT run in CI/CD (`dotnet test --filter "Category!=Integration"`)
@@ -74,6 +75,20 @@ dotnet test --filter "Category=Integration"
 
 > The shared stack (see `16-SHARED-LOCAL-INFRASTRUCTURE.md`) is machine-wide and shared across all repos/worktrees. It does not need to be started per-worktree.
 
+**🚨 Never create a per-repo container for integration tests.** The 7 shared services (MongoDB, Redis, ClickHouse, Kafka, RabbitMQ, MinIO, OpenSearch) run ONCE per machine in the singleton stack. If a service is stopped or unhealthy, the ONLY correct action is to restart the shared stack (`./oelite-stack.sh up`) — never to create a replacement container, a per-repo `docker-compose.test.yml`, or a Testcontainers fixture that spins up its own instance. Machine-enforced: `oelite-guard.sh` Gate E blocks `docker run <shared-service>` and any per-repo compose file that declares one.
+
+**Service recovery procedure (when the shared stack is down):**
+
+| Step | Command | Purpose |
+|---|---|---|
+| 1 | `cd coding-standards/infrastructure/oelite-stack && ./oelite-stack.sh health` | Identify which service is down |
+| 2 | `./oelite-stack.sh up` | Start/restart the shared stack (idempotent) |
+| 3 | `./oelite-stack.sh init` | One-time sharding + per-project namespaces (safe to re-run) |
+| 4 | `./oelite-stack.sh health` | Re-verify all services healthy |
+| 5 | `dotnet test --filter "Category=Integration"` | Run tests against the shared stack |
+
+> If the shared stack still will not come up, escalate to **Ethan (DevOps)** with a GitLab issue. Do NOT work around it by starting a local container.
+
 **Test project structure:**
 ```
 MyProject.IntegrationTests/
@@ -88,8 +103,8 @@ MyProject.IntegrationTests/
 │   ├── ProductsControllerTests.cs      # WebApplicationFactory<T>
 │   └── OrdersControllerTests.cs
 ├── TestFixtures/
-│   ├── MongoTestContainerFixture.cs    # Docker container lifecycle
-│   └── TestDataSeeder.cs               # Real test data seeding
+│   ├── SharedInfraFixture.cs            # Connects to the shared oelite-stack (mongodb://localhost:27017)
+│   └── TestDataSeeder.cs                # Real test data seeding
 └── MyProject.IntegrationTests.csproj
 ```
 
@@ -295,6 +310,10 @@ test:
 | Unit test calling `MongoDbCentre` directly | This IS an integration test — must use `[Trait("Category", "Integration")]` |
 | No cleanup of test data after test | Tests become non-deterministic and flaky |
 | Running integration tests in CI/CD | Docker containers are not permitted in CI/CD |
+| **Per-repo `docker-compose.test.yml` / `docker-compose.dev.yml` defining MongoDB, Redis, RabbitMQ, etc.** | Violates the singleton model — the shared stack owns these services. Duplicates drain dev-machine resources. Blocked by `oelite-guard.sh` Gate E. |
+| **`docker run mongo:8.0` (or any shared-service image) to satisfy a test** | Same as above. If the shared stack is down, restart it — never create a replacement. Blocked by `oelite-guard.sh` Gate E. |
+| **Testcontainers-style fixture that starts its own MongoDB/Redis** | The stack is a machine-wide singleton; a per-test container is a second instance. Blocked by `oelite-guard.sh` Gate E. |
+| Remapping canonical ports (27020, 6380, 5674) to dodge port conflicts | Conflicts are resolved at the compose level. Port remapping signals a per-repo stack that must not exist. |
 
 ---
 
@@ -309,3 +328,4 @@ Before declaring any backend change "done", Daniel MUST confirm:
 - [ ] No mock/placeholder/TODO data in delivered code
 - [ ] All integration tests use real Docker containers (no `FakeMongoCollection`, no `InMemoryDatabase`)
 - [ ] All API tests use `WebApplicationFactory<T>` (no direct service method calls)
+- [ ] **No per-repo infrastructure containers started** — tests ran against the shared stack (verify with `docker ps --filter "name=oelite-"`; no stray `*-test-mongodb`, `apex-*`, `kortex-*`, etc.)

@@ -13,6 +13,29 @@ Per-project isolation is achieved via **namespaces** (databases, buckets, vhosts
 | OElite.Restme change streams require replica set | Real sharded RS (configsvr×3 + shard1 + mongos) |
 | Production-only bugs (sharding, chunk migration) | Local dev matches production topology |
 
+## 🚨 Do NOT create a second instance of a shared service
+
+If a service below is **stopped, unhealthy, or missing**, the only correct action is to
+**restart this shared stack** — never to start a replacement container.
+
+| Service | Image used here |
+|---|---|
+| MongoDB | `mongo:8.0` |
+| Redis | `redis:8.8-alpine` |
+| ClickHouse | `clickhouse/clickhouse-server:26.5` |
+| Kafka | `confluentinc/cp-kafka:8.3.0` |
+| RabbitMQ | `rabbitmq:4.3-management-alpine` |
+| MinIO | `minio/minio:RELEASE.*` |
+| OpenSearch | `opensearchproject/opensearch:3.7.0` |
+
+Prohibited (enforced by `oelite-guard.sh` Gate E, exit code 2):
+
+- a `docker-compose*.yml` in an app repo declaring any of the services above
+- `docker run mongo:8.0 ...` (or any shared-service image) outside this directory
+- a Testcontainers fixture that starts its own MongoDB/Redis/etc.
+
+App-only compose files (your app image, nginx, mailpit, a UI) are unaffected.
+
 ## Quick Start
 
 ```bash
@@ -27,6 +50,22 @@ cd infrastructure/oelite-stack
 # 3. Verify
 ./oelite-stack.sh health
 ```
+
+## Recovering a Down Service
+
+```bash
+cd infrastructure/oelite-stack
+
+./oelite-stack.sh health   # 1. which service is down?
+./oelite-stack.sh up       # 2. start/restart the shared stack (idempotent)
+./oelite-stack.sh init     # 3. one-time sharding + namespaces (idempotent)
+./oelite-stack.sh health   # 4. re-verify
+```
+
+`up` and `init` are both idempotent — re-run them freely. If the stack still will not
+come up (image pull failure, port conflict, corrupt volume), open a GitLab issue on
+`oelite/coding-standards` for **Ethan (DevOps)**. Do **not** work around it by starting
+a per-repo container.
 
 ## Connection Strings
 
@@ -221,6 +260,13 @@ If your repo currently has a per-repo `docker-compose.dev.yml`:
    - RabbitMQ: `./scripts/init-rabbitmq.sh your-project`
    - MinIO: `./scripts/init-minio.sh oelite-your-project`
 4. **No code changes required** — connection string points to the same `localhost:27017` (now via mongos).
+
+## Need a Service the Stack Does Not Provide?
+
+Do not start it locally in a per-repo container. Open a GitLab issue on
+`oelite/coding-standards` for **Ethan (DevOps)** to add it to
+`docker-compose.shared.yml` with a canonical port and a per-project isolation
+mechanism. That is the only supported path for a new local-dev dependency.
 
 ## CI/CD
 
