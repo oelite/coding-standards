@@ -135,23 +135,29 @@ compose_declares_shared_infra() {
 }
 
 # True if a docker CLI invocation names a shared-stack service image.
+# The image token may be bare (mongo:8.0) or registry-qualified
+# (docker.io/library/mongo:8.0), so the preceding char may also be "/".
 docker_cmd_targets_shared_infra() {
-  grep -Eqi '(^|[[:space:]"])(mongo|redis|rabbitmq|minio|clickhouse|opensearch|cp-kafka)(:[0-9]|$|@)' <<<"$1" ||
-    grep -Eqi '(confluentinc/cp-kafka|apache/kafka|opensearchproject/opensearch|minio/minio|clickhouse/clickhouse-server)' <<<"$1"
+  grep -Eqi '(^|[[:space:]"/])(mongo|redis|rabbitmq|minio|clickhouse|opensearch|cp-kafka)(:[0-9]|$|@)' <<<"$1" ||
+    grep -Eqi '(confluentinc/cp-kafka|apache/kafka|opensearchproject/opensearch|minio/minio|clickhouse/clickhouse-server)([:@"/]|$)' <<<"$1"
 }
 
-# Extracts the value of the first -f/--file argument from a compose command.
-compose_file_from_cmd() {
-  local -a toks
-  read -r -a toks <<<"$1"
-  local i
-  for (( i=0; i<${#toks[@]}-1; i++ )); do
-    if [[ "${toks[i]}" == "-f" || "${toks[i]}" == "--file" ]]; then
-      printf '%s\n' "${toks[i+1]}"
-      return 0
+# Extracts EVERY -f/--file value from a docker compose command, one per line.
+# A compose command may layer several files; all of them must be validated.
+compose_files_from_cmd() {
+  local tok in_f=0
+  for tok in $1; do
+    case "$tok" in
+      -f|--file) in_f=1; continue ;;
+      -f=*)      printf '%s\n' "${tok#-f=}"; continue ;;
+      --file=*)  printf '%s\n' "${tok#--file=}"; continue ;;
+    esac
+    if (( in_f )); then
+      printf '%s\n' "$tok"
+      in_f=0
     fi
   done
-  return 1
+  return 0
 }
 
 # Enclosing git worktree toplevel (only meaningful if in_worktree).
@@ -515,28 +521,42 @@ done
 is_docker_cmd() {
   [[ "$CMD" =~ (^|[[:space:]/])docker(-compose)?[[:space:]] ]]
 }
+# Best-effort CWD of the command being evaluated: honour a leading `cd <dir>`
+# so a relative -f resolves the way the shell would, not the way the hook does.
+cmd_base_dir() {
+  local seg="" tok
+  for seg in ${CMD//;/ }; do
+    seg="${seg#"${seg%%[![:space:]]*}"}"
+    [[ "$seg" == cd\ * || "$seg" == cd ]] || continue
+    tok="${seg#cd}"
+    tok="${tok#"${tok%%[![:space:]]*}"}"
+    [[ -z "$tok" ]] && continue
+    printf '%s\n' "$(canon "$tok")"
+    return 0
+  done
+  printf '%s\n' "$PWD"
+}
 if is_docker_cmd; then
-  compose_arg="$(compose_file_from_cmd "$CMD" || true)"
-  if [[ -n "$compose_arg" ]] && in_shared_stack "$compose_arg"; then
-    exit 0
-  fi
+  base_dir="$(cmd_base_dir)"
+  saw_compose_file=0
+  while IFS= read -r compose_arg; do
+    [[ -z "$compose_arg" ]] && continue
+    saw_compose_file=1
+    [[ "$compose_arg" != /* ]] && compose_arg="$base_dir/$compose_arg"
+    in_shared_stack "$compose_arg" && continue
+    if [[ -f "$compose_arg" ]] && compose_declares_shared_infra "$(cat "$compose_arg" 2>/dev/null)"; then
+      block "$compose_arg" "standalone-infra-cmd" "Bash(docker compose)"
+    fi
+  done < <(compose_files_from_cmd "$CMD")
   # `docker run` is never the sanctioned way to manage the singleton.
   if [[ "$CMD" =~ (^|[[:space:]/])docker(-compose)?[[:space:]]+(-[^[:space:]]+[[:space:]]+)*run([[:space:]]|$) ]] \
      && docker_cmd_targets_shared_infra "$CMD"; then
     block "$CMD" "standalone-infra-cmd" "Bash(docker run)"
   fi
-  # docker compose up/down/start against a per-repo file that defines a shared service.
-  if [[ -n "$compose_arg" && "$compose_arg" != /* ]]; then
-    compose_arg="$PWD/$compose_arg"
-  fi
-  if [[ -n "$compose_arg" && -f "$compose_arg" ]] && compose_declares_shared_infra "$(cat "$compose_arg" 2>/dev/null)"; then
-    block "$compose_arg" "standalone-infra-cmd" "Bash(docker compose)"
-  fi
-  # No explicit -f: a bare `docker compose up` inside a repo whose default
-  # compose file defines a shared service is the most common violation.
-  if [[ -z "$compose_arg" && -f "./docker-compose.yml" ]] \
-     && compose_declares_shared_infra "$(cat ./docker-compose.yml 2>/dev/null)"; then
-    block "./docker-compose.yml" "standalone-infra-cmd" "Bash(docker compose)"
+  # No -f at all: the default compose file in the command's CWD.
+  if (( saw_compose_file == 0 )) && [[ -f "$base_dir/docker-compose.yml" ]] \
+     && compose_declares_shared_infra "$(cat "$base_dir/docker-compose.yml" 2>/dev/null)"; then
+    block "$base_dir/docker-compose.yml" "standalone-infra-cmd" "Bash(docker compose)"
   fi
 fi
 
