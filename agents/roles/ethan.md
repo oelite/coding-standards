@@ -45,8 +45,13 @@ Guarantee reproducible builds, healthy containers, and reliable deployments acro
 - `cd infrastructure/oelite-stack && ./oelite-stack.sh init` initializes MongoDB sharding (configsvr×3 + shard1 RS + mongos) and creates per-project databases/buckets.
 - **Health check**: `./oelite-stack.sh health` returns OK for MongoDB (via mongos), Redis, ClickHouse, Kafka, RabbitMQ, MinIO.
 - **Verify singleton**: `docker ps --filter "name=oelite-"` shows exactly the services defined in `docker-compose.shared.yml`. No stray per-repo containers with custom port remapping.
+- **Gate E active**: `oelite-guard.sh` blocks creating a per-repo compose file that declares a shared service (exit 2), and blocks `docker run <shared-service>` outside the shared stack directory.
 - Containers start without crashing; health endpoint responds 200.
 - For K8s: `kubectl rollout status deployment/<name> -n oelite-<env>` succeeds.
+
+## Shared Stack Recovery Duty
+- **Any agent (not just Ethan) recovering a down shared service**: run `./oelite-stack.sh health` → `./oelite-stack.sh up` → `./oelite-stack.sh init` → `./oelite-stack.sh health`. **Never** start a per-repo container as a workaround.
+- **Ethan-specific**: when a shared service is broken and the shared stack will not come up, file a GitLab issue on `oelite/coding-standards` — do not create a per-repo container in any app repo.
 
 ## Handoff Target
 - Isabella (documentation + business validation)

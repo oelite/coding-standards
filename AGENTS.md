@@ -23,6 +23,7 @@ The root `oelite/` folder is NOT a git repository — it is a monorepo container
 > | **B. Worktree-presence** | Edits inside a scoped git repo that are NOT under `.worktrees/<agent>-<iid>/` |
 > | **C. Protected-branch** | Edits in worktrees whose branch is `develop`, `main`, or `master` |
 > | **D. Issue-IID** | (Advisory) When `.oe-scope` exists, the worktree's declared issue must match the branch's issue ref |
+> | **E. No-standalone-infra** | Creating a per-repo `docker-compose*.yml` that declares a shared service (MongoDB, Redis, ClickHouse, Kafka, RabbitMQ, MinIO, OpenSearch), or running `docker run` for one of them, outside `coding-standards/infrastructure/oelite-stack/`. A down shared service is recovered with `./oelite-stack.sh up` — never by creating a replacement container |
 >
 > The `OELITE_HUMAN=1` environment variable bypasses the guard for intentional human maintenance.
 > `.claude/` and `.opencode/` are auto-allowed (IDE config writes).
@@ -416,7 +417,7 @@ MANDATORY: Read .oe-scope in your worktree to restore full task context after co
 - ✅ **Pre-commit hook enforcement**: Hook blocks commits outside `.worktrees/` and on protected branches (`develop`, `main`, `master`). Humans bypass with `OELITE_HUMAN=1`. Installed automatically by `worktree-create`.
 - ✅ **Protected branches**: `develop` and `main` are for MR merges only. AI agents must NEVER commit directly on them. GitLab protected branches should be configured server-side as a second layer of defense.
 - ✅ Zero mock data
-- ✅ Zero mock persistence — real Docker infra for tests
+- ✅ **Zero mock persistence** — real shared-stack Docker infra for tests; never per-repo containers (see `1_dotNet_coding_standards/16-SHARED-LOCAL-INFRASTRUCTURE.md`). A stopped shared service is recovered with `./oelite-stack.sh up`, never by creating a new container
 - ✅ No `as any`, `@ts-ignore`, `@ts-expect-error`
 - ✅ Build + test + health check before "done"
 - ✅ **Merge verification**: After reviewer approves, the reviewer (or Emma) MUST verify the MR status is `merged` in GitLab (via `mr-status` CLI) before transitioning the linked issue to `Done`

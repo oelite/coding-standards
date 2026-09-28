@@ -17,6 +17,15 @@
 #                         via scripts/oelite-gitlab.sh.) When a worktree has a
 #                         .oe-scope, edits to files outside the worktree's
 #                         declared scope are blocked.
+#   E. NO-STANDALONE-INFRA — Shared local infrastructure is a machine-wide
+#                         SINGLETON at coding-standards/infrastructure/oelite-stack/.
+#                         Agents MUST NOT create a second instance of any of the
+#                         7 shared services (MongoDB, Redis, ClickHouse, Kafka,
+#                         RabbitMQ, MinIO, OpenSearch) — not via docker-compose
+#                         file, not via `docker run`, not via Testcontainers.
+#                         If a shared service is down, the fix is to RESTART the
+#                         shared stack (`./oelite-stack.sh up`), never to create
+#                         a replacement container. See standard 16.
 #
 # Payload shape (stdin, normalised by this script):
 #   Claude Code: { "tool_name": "Write|Edit|MultiEdit|Bash", "tool_input": {...} }
@@ -66,6 +75,7 @@ fi
 TOOL_NAME="$(printf '%s' "$PAYLOAD" | jq -r '.tool_name // .tool // empty')"
 FILE_PATH="$(printf '%s' "$PAYLOAD" | jq -r '.tool_input.file_path // .args.filePath // empty')"
 CMD="$(printf '%s' "$PAYLOAD" | jq -r '.tool_input.command // .args.command // empty')"
+FILE_BODY="$(printf '%s' "$PAYLOAD" | jq -r '.tool_input.content // .tool_input.new_string // .args.content // .args.newString // empty')"
 
 # ── Helpers ─────────────────────────────────────────────────────────────────
 canon() {
@@ -100,6 +110,48 @@ in_worktree() {
 in_ide_config() {
   [[ "$1" == "$CLAUDE_DIR"   || "$1" == "$CLAUDE_DIR/"*   || \
      "$1" == "$OPENCODE_DIR" || "$1" == "$OPENCODE_DIR/"* ]]
+}
+
+# ── Gate E helpers: shared local infrastructure is a machine-wide singleton ──
+# The singleton lives in coding-standards/infrastructure/oelite-stack/ (main
+# checkout or a .worktrees/<agent>-<iid>/ copy). in_shared_stack() accepts both.
+
+in_shared_stack() {
+  local d
+  d="$(dirname "$(canon "$1")")"
+  [[ "$d" == *"/infrastructure/oelite-stack" && "$d" == *"coding-standards"* ]]
+}
+
+is_compose_filename() {
+  local n
+  n="$(basename "$1")"
+  [[ "$n" == *compose*.yml || "$n" == *compose*.yaml ]]
+}
+
+# True if compose content declares a shared-stack service on an `image:` line.
+# Anchored to `image:` so a mention in a comment or a service NAME does not match.
+compose_declares_shared_infra() {
+  grep -Eqi '^[[:space:]]*image:[[:space:]]*["'"'"']?[^[:space:]"'"'"']*(mongo|redis|rabbitmq|minio|clickhouse|opensearch|cp-kafka)' <<<"$1"
+}
+
+# True if a docker CLI invocation names a shared-stack service image.
+docker_cmd_targets_shared_infra() {
+  grep -Eqi '(^|[[:space:]"])(mongo|redis|rabbitmq|minio|clickhouse|opensearch|cp-kafka)(:[0-9]|$|@)' <<<"$1" ||
+    grep -Eqi '(confluentinc/cp-kafka|apache/kafka|opensearchproject/opensearch|minio/minio|clickhouse/clickhouse-server)' <<<"$1"
+}
+
+# Extracts the value of the first -f/--file argument from a compose command.
+compose_file_from_cmd() {
+  local -a toks
+  read -r -a toks <<<"$1"
+  local i
+  for (( i=0; i<${#toks[@]}-1; i++ )); do
+    if [[ "${toks[i]}" == "-f" || "${toks[i]}" == "--file" ]]; then
+      printf '%s\n' "${toks[i+1]}"
+      return 0
+    fi
+  done
+  return 1
 }
 
 # Enclosing git worktree toplevel (only meaningful if in_worktree).
@@ -177,6 +229,43 @@ All code enters develop through reviewed Merge Requests."
 The worktree's .oe-scope file declares: $SCOPE_DESC
 Editing files outside that scope is forbidden to prevent cross-issue contamination."
       ;;
+    standalone-infra)
+      body="This compose file declares a SHARED local-infrastructure service.
+The 7 shared services (MongoDB, Redis, ClickHouse, Kafka, RabbitMQ, MinIO,
+OpenSearch) live ONCE per machine in the singleton stack:
+
+  coding-standards/infrastructure/oelite-stack/
+
+Agents MUST NOT create a second instance. That drains dev-machine resources
+and breaks the singleton model.
+
+Fix (integration tests / local dev need infra?):
+  cd coding-standards/infrastructure/oelite-stack
+  ./oelite-stack.sh health   # verify shared stack
+  ./oelite-stack.sh up       # start/restart the shared stack (idempotent)
+  ./oelite-stack.sh init     # one-time sharding + per-project namespaces
+
+Per-project isolation is via namespaces (db/bucket/vhost/topic-prefix/redis-db),
+defined in your appsettings.init.json — NOT separate containers.
+
+Need a service the shared stack lacks? Open a GitLab issue for Ethan instead
+of starting a local container. See standard 16-SHARED-LOCAL-INFRASTRUCTURE.md."
+      ;;
+    standalone-infra-cmd)
+      body="This command would start a SECOND instance of a SHARED service.
+The 7 shared services run ONCE per machine in the singleton stack.
+
+Agents MUST NOT run 'docker run' for these services, and MUST NOT bring up a
+per-repo compose file that defines them.
+
+Fix (need the shared services up?):
+  cd coding-standards/infrastructure/oelite-stack
+  ./oelite-stack.sh health   # see what is down
+  ./oelite-stack.sh up       # start/restart the shared stack (idempotent)
+
+If the shared stack is down, RESTART IT — do not create a replacement.
+See standard 16-SHARED-LOCAL-INFRASTRUCTURE.md."
+      ;;
     *)
       body="(unknown reason)"
       ;;
@@ -246,6 +335,17 @@ case "$TOOL_NAME" in
       # The file is already inside WT_TOP (by construction of in_worktree),
       # so the scope check is satisfied by construction. We only use this
       # to surface scope context in blocked messages.
+    fi
+
+    # E. NO-STANDALONE-INFRA — block per-repo compose files that declare a
+    #    shared-stack service. The singleton lives in oelite-stack/.
+    if is_compose_filename "$FILE" && ! in_shared_stack "$FILE"; then
+      payload_text=""
+      [[ -f "$FILE" ]] && payload_text="$(cat "$FILE" 2>/dev/null || true)"
+      payload_text+=$'\n'"$FILE_BODY"
+      if compose_declares_shared_infra "$payload_text"; then
+        block "$FILE_PATH" "standalone-infra" "$TOOL_NAME"
+      fi
     fi
 
     exit 0
@@ -408,5 +508,36 @@ IFS='|' read -ra segs <<< "$CMD"
 for segment in "${segs[@]}"; do
   check_segment "$segment"
 done
+
+# ── Gate E (Bash): block docker commands that would create a second instance ──
+# The shared stack is managed only through oelite-stack.sh / the shared compose
+# file. `docker run <shared-image>` and per-repo compose files are prohibited.
+is_docker_cmd() {
+  [[ "$CMD" =~ (^|[[:space:]/])docker(-compose)?[[:space:]] ]]
+}
+if is_docker_cmd; then
+  compose_arg="$(compose_file_from_cmd "$CMD" || true)"
+  if [[ -n "$compose_arg" ]] && in_shared_stack "$compose_arg"; then
+    exit 0
+  fi
+  # `docker run` is never the sanctioned way to manage the singleton.
+  if [[ "$CMD" =~ (^|[[:space:]/])docker(-compose)?[[:space:]]+(-[^[:space:]]+[[:space:]]+)*run([[:space:]]|$) ]] \
+     && docker_cmd_targets_shared_infra "$CMD"; then
+    block "$CMD" "standalone-infra-cmd" "Bash(docker run)"
+  fi
+  # docker compose up/down/start against a per-repo file that defines a shared service.
+  if [[ -n "$compose_arg" && "$compose_arg" != /* ]]; then
+    compose_arg="$PWD/$compose_arg"
+  fi
+  if [[ -n "$compose_arg" && -f "$compose_arg" ]] && compose_declares_shared_infra "$(cat "$compose_arg" 2>/dev/null)"; then
+    block "$compose_arg" "standalone-infra-cmd" "Bash(docker compose)"
+  fi
+  # No explicit -f: a bare `docker compose up` inside a repo whose default
+  # compose file defines a shared service is the most common violation.
+  if [[ -z "$compose_arg" && -f "./docker-compose.yml" ]] \
+     && compose_declares_shared_infra "$(cat ./docker-compose.yml 2>/dev/null)"; then
+    block "./docker-compose.yml" "standalone-infra-cmd" "Bash(docker compose)"
+  fi
+fi
 
 exit 0

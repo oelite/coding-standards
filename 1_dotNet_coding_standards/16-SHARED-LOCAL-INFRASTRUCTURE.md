@@ -75,6 +75,7 @@ mongodb://localhost:27017/?directConnection=true
 4. **Per-project databases/buckets/vhosts** are created by running the project onboarding scripts during project setup. Credentials are stored in the project's own gitignored secrets. Never committed to coding-standards.
 5. **Worktrees never spin up containers.** New worktrees connect to the existing singleton.
 6. **CI/CD skips integration tests** with `Category!=Integration` filter. CI never touches this stack.
+7. **A stopped or unhealthy shared service is recovered by restarting the shared stack** — `./oelite-stack.sh up` (idempotent). This is the ONLY sanctioned recovery path. **Never** create a replacement container, a per-repo compose file, or a Testcontainers fixture to stand in for a down service.
 
 ### ❌ PROHIBITED
 
@@ -83,6 +84,25 @@ mongodb://localhost:27017/?directConnection=true
 3. **Port remapping** of the canonical ports (27017, 6379, 9092, etc.) per-repo. Conflict resolution is at the compose level, not the app level.
 4. **Connecting directly to mongod** processes (configsvr, shard). All app code MUST go through mongos on 27017.
 5. **Embedding infra credentials in repos.** Use the `.env.example` template; copy to `.env` (gitignored) for local overrides.
+6. **`docker run` for a shared service.** `docker run mongo:8.0`, `docker run -p 27020:27017 redis`, etc. are all prohibited — the stack is managed exclusively through `oelite-stack.sh`.
+7. **Testcontainers-style ephemeral containers** for MongoDB/Redis/etc. in integration test fixtures. The shared stack is the machine-wide singleton; a per-test container is a second instance.
+8. **Per-repo test/dev compose files that define shared services** — `docker-compose.test.yml`, `docker-compose.dev.yml`, `docker-compose.int.yml`, `docker-compose.e2e.yml`. Machine-enforced by `oelite-guard.sh` Gate E.
+
+> **Escape hatch (AC-011):** if a project genuinely needs a service the shared stack does not provide, **do not start a local container**. Open a GitLab issue for **Ethan (DevOps)** to add the service to the shared stack. The singleton is the correct long-term answer; a one-off container is not.
+
+## Service Recovery Procedure (Shared Stack Is Down)
+
+When a shared service is stopped, unhealthy, or missing, follow this procedure — **do not** create a replacement container.
+
+| Step | Command | Purpose |
+|---|---|---|
+| 1 | `cd coding-standards/infrastructure/oelite-stack && ./oelite-stack.sh health` | Identify which service is down or unhealthy |
+| 2 | `./oelite-stack.sh up` | Start/restart the shared stack (idempotent — safe to re-run) |
+| 3 | `./oelite-stack.sh init` | One-time sharding + per-project namespaces (idempotent) |
+| 4 | `./oelite-stack.sh health` | Re-verify all services healthy |
+| 5 | `dotnet test --filter "Category=Integration"` | Run integration tests against the shared stack |
+
+**If the shared stack still will not come up** (image pull failure, port conflict, volume corruption): escalate to **Ethan (DevOps)** with a GitLab issue on `oelite/coding-standards`. Do **not** work around the failure by starting a per-repo container — that reintroduces the exact problem this standard exists to prevent.
 
 ## Migration From Per-Repo Compose
 
@@ -115,6 +135,8 @@ For every PR touching infra config, verify:
 - [ ] `redis-cli ping` returns PONG
 - [ ] `curl http://localhost:9200/_cluster/health` shows OpenSearch healthy
 - [ ] No new `docker-compose.dev.yml` was added to any repo (grep across monorepo)
+- [ ] **No per-repo infrastructure containers running** — `docker ps --filter "name=oelite-"` shows exactly the services in `docker-compose.shared.yml`, and no stray `*-test-mongodb`, `apex-*`, `kortex-*`, `core-*`, `hermes-*` containers
+- [ ] `oelite-guard.sh` Gate E is active: attempting to create a per-repo compose file with a shared service is blocked (exit 2)
 
 ## Handoff
 
@@ -127,3 +149,4 @@ After implementation, the **shared infrastructure** is owned by **Ethan** (DevOp
 | 2026-09-07 | Ethan (Sisyphus) | Initial creation — replaces per-repo compose model. Issue #23. |
 | 2026-09-10 | Ethan (Sisyphus) | Add OpenSearch 3.7.0 + Dashboards UI to shared stack. Issue #25. |
 | 2026-09-10 | Ethan (Sisyphus) | Refactor init scripts to project-level; remove per-project hardcodings from shared infrastructure. |
+| 2026-09-28 | Ethan (Sisyphus) | Add Service Recovery Procedure; extend PROHIBITED with `docker run`, Testcontainers, and per-repo test/dev compose files; add Gate E verification. Issue #29. |
