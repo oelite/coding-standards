@@ -478,7 +478,8 @@ The wrapper is the only supported interface for issues, worktrees, MRs, comments
 | `issue-assign <project> <iid> <agent>` | Assign issue to agent |
 | `issue-comment <project> <iid> <agent> <msg>` | Comment on issue as agent |
 | `issue-status <project> <iid> <agent> <opened|closed>` | Open or close issue as agent |
-| `worktree-sync` | Safe sync — updates local develop WITHOUT checking it out (avoids footgun) |
+| `issue-label <project> <iid> <agent> <label>...` | Add/replace issue labels as agent |
+| `worktree-sync` | Refreshes origin/develop; fast-forwards local develop only when not checked out anywhere; preserves divergent/dirty checkouts |
 | `worktree-create <agent> <branch> [--base <base>] [--issue <iid>] [--no-issue]` | Create worktree (issue-keyed; --base for non-develop cutoffs) |
 | `worktree-list` | List active worktrees |
 | `worktree-remove <worktree-id>` | Remove worktree (worktree-id = agent or agent-issue) |
@@ -491,8 +492,9 @@ The wrapper is the only supported interface for issues, worktrees, MRs, comments
 | `mr-comment <project> <iid> <agent> <msg>` | Comment on MR as agent |
 | `mr-approve <project> <iid> <agent>` | Approve MR as agent |
 | `mr-update <project> <iid> <agent> <title> [desc]` | Update MR title and description (pass empty title to keep current) |
-| `mr-status <project> <iid>` | Check MR merge status (open/merged/closed/cannot_merge) — used for merge verification |
-| `mr-check-eligible <project>` | List open MRs that meet auto-approval criteria (CI green, no conflicts, age ≥10min) |
+| `mr-status <project> <iid>` | Report merge readiness, pipeline evidence, and approvals independently (fail-closed) — used for merge verification |
+| `mr-show <project> <iid> [--raw]` | Read MR description and authoritative status fields through the wrapper |
+| `mr-check-eligible <project>` | List MRs meeting approval eligibility using per-MR pipeline evidence; unknown evidence fails closed |
 | `mr-auto-approve <project>` | Auto-approve all eligible MRs (uses caller's PAT for attribution) |
 | `mr-merge <project> <iid> <agent>` | Merge MR as agent (via GitLab API) |
 | `mr-close <project> <iid> <agent>` | Close MR without merging (e.g. superseded/obsolete) |
