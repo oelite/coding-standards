@@ -1,0 +1,19 @@
+# Regression pipeline for the shared GitLab wrapper and its readiness classifier.
+# Runs only offline, secret-free suites: parser fixtures and disposable local Git
+# repositories. No Keychain, no network credentials, no shared Docker stack.
+stages:
+  - test
+
+scripts-regression:
+  stage: test
+  image: alpine:3.20
+  before_script:
+    - apk add --no-cache git zsh python3
+  script:
+    - python3 -m unittest discover -s tests/regression -p 'test_bug045_mr.py' -v
+    - python3 tests/regression/test_parser_bugs.py
+    - zsh tests/regression/test_bug045_sync.zsh
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
+    - if: '$CI_COMMIT_BRANCH == "develop"'
+  timeout: 10m
