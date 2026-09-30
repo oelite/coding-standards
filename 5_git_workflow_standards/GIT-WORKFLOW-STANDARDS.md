@@ -570,7 +570,7 @@ Git worktrees have **independent working directories and indexes**. When the hum
 - No agent process is interrupted. No files change under any agent.
 - Multiple agents can be working simultaneously — none are affected.
 
-The coordination happens via **GitLab MRs**. Agents push their feature branch, create an MR, and the MR is reviewed and merged via GitLab. The local `develop` is synced via `git pull origin develop` after MR merges.
+The coordination happens via **GitLab MRs**. Agents push their feature branch, create an MR, and the MR is reviewed and merged via GitLab. After MR merges, agents refresh `origin/develop` via `worktree-sync`; checked-out or divergent local `develop` remains unchanged.
 
 #### The Two Sync Points
 
@@ -1144,7 +1144,7 @@ Review open issues. Emma assigns issues to agents before work begins.
 scripts/oelite-gitlab.sh worktree-create <agent> <branch>
 ```
 
-This creates the worktree directory, checks out a new feature branch from the latest local `develop`, and sets the per-worktree git config (`user.name` and `user.email`).
+This creates the worktree directory, checks out a new feature branch from `origin/develop` by default, and sets the per-worktree git config (`user.name` and `user.email`). Refresh `origin/develop` first; a preserved local `develop` is not the default branch base.
 
 ### Step 6: Work in the Worktree
 
