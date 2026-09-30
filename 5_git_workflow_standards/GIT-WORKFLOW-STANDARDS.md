@@ -51,7 +51,7 @@ When agents push feature branches and create MRs, they need to branch from the l
 
 ## 1.6 Post-Merge Sync (After MR Merged)
 
-After an MR is merged into `develop` (via GitLab), the local `develop` must be synced before starting new work:
+After an MR is merged into `develop` (via GitLab), refresh `origin/develop` before starting new work. As in §1.5, checked-out or divergent local `develop` is preserved:
 
 ```bash
 # After your MR is merged (or any MR is merged)
