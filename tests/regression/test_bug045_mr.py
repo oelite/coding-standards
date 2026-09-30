@@ -1,6 +1,10 @@
 import contextlib
 import importlib.util
 import io
+import json
+import subprocess
+import sys
+import tempfile
 import unittest
 from pathlib import Path
 
@@ -91,6 +95,84 @@ class ReadinessTests(unittest.TestCase):
         self.assertIn("Merge Readiness: ready", text)
         self.assertIn("pipeline=success", text)
         self.assertIn("Approvals:       unknown", text)
+
+    def test_approval_axis_returns_state_count_required(self):
+        self.assertEqual(
+            module.approval_axis({"approved": True, "approved_by": [{"user": {}}, {"user": {}}],
+                                  "approvals_required": 2}),
+            ("approved", "2", "2"))
+        self.assertEqual(
+            module.approval_axis({"approved": False, "approved_by": []}),
+            ("pending", "0", "n/a"))
+        self.assertEqual(module.approval_axis(None), ("unknown", "n/a", "n/a"))
+        self.assertEqual(module.approval_axis({}), ("unknown", "n/a", "n/a"))
+
+    def test_status_report_renders_approval_counts_separately(self):
+        output = io.StringIO()
+        with contextlib.redirect_stdout(output):
+            module.status_report(self.fixture(),
+                                 {"approved": True, "approved_by": [{"user": {}}],
+                                  "approvals_required": 2})
+        self.assertIn("Approvals:       approved (approved_by=1, approvals_required=2)",
+                      output.getvalue())
+        output = io.StringIO()
+        with contextlib.redirect_stdout(output):
+            module.status_report(self.fixture(), None)
+        self.assertIn("Approvals:       unknown (approved_by=n/a, approvals_required=n/a)",
+                      output.getvalue())
+
+
+class ReadinessCliTests(unittest.TestCase):
+    SCRIPT = Path(__file__).resolve().parents[2] / "scripts" / "mr_readiness.py"
+
+    def fixture(self, **changes):
+        mr = dict(iid=1, state="opened", title="Fix", draft=False,
+                  has_conflicts=False, detailed_merge_status="mergeable",
+                  sha="abc", head_pipeline=dict(id=1, sha="abc", status="success"),
+                  labels=[], created_at="2020-01-01T00:00:00Z")
+        mr.update(changes)
+        return mr
+
+    def run_cli(self, command, mrs):
+        with tempfile.NamedTemporaryFile("w", suffix=".ndjson", delete=False) as handle:
+            for mr in mrs:
+                handle.write(json.dumps(mr) + "\n")
+            path = handle.name
+        try:
+            proc = subprocess.run([sys.executable, str(self.SCRIPT), command, path],
+                                  capture_output=True, text=True)
+        finally:
+            Path(path).unlink()
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        return proc.stdout
+
+    def test_ids_prints_only_eligible_iids(self):
+        eligible = self.fixture()
+        ineligible = self.fixture(iid=2, head_pipeline=None)
+        self.assertEqual(self.run_cli("ids", [eligible, ineligible]).split(), ["1"])
+
+    def test_ids_prints_nothing_when_none_eligible(self):
+        output = self.run_cli("ids", [self.fixture(iid=3, draft=True)])
+        self.assertEqual(output.strip(), "")
+
+    def test_eligible_table_separates_pipeline_and_merge_evidence(self):
+        output = self.run_cli("eligible", [self.fixture(),
+                                           self.fixture(iid=2, head_pipeline=None),
+                                           self.fixture(iid=3, detailed_merge_status="conflict",
+                                                        has_conflicts=True)])
+        self.assertIn("IID    | State   | Merge", output)
+        self.assertIn("OK ELIGIBLE", output)
+        self.assertIn("XX INELIGIBLE", output)
+        self.assertIn("pipeline evidence unknown", output)
+        self.assertNotIn("CI not green", output)
+        rows = [line.split("|") for line in output.splitlines() if line[:1].isdigit()]
+        self.assertEqual([row[0].strip() for row in rows], ["1", "2", "3"])
+        self.assertEqual([row[4].strip() for row in rows],
+                         ["OK ELIGIBLE", "XX INELIGIBLE", "XX INELIGIBLE"])
+
+    def test_eligible_handles_empty_input(self):
+        output = self.run_cli("eligible", [])
+        self.assertIn("No open merge requests found.", output)
 
 
 if __name__ == "__main__":

@@ -33,14 +33,15 @@ def pipeline_axis(mr):
 
 def approval_axis(approvals):
     if not isinstance(approvals, dict):
-        return "unknown", "unavailable"
+        return "unknown", "n/a", "n/a"
     approved_by = approvals.get("approved_by") or []
     required = approvals.get("approvals_required")
+    required_text = "n/a" if required is None else str(required)
     if approvals.get("approved") is True:
-        return "approved", str(len(approved_by))
+        return "approved", str(len(approved_by)), required_text
     if approvals.get("approved") is False:
-        return "pending", str(len(approved_by))
-    return "unknown", "unavailable"
+        return "pending", str(len(approved_by)), required_text
+    return "unknown", "n/a", required_text
 
 
 def age_minutes(mr):
@@ -79,7 +80,7 @@ def eligibility(mr):
 def status_report(mr, approvals):
     merge, merge_raw = merge_axis(mr)
     pipeline, pipeline_raw = pipeline_axis(mr)
-    approval, approval_raw = approval_axis(approvals)
+    approval, approved_by, approvals_required = approval_axis(approvals)
     iid = mr.get("iid", "")
     state = mr.get("state", "unknown")
     print("=== MR Status ===")
@@ -89,7 +90,7 @@ def status_report(mr, approvals):
     print(f"  State:           {state}")
     print(f"  Merge Readiness: {merge} (detailed_merge_status/merge_status={merge_raw})")
     print(f"  CI Pipeline:     {pipeline} (head_pipeline.status={pipeline_raw})")
-    print(f"  Approvals:       {approval} (approved_by/approvals_required={approval_raw})")
+    print(f"  Approvals:       {approval} (approved_by={approved_by}, approvals_required={approvals_required})")
     print(f"  Source Branch:   {mr.get('source_branch', '')}")
     print(f"  Target Branch:   {mr.get('target_branch', '')}")
     print(f"  URL:             {mr.get('web_url', '')}")
