@@ -40,9 +40,9 @@ When agents push feature branches and create MRs, they need to branch from the l
 
 | Scenario | Action |
 |----------|--------|
-| Starting a new task session | `../../coding-standards/scripts/oelite-gitlab.sh worktree-sync` — safe sync, does NOT checkout develop |
+| Starting a new task session | `../../coding-standards/scripts/oelite-gitlab.sh worktree-sync` — safe sync, never checks out develop; worktrees branch from the refreshed `origin/develop` |
 | Switching between tasks | Re-sync before creating a new worktree |
-| Emma doing planning | Sync `develop` before creating tasks or assigning issues |
+| Emma doing planning | Refresh `origin/develop` before creating tasks or assigning issues |
 | Human developer working | Already on `develop` — pull before any commit: `git checkout develop && git pull origin develop` |
 
 **Failure to sync before starting work means the agent branches from stale `develop`, increasing merge conflicts and rebases required.**
@@ -62,8 +62,8 @@ After an MR is merged into `develop` (via GitLab), refresh `origin/develop` befo
 
 | Role | Responsibility |
 |------|---------------|
-| **Any agent** | MUST sync `develop` after their MR is merged and before starting a new task |
-| **Emma** (Product Coordinator) | MUST sync `develop` before starting any planning session or creating tasks |
+| **Any agent** | MUST refresh `origin/develop` after their MR is merged and before starting a new task; local `develop` may remain pinned |
+| **Emma** (Product Coordinator) | MUST refresh `origin/develop` before starting any planning session or creating tasks; local `develop` may remain pinned |
 | **Human developers** | MUST sync `develop` before any commit or push (`git checkout develop && git pull origin develop`) |
 
 ### Stale `develop` Detection
