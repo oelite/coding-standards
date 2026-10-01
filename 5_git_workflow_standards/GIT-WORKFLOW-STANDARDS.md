@@ -8,7 +8,7 @@ The OElite team consists of 12 members (10 AI agents + human developers) who wor
 
 ### Key Principles
 
-- **`develop` is the single source of truth.** The local `develop` branch is always a mirror of `origin/develop`. Agents pull before starting work and pull after MR merges. No local-only commits accumulate.
+- **`develop` is the single source of truth.** `worktree-sync` refreshes `origin/develop` and fast-forwards local `develop` only when it is not checked out and the update is a safe fast-forward. Checked-out, dirty, or divergent local checkouts are preserved. Agents sync before starting work and after MR merges.
 - **Worktree isolation.** AI agents work in isolated git worktrees, never in the main working directory.
 - **MR-Centric Model.** All code enters `develop` through GitLab Merge Requests. Agents push their feature branch, create an MR, and the MR is reviewed and merged via GitLab. No local merges — GitLab is the integration point.
 - **Review before merge.** Code review is a gate, not an afterthought. No code enters `develop` without required approvals. GitLab enforces this natively.
@@ -21,7 +21,7 @@ The OElite team consists of 12 members (10 AI agents + human developers) who wor
 
 **This is a non-negotiable gate. No work begins until this step is completed.**
 
-Before ANY task begins — including research, exploration, planning, or code review — the main directory's `develop` branch MUST be pulled from remote:
+Before ANY task begins — including research, exploration, planning, or code review — `origin/develop` MUST be refreshed from remote. Local `develop` is advanced only when not checked out anywhere and a fast-forward is safe; checked-out or divergent refs are preserved:
 
 ```bash
 # HARD GATE — execute before any task, including reading code or creating a worktree
@@ -40,9 +40,9 @@ When agents push feature branches and create MRs, they need to branch from the l
 
 | Scenario | Action |
 |----------|--------|
-| Starting a new task session | `../../coding-standards/scripts/oelite-gitlab.sh worktree-sync` — safe sync, does NOT checkout develop |
+| Starting a new task session | `../../coding-standards/scripts/oelite-gitlab.sh worktree-sync` — safe sync, never checks out develop; worktrees branch from the refreshed `origin/develop` |
 | Switching between tasks | Re-sync before creating a new worktree |
-| Emma doing planning | Sync `develop` before creating tasks or assigning issues |
+| Emma doing planning | Refresh `origin/develop` before creating tasks or assigning issues |
 | Human developer working | Already on `develop` — pull before any commit: `git checkout develop && git pull origin develop` |
 
 **Failure to sync before starting work means the agent branches from stale `develop`, increasing merge conflicts and rebases required.**
@@ -51,7 +51,7 @@ When agents push feature branches and create MRs, they need to branch from the l
 
 ## 1.6 Post-Merge Sync (After MR Merged)
 
-After an MR is merged into `develop` (via GitLab), the local `develop` must be synced before starting new work:
+After an MR is merged into `develop` (via GitLab), refresh `origin/develop` before starting new work. As in §1.5, checked-out or divergent local `develop` is preserved:
 
 ```bash
 # After your MR is merged (or any MR is merged)
@@ -62,8 +62,8 @@ After an MR is merged into `develop` (via GitLab), the local `develop` must be s
 
 | Role | Responsibility |
 |------|---------------|
-| **Any agent** | MUST sync `develop` after their MR is merged and before starting a new task |
-| **Emma** (Product Coordinator) | MUST sync `develop` before starting any planning session or creating tasks |
+| **Any agent** | MUST refresh `origin/develop` after their MR is merged and before starting a new task; local `develop` may remain pinned |
+| **Emma** (Product Coordinator) | MUST refresh `origin/develop` before starting any planning session or creating tasks; local `develop` may remain pinned |
 | **Human developers** | MUST sync `develop` before any commit or push (`git checkout develop && git pull origin develop`) |
 
 ### Stale `develop` Detection
@@ -570,7 +570,7 @@ Git worktrees have **independent working directories and indexes**. When the hum
 - No agent process is interrupted. No files change under any agent.
 - Multiple agents can be working simultaneously — none are affected.
 
-The coordination happens via **GitLab MRs**. Agents push their feature branch, create an MR, and the MR is reviewed and merged via GitLab. The local `develop` is synced via `git pull origin develop` after MR merges.
+The coordination happens via **GitLab MRs**. Agents push their feature branch, create an MR, and the MR is reviewed and merged via GitLab. After MR merges, agents refresh `origin/develop` via `worktree-sync`; checked-out or divergent local `develop` remains unchanged.
 
 #### The Two Sync Points
 
@@ -747,13 +747,14 @@ Every status change MUST be accompanied by:
 scripts/oelite-gitlab.sh mr-status <project> <mr-iid>
 ```
 
-Output shows one of: `open`, `merged`, `closed`, `cannot_merge`.
+The report shows MR state (`opened`, `merged`, or `closed`) separately from **Merge Readiness**, **CI Pipeline**, and **Approvals**. Unknown evidence is not a pass; mergeability does not prove CI success or approval.
 
-| MR Status | Action |
+| MR State / Evidence | Action |
 |-----------|--------|
 | `merged` | Proceed to label issue `Done` and close (see §8.2.2) |
-| `open` | Do NOT label `Done` — investigate why auto-merge hasn't occurred; may need manual merge or pipeline fix |
-| `cannot_merge` | Rebase the branch: `scripts/oelite-gitlab.sh sync <agent>`, push, then re-check |
+| `opened` | Do NOT label `Done` — inspect each readiness axis and investigate the actual blocker |
+| Merge readiness blocked by conflicts | Rebase the branch: `scripts/oelite-gitlab.sh sync <agent>`, push, then re-check; other blockers require their own remediation |
+| Pipeline failed or unknown | Inspect `mr-show`, `pipeline-jobs`, and `pipeline-job-trace`; missing, skipped, or stale pipeline evidence is not success |
 | `closed` (unmerged) | MR was closed without merging — create a new MR or investigate |
 
 **The reviewer who approves the MR is responsible for verifying the merge.** If the reviewer cannot verify (session ended), Emma MUST verify before closing the issue.
@@ -1020,10 +1021,13 @@ GitLab operations are available to both agents and humans. **Agents perform thei
 | `scripts/oelite-gitlab.sh mr-list <project>` | List open MRs | Anyone |
 | `scripts/oelite-gitlab.sh mr-comment <project> <iid> <agent> <message>` | Comment on an MR | Reviewer |
 | `scripts/oelite-gitlab.sh mr-approve <project> <iid> <agent>` | Approve an MR | Assigned reviewer |
-| `scripts/oelite-gitlab.sh mr-status <project> <iid>` | Check MR merge status (open/merged/closed/cannot_merge) | Reviewer or Emma — merge verification |
+| `scripts/oelite-gitlab.sh mr-status <project> <iid>` | Report merge readiness, pipeline evidence, and approvals independently (fail-closed) | Reviewer or Emma — merge verification |
+| `scripts/oelite-gitlab.sh mr-show <project> <iid> [--raw]` | Read MR description and authoritative status fields (including head pipeline) through the wrapper | Anyone — read-only inspection |
+| `scripts/oelite-gitlab.sh pipeline-jobs <project> <pipeline-id>` | List jobs and failure reasons for a pipeline | Reviewer — CI diagnosis |
+| `scripts/oelite-gitlab.sh pipeline-job-trace <project> <job-id>` | Fetch a job trace (may contain sensitive build output; fetch only when needed) | Reviewer — CI diagnosis |
 | `scripts/oelite-gitlab.sh issue-audit <project>` | List issues still open whose linked MRs are merged | Isabella or Emma — post-merge audit |
-| `scripts/oelite-gitlab.sh mr-check-eligible <project>` | List MRs meeting auto-approval criteria | Emma or reviewer |
-| `scripts/oelite-gitlab.sh mr-auto-approve <project>` | Auto-approve all eligible MRs | Emma or reviewer |
+| `scripts/oelite-gitlab.sh mr-check-eligible <project>` | List MRs meeting approval eligibility using per-MR pipeline evidence; unknown evidence fails closed | Emma or reviewer |
+| `scripts/oelite-gitlab.sh mr-auto-approve <project>` | Auto-approve all eligible MRs (approvals are recorded under Emma's identity — the wrapper uses the `emma` PAT) | Emma or reviewer |
 
 ---
 
@@ -1037,7 +1041,7 @@ An MR is eligible for auto-approval when **ALL** of the following conditions are
 
 | # | Criterion | Check Method |
 |---|-----------|-------------|
-| 1 | **CI Pipeline Passed** | All pipeline stages are green (`merge_status == "can_be_merged"`) |
+| 1 | **CI Pipeline Passed** | The per-MR head pipeline has an ID, `status == "success"`, and a SHA matching the MR head SHA. Missing, incomplete, skipped, or stale evidence fails closed. `merge_status == "can_be_merged"` is NOT CI evidence. |
 | 2 | **No Requested Changes** | No reviewer has requested changes on the MR |
 | 3 | **Implementer Verification Complete** | The implementing agent's verification is complete (build + tests pass) |
 | 4 | **No Scope Conflicts** | No other open MR overlaps with the same directory scope (Emma's directory ownership) |
@@ -1056,7 +1060,8 @@ scripts/oelite-gitlab.sh mr-auto-approve oelite/helios/core
 
 ### 10.3 Auto-Approval Rules
 
-- **Auto-approval appears under the agent who runs the command** (not the implementing agent)
+- **Auto-approval is recorded under Emma's GitLab identity** — `mr-auto-approve` approves with the `emma` PAT, regardless of which agent runs the command
+- **CI evidence is separate from mergeability** — `merge_status`/`detailed_merge_status` describe conflicts and merge constraints only; eligibility reads the per-MR `head_pipeline` and fails closed when the evidence is missing
 - **Only one agent runs auto-approve per project at a time** — Emma coordinates who runs it (typically the reviewer whose turn it is: Grace for backend, Felix for frontend, Marcus for architecture)
 - **Auto-approved MRs are automatically merged by GitLab** and the source branch is auto-deleted (no manual steps needed)
 - **If any criterion fails**, the MR is listed as ineligible with the reason, and the reviewer must manually review it
@@ -1123,7 +1128,7 @@ Confirms all PATs are valid and can authenticate against GitLab.
 scripts/oelite-gitlab.sh worktree-sync
 ```
 
-**This is the first critical sync point.** Updates local `develop` from `origin/develop` WITHOUT checking it out — avoids the footgun of switching to develop and then forgetting to switch back. Pre-commit hook will block commits on develop anyway.
+**This is the first critical sync point.** Refreshes `origin/develop` without switching branches. Local `develop` is fast-forwarded only when it is not checked out in any worktree and is not divergent; checked-out or divergent local refs are preserved. The pre-commit hook blocks commits on `develop` anyway.
 
 ### Step 4: Fetch Issues
 
@@ -1139,7 +1144,7 @@ Review open issues. Emma assigns issues to agents before work begins.
 scripts/oelite-gitlab.sh worktree-create <agent> <branch>
 ```
 
-This creates the worktree directory, checks out a new feature branch from the latest local `develop`, and sets the per-worktree git config (`user.name` and `user.email`).
+This creates the worktree directory, checks out a new feature branch from `origin/develop` by default, and sets the per-worktree git config (`user.name` and `user.email`). Refresh `origin/develop` first; a preserved local `develop` is not the default branch base.
 
 ### Step 6: Work in the Worktree
 
@@ -1584,6 +1589,7 @@ GitLab will re-evaluate mergeability automatically.
 | Jun 22 2026 | **Major Update**: Reverted to **MR-Centric Model**. Local Merge Model proved inconsistent for agentic teams — agents frequently skipped steps or performed them out of order, leading to stale local `develop` branches and unreviewed code accumulation. New workflow: agents push feature branches → create MRs → reviewers approve → GitLab auto-merges + auto-deletes branch. All code enters `develop` through reviewed MRs. Review is a gate, not an afterthought. |
 | Jun 29 2026 | **SCRUM/Dev Workflow Enhancement**: Added explicit GitLab issue lifecycle protocol at §8. Defined mandatory status labels (`To Do`, `In Progress`, `PR Review`, `Ready to Merge`, `Done`, `Blocked`), status transition rules, role responsibilities, SCRUM integration, issue comment templates, and definition-of-done checklist. Added `issue-status` CLI command. Emma owns issue assignment and closure; assignees update labels during workflow; reviewers set `Ready to Merge`; Isabella validates before `Done`. |
 | Jul 21 2026 | **Issue-First & Closure Enforcement**: Added §1.7 Issue-First hard gate — no work begins without a GitLab issue with full elaboration. Added §8.2.1 Merge Verification (mandatory `mr-status` check before labeling `Done`). Added §8.2.2 Issue Closure Enforcement (`issue-status closed` in same session as merge verification). Added §8.2.3 Post-Merge Issue Audit (`issue-audit` CLI). Updated §8.3 role responsibilities (Emma verifies merge + closes; Reviewer verifies merge; Isabella runs audit). Updated §8.4 Definition of Done with closure + audit checkboxes. Updated §14 Post-MR checklist with merge verification + closure steps. Added `mr-status` and `issue-audit` CLI commands. |
+| Sep 30 2026 | **Readiness & sync accuracy correction (BUG-045 / !57 review)**: §10.1 CI criterion now requires a matching head-SHA `head_pipeline` with `status == "success"` and fails closed — `merge_status == "can_be_merged"` is explicitly NOT CI evidence. §8.2.1 documents the three-axis `mr-status` report. §10.3 corrects auto-approval attribution (recorded under Emma's identity via the `emma` PAT). §1 Key Principles and §11 sync wording now match `worktree-sync`'s real behavior: refresh `origin/develop`, fast-forward local `develop` only when unchecked-out and non-divergent, preserve dirty/divergent checkouts. §9.5 adds the read-only `mr-show`, `pipeline-jobs`, and `pipeline-job-trace` commands. |
 
 ---
 

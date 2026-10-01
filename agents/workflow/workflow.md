@@ -256,7 +256,7 @@ scripts/oelite-gitlab.sh worktree-create daniel feature/US-001-auth
 | `issue-comment <project> <iid> <agent> <msg>` | Comment on issue |
 | `issue-status <project> <iid> <agent> <opened\|closed>` | Open or close issue |
 | `worktree-create <agent> <branch> [base]` | Create worktree with agent identity |
-| `worktree-sync` | Safe sync — updates local develop WITHOUT checking it out (avoids footgun) |
+| `worktree-sync` | Safe sync — refreshes origin/develop; fast-forwards local develop only when unchecked-out and non-divergent (never checks out develop) |
 | `worktree-list` | List active worktrees |
 | `worktree-cleanup <agent> [--delete-branch]` | **HARD GATE** — verify linked MR, prune orphans, remove merged/closed worktree, optionally delete local branch |
 | `worktree-cleanup --all` | Sweep all worktrees in the current repo; remove those whose linked MR is merged/closed (Emma periodic sweep) |
@@ -265,8 +265,12 @@ scripts/oelite-gitlab.sh worktree-create daniel feature/US-001-auth
 | `mr-list <project>` | List open MRs |
 | `mr-comment <project> <iid> <agent> <msg>` | Comment on MR |
 | `mr-approve <project> <iid> <agent>` | Approve MR |
-| `mr-check-eligible <project>` | List MRs meeting auto-approval criteria |
-| `mr-auto-approve <project>` | Auto-approve eligible MRs |
+| `mr-status <project> <iid>` | Report state, merge readiness, CI evidence, and approvals independently |
+| `mr-show <project> <iid> [--raw]` | Read MR description and authoritative status fields |
+| `pipeline-jobs <project> <pipeline-id>` | List pipeline jobs and failure reasons |
+| `pipeline-job-trace <project> <job-id>` | Read job trace; fetch only when needed because output may be sensitive |
+| `mr-check-eligible <project>` | Check per-MR pipeline evidence; unknown evidence fails closed |
+| `mr-auto-approve <project>` | Auto-approve eligible MRs under Emma's identity via the `emma` PAT |
 | `sync <agent>` | Rebase worktree on latest `origin/develop` |
 | `status` | Show worktree status |
 

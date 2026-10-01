@@ -807,7 +807,7 @@ cmd_worktree_create() {
     if [[ "$behind_count" -gt 0 ]]; then
       echo "[WARN] Local develop is $behind_count commits behind origin/develop" >&2
       echo "       Recommend: oelite-gitlab.sh worktree-sync" >&2
-      echo "       Or: git fetch origin develop:develop" >&2
+      echo "       Or (refreshes origin/develop only, never the checked-out branch): git fetch origin --prune develop" >&2
     fi
   fi
 
@@ -937,22 +937,37 @@ cmd_worktree_sync() {
     echo ""
   fi
 
-  # Fetch develop from origin and update local ref without checking out
-  git fetch origin develop:develop --quiet 2>&1 || {
-    echo "[ERROR] Failed to sync develop. Check network or origin connectivity." >&2
+  # Explicit destination works even with a restricted remote fetch configuration.
+  git fetch --no-tags origin '+refs/heads/develop:refs/remotes/origin/develop' --quiet 2>&1 || {
+    echo "[ERROR] Failed to fetch origin/develop. Check network, origin access, or missing remote develop branch." >&2
     return 1
   }
+  echo "[OK] origin/develop refreshed"
 
-  echo "[OK] Local develop synced to origin/develop"
-  echo "  Current HEAD: $(git log -1 --oneline develop 2>/dev/null)"
+  local records line checkout_path="" pinned=false
+  records=$(git worktree list --porcelain) || return 1
+  while IFS= read -r line; do
+    case "$line" in
+      worktree\ *) checkout_path="${line#worktree }" ;;
+      'branch refs/heads/develop')
+        echo "[INFO] Local develop unchanged: checked out at $checkout_path"
+        pinned=true
+        ;;
+    esac
+  done <<< "$records"
+  $pinned && return 0
 
-  # Check if we're out of date vs the main directory
-  local behind_count
-  behind_count=$(git rev-list --left-right --count "develop...origin/develop" 2>/dev/null | awk '{print $2}' || echo "0")
-  if [[ "$behind_count" -gt 0 ]]; then
-    echo "  [WARN] Local develop is still $behind_count commits behind."
-    echo "  Re-run: oelite-gitlab.sh worktree-sync"
+  local old target
+  target=$(git rev-parse refs/remotes/origin/develop) || return 1
+  old=$(git rev-parse --verify refs/heads/develop 2>/dev/null) || old=""
+  if [[ -n "$old" ]] && ! git merge-base --is-ancestor "$old" "$target"; then
+    echo "[WARN] Local develop is ahead or divergent; preserved. origin/develop is current."
+    return 0
   fi
+  # Compare-and-swap prevents overwriting a concurrently advanced branch.
+  git update-ref refs/heads/develop "$target" "$old" || return 1
+  echo "[OK] Local develop synced to origin/develop (fast-forward only)"
+  echo "  Current HEAD: $(git log -1 --oneline develop)"
 }
 
 cmd_worktree_list() {
@@ -1548,152 +1563,85 @@ print(json.dumps(payload))
   fi
 }
 
-cmd_mr_check_eligible() {
+# Resolve open-MR pipeline evidence: the list endpoint on this instance does NOT
+# serialize head_pipeline, so eligibility verdicts come from per-MR GETs. Prints
+# newline-delimited single-MR JSON (JSONL) to stdout; returns 1 on any fetch failure.
+fetch_mr_details() {
   local project_path="$1"
+  local encoded_path pat iids iid
 
-  local encoded_path
   encoded_path=$(url_encode_path "$project_path")
-
-  local pat
   pat=$(get_pat "emma")
   api_get "/projects/$encoded_path/merge_requests?state=opened&per_page=100" "$pat"
-
   if [[ "$_API_STATUS" != "200" ]]; then
-    echo "[ERROR] Failed to fetch MRs (HTTP $_API_STATUS)" >&2
+    echo "[ERROR] Failed to fetch MR list (HTTP $_API_STATUS)" >&2
     api_error_hint "$_API_STATUS" "$project_path"
-    echo "$_API_RESPONSE" >&2
+    return 1
+  fi
+  iids=$(printf '%s' "$_API_RESPONSE" | python3 -c 'import json,sys; [print(m.get("iid", "")) for m in json.load(sys.stdin)]') || return 1
+
+  for iid in ${(f)iids}; do
+    [[ -z "$iid" ]] && continue
+    api_get "/projects/$encoded_path/merge_requests/$iid" "$pat"
+    if [[ "$_API_STATUS" != "200" ]]; then
+      echo "[ERROR] Failed to fetch MR !$iid details (HTTP $_API_STATUS) — pipeline evidence unresolvable, failing closed." >&2
+      return 1
+    fi
+    printf '%s\n' "$_API_RESPONSE"
+  done
+}
+
+cmd_mr_check_eligible() {
+  local project_path="${1:-}"
+
+  [[ -z "$project_path" ]] && { echo "[ERROR] Project path required" >&2; return 1; }
+
+  if [[ "${2:-}" == "--raw" ]]; then
+    local encoded_path
+    encoded_path=$(url_encode_path "$project_path")
+    api_get "/projects/$encoded_path/merge_requests?state=opened&per_page=100" "$(get_pat "emma")"
+    if [[ "$_API_STATUS" != "200" ]]; then
+      echo "[ERROR] Failed to fetch MRs (HTTP $_API_STATUS)" >&2
+      api_error_hint "$_API_STATUS" "$project_path"
+      echo "$_API_RESPONSE" >&2
+      return 1
+    fi
+    printf '%s\n' "$_API_RESPONSE" | python3 -m json.tool
+    return 0
+  fi
+
+  local details_file
+  details_file=$(mktemp)
+  if ! fetch_mr_details "$project_path" > "$details_file"; then
+    rm -f "$details_file"
     return 1
   fi
 
-  printf '%s\n' "$_API_RESPONSE" | python3 -c '
-import sys, json
-from datetime import datetime, timezone
-
-mrs = json.load(sys.stdin)
-if not mrs:
-    print("No open merge requests found.")
-    sys.exit(0)
-
-print("{:<6} | {:<40} | {:<16} | {:<12} | ELIGIBLE | REASONS".format("IID", "Title", "Author", "Status"))
-print("-" * 130)
-
-for mr in mrs:
-    iid = str(mr.get("iid", ""))
-    title = mr.get("title", "")[:40]
-    author = mr.get("author", {}).get("username", "")[:16]
-    merge_status = mr.get("merge_status", "")
-    state = mr.get("state", "")
-    created_at = mr.get("created_at", "")
-    labels = mr.get("labels", [])
-
-    reasons = []
-    eligible = True
-
-    if merge_status not in ("can_be_merged", "merge_status_can_be_merged"):
-        eligible = False
-        reasons.append("CI not green")
-
-    if mr.get("has_conflicts", False):
-        eligible = False
-        reasons.append("Has conflicts")
-
-    if title.startswith("WIP:"):
-        eligible = False
-        reasons.append("WIP flag")
-
-    if "requires-manual-review" in labels:
-        eligible = False
-        reasons.append("Manual review flag")
-
-    if created_at:
-        try:
-            created_dt = datetime.fromisoformat(created_at.replace("Z", "+00:00"))
-            now_dt = datetime.now(timezone.utc)
-            age_minutes = (now_dt - created_dt).total_seconds() / 60
-            if age_minutes < 10:
-                eligible = False
-                reasons.append("Age <10m ({:.0f}m)".format(age_minutes))
-        except (ValueError, TypeError):
-            pass
-
-    status_str = "ELIGIBLE" if eligible else "INELIGIBLE"
-    reasons_str = ", ".join(reasons) if reasons else "-"
-    color_marker = "OK" if eligible else "XX"
-
-    print("{:<6} | {:<40} | {:<16} | {:<12} | {} {:<11} | {}".format(
-        iid, title, author, merge_status or state, color_marker, status_str, reasons_str))
-
-print()
-print("Total: " + str(len(mrs)) + " open MR(s)")
-'
+  local rc=0
+  python3 "$SCRIPT_DIR/mr_readiness.py" eligible "$details_file" || rc=$?
+  rm -f "$details_file"
+  return "$rc"
 }
 
 cmd_mr_auto_approve() {
-  local project_path="$1"
+  local project_path="${1:-}"
+  [[ -z "$project_path" ]] && { echo "[ERROR] Project path required" >&2; return 1; }
 
   local encoded_path
   encoded_path=$(url_encode_path "$project_path")
 
-  local pat
-  pat=$(get_pat "emma")
-  api_get "/projects/$encoded_path/merge_requests?state=opened&per_page=100" "$pat"
+  echo "Checking eligible MRs (per-MR pipeline evidence)..."
+  echo ""
 
-  if [[ "$_API_STATUS" != "200" ]]; then
-    echo "[ERROR] Failed to fetch MRs (HTTP $_API_STATUS)" >&2
-    api_error_hint "$_API_STATUS" "$project_path"
-    echo "$_API_RESPONSE" >&2
+  local eligible_mrs details_file rc=0
+  details_file=$(mktemp)
+  if ! fetch_mr_details "$project_path" > "$details_file"; then
+    rm -f "$details_file"
     return 1
   fi
-
-  echo "Checking eligible MRs..."
-  echo ""
-  
-  local eligible_mrs
-  eligible_mrs=$(printf '%s\n' "$_API_RESPONSE" | python3 -c '
-import sys, json
-from datetime import datetime, timezone
-
-mrs = json.load(sys.stdin)
-eligible = []
-
-for mr in mrs:
-    iid = mr.get("iid")
-    title = mr.get("title", "")
-    merge_status = mr.get("merge_status", "")
-    labels = mr.get("labels", [])
-    created_at = mr.get("created_at", "")
-    has_conflicts = mr.get("has_conflicts", False)
-
-    is_eligible = True
-
-    if merge_status not in ("can_be_merged", "merge_status_can_be_merged"):
-        is_eligible = False
-
-    if has_conflicts:
-        is_eligible = False
-
-    if title.startswith("WIP:"):
-        is_eligible = False
-
-    if "requires-manual-review" in labels:
-        is_eligible = False
-
-    if created_at and is_eligible:
-        try:
-            created_dt = datetime.fromisoformat(created_at.replace("Z", "+00:00"))
-            now_dt = datetime.now(timezone.utc)
-            age_minutes = (now_dt - created_dt).total_seconds() / 60
-            if age_minutes < 10:
-                is_eligible = False
-        except (ValueError, TypeError):
-            pass
-
-    if is_eligible:
-        eligible.append(iid)
-
-for iid in eligible:
-    print(iid)
-')
+  eligible_mrs=$(python3 "$SCRIPT_DIR/mr_readiness.py" ids "$details_file") || rc=$?
+  rm -f "$details_file"
+  [[ "$rc" != 0 ]] && return "$rc"
 
   if [[ -z "$eligible_mrs" ]]; then
     echo "[INFO] No eligible MRs found for auto-approval."
@@ -1718,10 +1666,10 @@ for iid in eligible:
     
     if [[ "$_API_STATUS" == "200" || "$_API_STATUS" == "201" ]]; then
       echo "[OK] MR !$mr_iid approved (auto-approved)"
-      ((approved_count++))
+      approved_count=$((approved_count + 1))
     else
       echo "[WARN] MR !$mr_iid approval failed (HTTP $_API_STATUS) — may require manual approval" >&2
-      ((failed_count++))
+      failed_count=$((failed_count + 1))
     fi
   done <<< "$eligible_mrs"
   
@@ -1756,53 +1704,151 @@ cmd_mr_status() {
     return 1
   fi
 
-  printf '%s\n' "$_API_RESPONSE" | python3 -c '
-import sys, json
+  local mr_file approvals_file rc=0
+  mr_file=$(mktemp)
+  approvals_file=$(mktemp)
+  printf '%s' "$_API_RESPONSE" > "$mr_file"
+  if api_get "/projects/$encoded_path/merge_requests/$mr_iid/approvals" "$pat" && [[ "$_API_STATUS" == "200" ]]; then
+    printf '%s' "$_API_RESPONSE" > "$approvals_file"
+  else
+    echo "[WARN] Approval evidence unavailable (HTTP $_API_STATUS)" >&2
+    printf 'null' > "$approvals_file"
+  fi
+  python3 "$SCRIPT_DIR/mr_readiness.py" status "$mr_file" "$approvals_file" || rc=$?
+  rm -f "$mr_file" "$approvals_file"
+  return "$rc"
+}
+
+cmd_mr_show() {
+  local project_path="${1:-}"
+  local mr_iid="${2:-}"
+  local mode="${3:-}"
+
+  [[ -z "$project_path" ]] && { echo "[ERROR] Project path required" >&2; return 1; }
+  [[ -z "$mr_iid" ]] && { echo "[ERROR] MR IID required" >&2; return 1; }
+  [[ -n "$mode" && "$mode" != "--raw" ]] && { echo "[ERROR] Unknown option: $mode (only --raw is supported)" >&2; return 1; }
+
+  local encoded_path
+  encoded_path=$(url_encode_path "$project_path")
+
+  local pat
+  pat=$(get_pat "emma")
+  api_get "/projects/$encoded_path/merge_requests/$mr_iid" "$pat"
+
+  if [[ "$_API_STATUS" != "200" ]]; then
+    echo "[ERROR] Failed to fetch MR !$mr_iid (HTTP $_API_STATUS)" >&2
+    api_error_hint "$_API_STATUS" "$project_path"
+    echo "$_API_RESPONSE" >&2
+    return 1
+  fi
+
+  if [[ "$mode" == "--raw" ]]; then
+    printf '%s\n' "$_API_RESPONSE" | python3 -m json.tool
+    return 0
+  fi
+
+  printf '%s\n' "$_API_RESPONSE" | python3 -c "
+import json, sys
 
 mr = json.load(sys.stdin)
-iid = mr.get("iid", "")
-title = mr.get("title", "")
-state = mr.get("state", "")
-merge_status = mr.get("merge_status", "")
-merged_at = mr.get("merged_at", "")
-merged_by = mr.get("merged_by", {}).get("username", "") if mr.get("merged_by") else ""
-source_branch = mr.get("source_branch", "")
-target_branch = mr.get("target_branch", "")
-web_url = mr.get("web_url", "")
+def user(obj):
+    return (obj or {}).get('username', '')
 
-# Normalize merge_status for display
-if merge_status in ("can_be_merged", "merge_status_can_be_merged"):
-    can_merge = "yes"
+print('=== MR Show ===')
+print(f\"  IID:                !{mr.get('iid', '')}\")
+print(f\"  Title:              {mr.get('title', '')}\")
+print(f\"  Author:             {user(mr.get('author'))}\")
+print(f\"  State:              {mr.get('state', '')}\")
+print(f\"  Draft:              {str(mr.get('draft', mr.get('work_in_progress', ''))).lower()}\")
+print(f\"  Source -> Target:   {mr.get('source_branch', '')} -> {mr.get('target_branch', '')}\")
+print(f\"  Source SHA:         {mr.get('sha', '')}\")
+print(f\"  Merge Status:       {mr.get('merge_status', '')}\")
+print(f\"  Detailed Status:    {mr.get('detailed_merge_status', 'n/a')}\")
+print(f\"  Has Conflicts:      {str(mr.get('has_conflicts', '')).lower()}\")
+print(f\"  Blocking Disc. Res: {str(mr.get('blocking_discussions_resolved', '')).lower()}\")
+hp = mr.get('head_pipeline')
+if isinstance(hp, dict):
+    print(f\"  Head Pipeline:      id={hp.get('id', '')} status={hp.get('status', '')} sha={hp.get('sha', '')}\")
+    print(f\"  Pipeline URL:       {hp.get('web_url', '')}\")
 else:
-    can_merge = "no"
-
-print("=== MR Status ===")
-print(f"  IID:           !{iid}")
-print(f"  Title:         {title}")
-print(f"  State:         {state}")
-print(f"  Merge Status:  {merge_status}")
-print(f"  Can Merge:     {can_merge}")
-if merged_at:
-    print(f"  Merged At:     {merged_at}")
-    print(f"  Merged By:     {merged_by}")
-print(f"  Source Branch: {source_branch}")
-print(f"  Target Branch: {target_branch}")
-print(f"  URL:           {web_url}")
+    print('  Head Pipeline:      none')
+print(f\"  Auto-merge:         {str(mr.get('merge_when_pipeline_succeeds', '')).lower()}\")
+print(f\"  Created At:         {mr.get('created_at', '')}\")
+print(f\"  Updated At:         {mr.get('updated_at', '')}\")
+if mr.get('merged_at'):
+    print(f\"  Merged At:          {mr.get('merged_at', '')}\")
+    print(f\"  Merged By:          {user(mr.get('merged_by'))}\")
+if mr.get('closed_at'):
+    print(f\"  Closed At:          {mr.get('closed_at', '')}\")
+labels = mr.get('labels', [])
+print(f\"  Labels:             {', '.join(labels) if labels else '-'}\")
+print(f\"  URL:                {mr.get('web_url', '')}\")
+desc = mr.get('description') or ''
 print()
+print('=== Description ===')
+print(desc if desc.strip() else '(empty)')
+"
+}
 
-# Summary line for scripting
-if state == "merged":
-    print(f"[OK] MR !{iid} is MERGED")
-elif state == "open":
-    if can_merge == "yes":
-        print(f"[INFO] MR !{iid} is OPEN and can be merged (auto-merge pending)")
-    else:
-        print(f"[WARN] MR !{iid} is OPEN but CANNOT be merged — resolve conflicts first")
-elif state == "closed":
-    print(f"[WARN] MR !{iid} is CLOSED (not merged) — may need a new MR")
-else:
-    print(f"[WARN] MR !{iid} state: {state}")
+cmd_pipeline_jobs() {
+  local project_path="${1:-}"
+  local pipeline_id="${2:-}"
+
+  [[ -z "$project_path" ]] && { echo "[ERROR] Project path required" >&2; return 1; }
+  [[ -z "$pipeline_id" || ! "$pipeline_id" == <-> ]] && { echo "[ERROR] Numeric pipeline ID required" >&2; return 1; }
+
+  local encoded_path pat
+  encoded_path=$(url_encode_path "$project_path")
+  pat=$(get_pat "emma")
+  api_get "/projects/$encoded_path/pipelines/$pipeline_id/jobs?per_page=100" "$pat"
+
+  if [[ "$_API_STATUS" != "200" ]]; then
+    echo "[ERROR] Failed to fetch jobs for pipeline $pipeline_id (HTTP $_API_STATUS)" >&2
+    api_error_hint "$_API_STATUS" "$project_path"
+    echo "$_API_RESPONSE" >&2
+    return 1
+  fi
+
+  printf '%s\n' "$_API_RESPONSE" | python3 -c '
+import json, sys
+
+jobs = json.load(sys.stdin)
+if not isinstance(jobs, list):
+    raise SystemExit("unexpected jobs response")
+if not jobs:
+    print("No jobs found for pipeline.")
+    raise SystemExit(0)
+
+print("ID     | STAGE        | STATUS     | NAME                           | FAILURE REASON")
+print("-" * 115)
+for job in jobs:
+    print("{:<6} | {:<12} | {:<10} | {:<30} | {}".format(
+        job.get("id", ""), job.get("stage", ""), job.get("status", ""),
+        job.get("name", ""), job.get("failure_reason") or "-"))
+print("\nJob trace may contain sensitive build output; fetch it only when needed.")
 '
+}
+
+cmd_pipeline_job_trace() {
+  local project_path="${1:-}"
+  local job_id="${2:-}"
+
+  [[ -z "$project_path" ]] && { echo "[ERROR] Project path required" >&2; return 1; }
+  [[ -z "$job_id" || ! "$job_id" == <-> ]] && { echo "[ERROR] Numeric job ID required" >&2; return 1; }
+
+  local encoded_path pat
+  encoded_path=$(url_encode_path "$project_path")
+  pat=$(get_pat "emma")
+  api_get "/projects/$encoded_path/jobs/$job_id/trace" "$pat"
+
+  if [[ "$_API_STATUS" != "200" ]]; then
+    echo "[ERROR] Failed to fetch trace for job $job_id (HTTP $_API_STATUS)" >&2
+    api_error_hint "$_API_STATUS" "$project_path"
+    echo "$_API_RESPONSE" >&2
+    return 1
+  fi
+
+  printf '%s\n' "$_API_RESPONSE"
 }
 
 cmd_mr_merge() {
@@ -2290,11 +2336,11 @@ COMMANDS:
     Example: oelite-gitlab.sh worktree-create marcus feature/spike --no-issue
 
  worktree-sync
- Safe sync: updates local develop from origin WITHOUT checking it out.
- Replaces the dangerous pattern: git checkout develop && git pull origin develop
- This avoids the footgun of switching to develop and then accidentally working there.
- Run this BEFORE worktree-create to ensure you branch from latest code.
- Example: oelite-gitlab.sh worktree-sync
+  Safe sync: refreshes origin/develop without checking out or switching branches.
+  If develop is checked out anywhere, it remains pinned and the command exits 0.
+  Otherwise local develop is updated with a fast-forward-only compare-and-swap.
+  Divergent local develop is preserved. Run this BEFORE worktree-create.
+  Example: oelite-gitlab.sh worktree-sync
 
  worktree-list
     List all active agent worktrees with branch, last commit, and sync status.
@@ -2363,9 +2409,25 @@ COMMANDS:
     Example: oelite-gitlab.sh mr-update uranus/origin-auth 420 isabella "fix: new title" "New description"
 
   mr-status <project-path> <mr-iid>
-    Check MR merge status (open/merged/closed/cannot_merge).
-    Used for merge verification before labeling an issue Done.
-    Example: oelite-gitlab.sh mr-status uranus/origin-auth 15
+     Report independent merge readiness, pipeline evidence, and approval state.
+     Used for merge verification before labeling an issue Done.
+     Example: oelite-gitlab.sh mr-status uranus/origin-auth 15
+
+   mr-show <project-path> <mr-iid> [--raw]
+     Show an MR description and authoritative status fields through the wrapper.
+     Use --raw to inspect the complete read-only API response.
+      Example: oelite-gitlab.sh mr-show uranus/origin-auth 15 --raw
+
+   pipeline-jobs <project-path> <pipeline-id>
+      List pipeline job status and failure reasons WITHOUT printing job traces.
+      Use this to diagnose a failed pipeline reported by mr-status / mr-show.
+      Example: oelite-gitlab.sh pipeline-jobs venus/mellow 9342
+
+   pipeline-job-trace <project-path> <job-id>
+      Print one job's trace for diagnosis. Treat the output as sensitive build data.
+      Example: oelite-gitlab.sh pipeline-job-trace venus/mellow 12345
+
+
 
   mr-close <project-path> <mr-iid> <agent>
     Close a merge request without merging (e.g. superseded, obsolete).
@@ -2377,7 +2439,11 @@ COMMANDS:
     Example: oelite-gitlab.sh issue-audit oelite/uranus/origin-auth
 
   mr-check-eligible <project-path>
-    Check which open MRs meet auto-approval criteria (CI green, no conflicts, not WIP, not manual-review flagged, age ≥10min).
+    Check which open MRs meet auto-approval criteria. Fetches the open-MR list,
+    then per-MR details for real head_pipeline evidence (the list endpoint does not
+    serialize pipelines). Eligible = mergeable content, pipeline success on head SHA,
+    not draft/WIP, not manual-review flagged, age >=10min. Unknown evidence fails closed.
+    Pass --raw to dump the read-only list endpoint response.
     Example: oelite-gitlab.sh mr-check-eligible oelite/helios/core
 
 mr-auto-approve <project-path>
@@ -2437,6 +2503,9 @@ case "$command" in
   mr-approve)     cmd_mr_approve "$@" ;;
   mr-update)      cmd_mr_update "$@" ;;
   mr-status)      cmd_mr_status "$@" ;;
+  mr-show)        cmd_mr_show "$@" ;;
+  pipeline-jobs)  cmd_pipeline_jobs "$@" ;;
+  pipeline-job-trace) cmd_pipeline_job_trace "$@" ;;
   mr-merge)       cmd_mr_merge "$@" ;;
   mr-close)       cmd_mr_close "$@" ;;
   mr-check-eligible) cmd_mr_check_eligible "$@" ;;
