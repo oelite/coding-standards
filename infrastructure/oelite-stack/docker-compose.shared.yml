@@ -323,6 +323,8 @@ services:
     environment:
       CLICKHOUSE_DB: default
       CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT: "1"
+      CLICKHOUSE_USER: ${CLICKHOUSE_ADMIN_USER:-oelite}
+      CLICKHOUSE_PASSWORD: ${CLICKHOUSE_ADMIN_PASSWORD}
     healthcheck:
       # Run an actual query, not just /ping: a memory-starved ClickHouse returns
       # 241 MEMORY_LIMIT_EXCEEDED on even `SELECT 1`, so this check MUST fail open.

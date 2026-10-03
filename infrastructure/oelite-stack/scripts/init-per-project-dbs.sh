@@ -1,50 +1,113 @@
 #!/bin/bash
 # OElite MongoDB per-project database setup (project-level onboarding).
-# Creates a database, dedicated user, and grants for a single project.
-#
-# This is NOT run by `oelite-stack.sh init`. Each project invokes it during its
-# own onboarding, passing its project slug:
-#   ./scripts/init-per-project-dbs.sh origin_auth
-#
-# The shared stack exposes only the root user on admin DB. Per-project users are
-# created by this script using the provided project slug.
+# Creates or repairs a database user and verifies the emitted SCRAM connection.
 set -euo pipefail
 
 PROJECT_DB="${1:-}"
 REPO_PATH="${2:-}"
+STACK_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
 if [ -z "$PROJECT_DB" ]; then
-  echo "ERROR: project database name required"
-  echo "Usage: $0 <project-db-name> [gitlab-path]"
-  echo "  e.g. $0 origin_auth oelite/uranus/origin-auth"
+  echo "ERROR: project database name required" >&2
+  echo "Usage: $0 <project-db-name> [gitlab-path]" >&2
+  exit 1
+fi
+
+load_env_value() {
+  local key="$1"
+  if [ -n "${!key:-}" ]; then
+    return
+  fi
+  if [ -f "$STACK_DIR/.env" ]; then
+    while IFS='=' read -r env_key env_value; do
+      if [ "$env_key" = "$key" ]; then
+        printf -v "$key" '%s' "$env_value"
+        export "$key"
+        return
+      fi
+    done < "$STACK_DIR/.env"
+  fi
+}
+
+load_env_value MONGO_ROOT_USER
+load_env_value MONGO_ROOT_PASSWORD
+MONGO_ROOT_USER="${MONGO_ROOT_USER:-admin}"
+if [ -z "${MONGO_ROOT_PASSWORD:-}" ]; then
+  echo "ERROR: MONGO_ROOT_PASSWORD is required; load the shared stack .env first." >&2
   exit 1
 fi
 
 MONGO_HOST="${OELITE_MONGO_HOST:-localhost}"
 MONGO_PORT="${OELITE_MONGO_PORT:-27017}"
-ADMIN_USER="${MONGO_ROOT_USER:-admin}"
-ADMIN_PASS="${MONGO_ROOT_PASSWORD:-}"
+PROJECT_USER="oelite_${PROJECT_DB}"
+PROJECT_PASS="${PROJECT_USER}_dev"
 
-# Use admin DB to create the root user (via localhost exception on first run)
+mongo_exec() {
+  docker exec \
+    -e "MONGO_ADMIN_USER=$MONGO_ROOT_USER" \
+    -e "MONGO_ADMIN_PASS=$MONGO_ROOT_PASSWORD" \
+    -e "MONGO_PROJECT_DB=$PROJECT_DB" \
+    -e "MONGO_PROJECT_USER=$PROJECT_USER" \
+    -e "MONGO_PROJECT_PASS=$PROJECT_PASS" \
+    oelite-mongos mongosh --quiet --host "$MONGO_HOST" --port "$MONGO_PORT" "$@"
+}
+
+mongo_auth_exec() {
+  mongo_exec -u "$MONGO_ROOT_USER" -p "$MONGO_ROOT_PASSWORD" --authenticationDatabase admin "$@"
+}
+
 echo "============================================================"
 echo "  OElite MongoDB per-project database setup: $PROJECT_DB"
 echo "============================================================"
 echo ""
 
-# Switch to the project DB and create a collection marker
-echo "[$PROJECT_DB] Creating database and user..."
-MONGO_PROJECT_DB="$PROJECT_DB" MONGO_PROJECT_USER="oelite_${PROJECT_DB}" MONGO_PROJECT_PASS="oelite_${PROJECT_DB}_dev" \
-  mongosh -u "$ADMIN_USER" -p "$ADMIN_PASS" --quiet --host "$MONGO_HOST" --port "$MONGO_PORT" --authenticationDatabase admin --eval '
-var db = db.getSiblingDB(process.env.MONGO_PROJECT_DB);
-try { db.createCollection("_init_marker"); } catch (e) { if (!/already exists/i.test(e.message)) throw e; }
-db.createUser({
-  user: process.env.MONGO_PROJECT_USER,
-  pwd: process.env.MONGO_PROJECT_PASS,
-  roles: [{ role: "readWrite", db: process.env.MONGO_PROJECT_DB }]
-});
-' 2>/dev/null || echo "  (user may already exist - safe to ignore)"
+if ! mongo_exec --eval 'db.adminCommand({ ping: 1 }).ok' >/dev/null; then
+  echo "ERROR: mongos is not reachable; run ./oelite-stack.sh up and ./oelite-stack.sh init first." >&2
+  exit 1
+fi
 
-echo ""
+ensure_project_user() {
+  local script
+  script=$(cat <<'EOF'
+var adminDb = db.getSiblingDB("admin");
+var root = adminDb.getUser(process.env.MONGO_ADMIN_USER);
+if (root) {
+  adminDb.updateUser(process.env.MONGO_ADMIN_USER, { pwd: process.env.MONGO_ADMIN_PASS });
+} else {
+  adminDb.createUser({ user: process.env.MONGO_ADMIN_USER, pwd: process.env.MONGO_ADMIN_PASS, roles: ["root"] });
+}
+var projectDb = db.getSiblingDB(process.env.MONGO_PROJECT_DB);
+try { projectDb.createCollection("_init_marker"); } catch (error) { if (!/already exists/i.test(error.message)) throw error; }
+var projectUser = projectDb.getUser(process.env.MONGO_PROJECT_USER);
+if (!projectUser) {
+  projectDb.createUser({ user: process.env.MONGO_PROJECT_USER, pwd: process.env.MONGO_PROJECT_PASS, roles: [{ role: "readWrite", db: process.env.MONGO_PROJECT_DB }] });
+} else {
+  projectDb.updateUser(process.env.MONGO_PROJECT_USER, { pwd: process.env.MONGO_PROJECT_PASS, roles: [{ role: "readWrite", db: process.env.MONGO_PROJECT_DB }] });
+}
+EOF
+)
+  if ! mongo_auth_exec --eval "$script" >/dev/null 2>&1; then
+    if ! mongo_exec --eval "$script" >/dev/null; then
+      echo "ERROR: MongoDB onboarding failed; root credentials were rejected and trusted reconciliation was unavailable." >&2
+      exit 1
+    fi
+    echo "Root password reconciled to the shared stack .env over the trusted local connection."
+  fi
+}
+
+ensure_project_user
+
+if ! docker exec \
+  -e "MONGO_PROJECT_DB=$PROJECT_DB" \
+  -e "MONGO_PROJECT_USER=$PROJECT_USER" \
+  -e "MONGO_PROJECT_PASS=$PROJECT_PASS" \
+  oelite-mongos mongosh --quiet --host "$MONGO_HOST" --port "$MONGO_PORT" \
+  -u "$PROJECT_USER" -p "$PROJECT_PASS" --authenticationDatabase "$PROJECT_DB" \
+  --eval 'var status = db.runCommand({ connectionStatus: 1 }); if (!status.authInfo.authenticatedUsers.some(function (user) { return user.user === process.env.MONGO_PROJECT_USER; })) { throw new Error("project user authentication failed"); } var projectDb = db.getSiblingDB(process.env.MONGO_PROJECT_DB); projectDb.getCollection("_init_marker").findOne();' >/dev/null 2>&1; then
+  echo "ERROR: MongoDB project-user SCRAM verification failed; connection string was not emitted." >&2
+  exit 1
+fi
+
 echo "Connection string for appsettings:"
-echo "  $PROJECT_DB: mongodb://oelite_${PROJECT_DB}:oelite_${PROJECT_DB}_dev@localhost:27017/$PROJECT_DB?authSource=$PROJECT_DB"
+echo "  $PROJECT_DB: mongodb://$PROJECT_USER:$PROJECT_PASS@localhost:27017/$PROJECT_DB?authSource=$PROJECT_DB"
 echo ""

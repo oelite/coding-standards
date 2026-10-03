@@ -69,6 +69,8 @@ case "$cmd" in
     echo "Running one-time init (MongoDB CSRS → shard → add-shard)..."
     docker compose -f docker-compose.shared.yml --profile init up
     echo ""
+    ./scripts/init-clickhouse-users.sh
+    echo ""
     echo "Init complete. Run './oelite-stack.sh health' to verify."
     echo ""
     echo "Per-project databases/vhosts/buckets are created by each project during onboarding."
