@@ -100,9 +100,20 @@ onboarding. Run the project-level init scripts from the project's own
 ```
 
 The scripts are idempotent and accept the project slug as the only argument.
+The MongoDB onboarding script reads the shared root credentials, creates or repairs
+the project user, and verifies SCRAM authentication through mongos before it prints
+a connection string. Authentication or provisioning errors stop the script.
 Project credentials are stored in the project's own gitignored secrets
 (`appsettings.init.json`, `.env`, etc.) — **never** in the shared
 `infrastructure/oelite-stack/.env`.
+
+ClickHouse is provisioned from `CLICKHOUSE_ADMIN_USER` and
+`CLICKHOUSE_ADMIN_PASSWORD` in the shared `.env`; the compose service maps these
+to the image's `CLICKHOUSE_USER` and `CLICKHOUSE_PASSWORD` variables. Run
+`./scripts/init-clickhouse-users.sh` during stack initialization to verify the
+same credentials used by health checks and chmonitor. Existing stacks with
+conflicting legacy ClickHouse user storage must be repaired through the approved
+credential-rotation procedure; this check never deletes volumes or access data.
 
 ## Debug / Monitoring UIs
 
