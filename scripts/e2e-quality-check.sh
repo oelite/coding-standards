@@ -17,17 +17,14 @@
 set -euo pipefail
 SCRIPT_DIR="${0:A:h}"
 
+DOCUMENT_BODY_PATTERN="expect\\(.*locator\\([\"'](body|html)[\"']\\)\\).*toBeVisible"
 TAUTOLOGICAL_PATTERNS=(
-  'expect.*body.*toBeVisible'
-  'expect.*html.*toBeVisible'
-  'expect.*page.*toHaveURL()'
+  "$DOCUMENT_BODY_PATTERN"
+  'expect.*page.*toHaveURL\(\)'
   'toBeGreaterThanOrEqual(0)'
 )
 
-FORBIDDEN_ASSERTION_PATTERNS=(
-  'expect.*body.*toBeVisible'
-  'expect.*html.*toBeVisible'
-)
+FORBIDDEN_ASSERTION_PATTERNS=("$DOCUMENT_BODY_PATTERN")
 
 TARGET_DIR=""
 FIX_MODE=false
@@ -116,6 +113,10 @@ fi
 print_section "CHECK 1: Tautological/No-Op Assertions"
 TAUTOLOGY_FOUND=false
 
+find_scan_files() {
+  find "$TARGET_DIR" \( -name '*.spec.ts' -o -name '*.spec.tsx' -o -name '*.ts' \) -not -name '*.d.ts' -print0 2>/dev/null || true
+}
+
 for pattern in "${TAUTOLOGICAL_PATTERNS[@]}"; do
   while IFS= read -r result; do
     [[ -z "$result" ]] && continue
@@ -123,7 +124,7 @@ for pattern in "${TAUTOLOGICAL_PATTERNS[@]}"; do
     line=$(echo "$result" | cut -d: -f2)
     
     if $FIX_MODE && [[ " ${FORBIDDEN_ASSERTION_PATTERNS[*]} " =~ " $pattern " ]]; then
-      if sed -i '' "/$pattern/d" "$file" 2>/dev/null; then
+      if sed -i '' -E "/$pattern/d" "$file" 2>/dev/null; then
         echo "  🔧 FIXED: Removed tautological assertion in $file:$line"
         FIXED_COUNT=$((FIXED_COUNT + 1))
       fi
@@ -131,7 +132,7 @@ for pattern in "${TAUTOLOGICAL_PATTERNS[@]}"; do
       print_violation "$file" "$line" "$pattern"
       TAUTOLOGY_FOUND=true
     fi
-  done < <(grep -rn "$pattern" "$TARGET_DIR" 2>/dev/null || true)
+  done < <(find_scan_files | xargs -0 grep -nE "$pattern" 2>/dev/null || true)
 done
 
 if ! $TAUTOLOGY_FOUND; then
@@ -177,7 +178,7 @@ fi
 
 # CHECK 4: AC Traceability
 print_section "CHECK 4: AC Traceability (US-XXX/AC-YYY)"
-AC_REF_COUNT=$(grep -rn 'US-[0-9]\|AC-[0-9]' "$TARGET_DIR" 2>/dev/null | wc -l | tr -d ' ')
+AC_REF_COUNT=$( (grep -rn 'US-[0-9]\|AC-[0-9]' "$TARGET_DIR" 2>/dev/null || true) | wc -l | tr -d ' ')
 
 if [[ "$AC_REF_COUNT" -eq 0 ]]; then
   print_warning "No test files reference user story acceptance criteria"
@@ -187,7 +188,7 @@ fi
 
 # CHECK 5: Data Persistence
 print_section "CHECK 5: Data Persistence (page.reload())"
-PERSISTENCE_COUNT=$(grep -rn 'page\.reload\|page\.refresh' "$TARGET_DIR" 2>/dev/null | wc -l | tr -d ' ')
+PERSISTENCE_COUNT=$( (grep -rn 'page\.reload\|page\.refresh' "$TARGET_DIR" 2>/dev/null || true) | wc -l | tr -d ' ')
 
 if [[ "$PERSISTENCE_COUNT" -eq 0 ]]; then
   print_warning "No tests verify data persistence via page.reload()"
