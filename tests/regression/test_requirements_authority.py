@@ -80,6 +80,20 @@ STATUS_REGISTER_DIFF = """diff --git a/docs/requirements-status.json b/docs/requ
 +{"BR-09-018": "implemented", "BR-31-011": "resolved"}
 """
 
+# The regression file itself (tests/...) embeds nested diff fixtures; those
+# nested fixture lines must not be re-parsed as factual-document additions.
+NESTED_FIXTURE_DIFF = """diff --git a/tests/regression/test_requirements_authority.py b/tests/regression/test_requirements_authority.py
+--- a/tests/regression/test_requirements_authority.py
++++ b/tests/regression/test_requirements_authority.py
+@@ -17,0 +18,3 @@
++CLEAN_DIFF = \"\"\"diff --git a/docs/business/rules/BR-09-mfa.md b/docs/business/rules/BR-09-mfa.md
++--- a/docs/business/rules/BR-09-mfa.md
+++++ b/docs/business/rules/BR-09-mfa.md
++@@ -10,2 +10,4 @@
+++The wizard is now implemented via src/X.cs. MR !517 merged.
++\"\"\"
+"""
+
 
 class RequirementsAuthorityValidatorTests(unittest.TestCase):
     def run_validator(self, diff_text, *extra):
@@ -144,6 +158,10 @@ class RequirementsAuthorityValidatorTests(unittest.TestCase):
 
     def test_status_register_path_out_of_scope(self):
         result = self.run_validator(STATUS_REGISTER_DIFF)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+
+    def test_nested_diff_fixture_not_reparsed(self):
+        result = self.run_validator(NESTED_FIXTURE_DIFF)
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
 
     def test_missing_input_errors(self):

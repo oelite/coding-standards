@@ -190,10 +190,16 @@ def parse_added_lines(diff_text: str) -> list[tuple[str, int, str]]:
     out: list[tuple[str, int, str]] = []
     current_file = ""
     new_line = 0
+    in_hunk = False
     for line in diff_text.splitlines():
-        if line.startswith("+++"):
-            # +++ b/path/to/file.md
-            name = line[4:].strip() if len(line) > 4 else ""
+        if line.startswith("diff --git "):
+            current_file = ""
+            in_hunk = False
+            continue
+        if not in_hunk and line.startswith("+++ "):
+            # File header outside a hunk. Inside a hunk, added content can
+            # itself start with `++` (for example a nested diff fixture).
+            name = line[4:].strip()
             if name.startswith("b/"):
                 name = name[2:]
             current_file = name
@@ -201,13 +207,16 @@ def parse_added_lines(diff_text: str) -> list[tuple[str, int, str]]:
         if line.startswith("@@"):
             m = re.search(r"\+(\d+)", line)
             new_line = int(m.group(1)) if m else 0
+            in_hunk = True
             continue
-        if line.startswith("+") and not line.startswith("+++"):
+        if not in_hunk:
+            continue
+        if line.startswith("+"):
             out.append((current_file, new_line, line[1:]))
             new_line += 1
-        elif line.startswith("-") and not line.startswith("---"):
+        elif line.startswith("-"):
             continue
-        elif line.startswith(("diff --git", "index ", "---")):
+        elif line.startswith("\\ No newline at end of file"):
             continue
         else:
             # context line
