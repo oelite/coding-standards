@@ -1113,11 +1113,60 @@ scripts/oelite-gitlab.sh worktree-check-stale
 
 ---
 
+## 10. Requirements Authority Violations
+
+### Definition
+
+**Requirements authority violations** inject implementation/delivery state into factual requirements documents — BRD, SRS, business rulebook (`docs/business/rules/`), user stories, process flows, and `.spec/0.1/0.2` business/software requirement files. These are approved statements of desired behavior (see `6_documentation_standards/REQUIREMENTS-AUTHORITY.md`); delivery state belongs in GitLab and delivery records. Contaminated requirements stop being a reliable source of authority for the whole team.
+
+### Prohibited Patterns
+
+**❌ FORBIDDEN — Implementation status inside rulebook/requirements files:**
+
+```markdown
+#### Implementation status (issue #798)
+Implemented on `feature/daniel-798-jwt-key-provider` (PR pending review).
+**RESOLVED (issue #798 / MR !517)**: abstraction in place; 25 unit tests pass.
+Gaps vs Current Code: ...
+
+# ✅ CORRECT: state the rule normatively; delivery state lives in GitLab
+### BR-31-011: signing-key-stability
+JWT signing keys MUST remain valid across rolling deploys.
+```
+
+**❌ FORBIDDEN — Delivery tracking inside user stories:**
+
+```markdown
+> **Status**: In Progress | **Sprint**: 14 | **Assigned to**: daniel
+- [x] All acceptance criteria pass
+| Developer | Daniel | ✅ Complete | 2026-10-13 | |
+
+# ✅ CORRECT: header carries document approval status + GitLab issue link only
+> **Status**: Active  > **GitLab Issue**: #142
+```
+
+### Detection Checklist for Reviewers
+
+- [ ] Does the MR change factual requirements files? If yes, run `python3 scripts/check-requirements-authority.py --diff <MR-diff-file>` (or `--staged` locally).
+- [ ] Any added "Implementation status", "Gaps vs current code", MR/issue status, code-path evidence, test tallies, branch names, DoD checkboxes, or sign-off rows in those files?
+- [ ] Is every factual change backed by an approved decision reference (issue/change request) in Change History?
+
+**If ANY detected → REJECT MR** with the validator output attached. The validator has no inline bypass. If a detector is wrong, fix the narrowly scoped detector and add a regression test in a reviewed standards MR; do not suppress the finding in the affected change.
+
+### Why This Matters
+
+1. **Authority erosion**: agents and humans can no longer tell approved behavior from sprint notes; requirement conflicts get "resolved" by whoever edits last.
+2. **Silent rewrites**: implementation-driven edits redefine approved behavior without a business decision.
+3. **Drift and duplication**: inline status copies GitLab state into static files, where it rots.
+
+---
+
 ## Related Documentation
 
 - [AGENTS.md](../../AGENTS.md) — Team roles and workflow chains
 - [TASK-TEMPLATES.md](./TASK-TEMPLATES.md) — Task creation and Definition of Done
 - [ISSUE-MR-TEMPLATES.md](./ISSUE-MR-TEMPLATES.md) — GitLab issue and MR templates
+- [REQUIREMENTS-AUTHORITY.md](../6_documentation_standards/REQUIREMENTS-AUTHORITY.md) — Requirements authority policy
 - [1_dotNet_coding_standards/](../1_dotNet_coding_standards/) — .NET backend standards
 - [4_react_nextjs_coding_standards/](../4_react_nextjs_coding_standards/) — React/Next.js standards
 - [3_angular_coding_standards/](../3_angular_coding_standards/) — Angular standards
@@ -1130,3 +1179,4 @@ scripts/oelite-gitlab.sh worktree-check-stale
 |------|--------|---------|---------|
 | 2026-07-09 | Sisyphus (per user request) | 1.0.0 | Initial version - defines prohibited patterns to prevent stub/fake/simplified implementations from being approved in MRs |
 | 2026-09-02 | Isabella (per TASK-008) | 1.1.0 | Added §9 "Orphaned Worktree / Stale Branch" — hard-gate enforcement for post-merge cleanup, `worktree-cleanup` subcommand, and reviewer detection checklist |
+| 2026-10-13 | Isabella (per issue #40) | 1.2.0 | Added §10 "Requirements Authority Violations" — delivery-state injection into factual requirements is a review-reject category, with validator-backed detection checklist |

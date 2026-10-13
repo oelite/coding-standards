@@ -47,10 +47,12 @@ coding-standards/
 │   ├── GIT-WORKFLOW-STANDARDS.md          # Main GitLab MR-centric workflow
 │   ├── WORKTREE-OWNER-DNA.md              # Commit attribution protocol
 │   ├── TASK-TEMPLATES.md                  # Task creation, bug fix, DoR, DoD
-│   └── ISSUE-MR-TEMPLATES.md              # GitLab issue and MR templates
+│   ├── ISSUE-MR-TEMPLATES.md              # GitLab issue and MR templates
+│   └── PROHIBITED-PATTERNS.md             # Review-reject patterns (incl. requirements-authority §10)
 │
 ├── 6_documentation_standards/             # Documentation templates
-│   └── DOC-STANDARDS.md                   # BRD, SRS, User Story, README, User Guide templates
+│   ├── DOC-STANDARDS.md                   # BRD, SRS, User Story, README, User Guide templates
+│   └── REQUIREMENTS-AUTHORITY.md          # Factual-requirements governance + business rulebook standard
 │
 └── .gitlab/                               # GitLab golden-standard templates
     ├── issue_templates/                   # Feature, Bug, Task issue templates
@@ -136,7 +138,8 @@ The OElite standards are automatically applied via `AGENTS.md` at the project ro
 |----------|----------|---------|
 | Task / Bug / Sprint | `5_git_workflow_standards/TASK-TEMPLATES.md` | Task creation, bug fixes, Definition of Ready/Done |
 | GitLab Issue / MR | `5_git_workflow_standards/ISSUE-MR-TEMPLATES.md` | Reference templates for `.gitlab/` folders |
-| Documentation | `6_documentation_standards/DOC-STANDARDS.md` | BRD, SRS, User Story, README, User Guide templates |
+| Documentation templates | `6_documentation_standards/DOC-STANDARDS.md` | BRD, SRS, User Story, README, User Guide templates |
+| Requirements authority | `6_documentation_standards/REQUIREMENTS-AUTHORITY.md` | Factual-doc governance, source hierarchy, amendment process, business-rulebook standard |
 
 ---
 
@@ -175,6 +178,7 @@ The OElite standards are automatically applied via `AGENTS.md` at the project ro
 
 | Date | Update |
 |------|--------|
+| Oct 2026 | Requirements-authority governance (issue #40): `REQUIREMENTS-AUTHORITY.md` standard, de-lifecycled requirements templates, `requirements-authority` skill, `scripts/check-requirements-authority.py` tripwire + regression tests + pre-commit/CI wiring |
 | Jun 2026 | Extracted documentation templates to `6_documentation_standards/DOC-STANDARDS.md`; added `TASK-TEMPLATES.md` and `ISSUE-MR-TEMPLATES.md` for task/MR creation |
 | Nov 2025 | MongoDB-Free v2.1.0, No-Mock-Data Policy, Restme.Hosting |
 | Nov 2025 | Entity Collection Patterns standard |

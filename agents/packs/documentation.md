@@ -29,6 +29,8 @@ Isabella (primary), Emma (requirements reference)
 
 ## Standards to Read (via tools)
 - `coding-standards/6_documentation_standards/DOC-STANDARDS.md`
+- `coding-standards/6_documentation_standards/REQUIREMENTS-AUTHORITY.md` (when touching factual requirements)
+- `coding-standards/agents/skills/requirements-authority/SKILL.md`
 - `coding-standards/0_project_planning_standards/`
 - Target repo `README.md`
 
@@ -78,21 +80,14 @@ Isabella (primary), Emma (requirements reference)
 - Update screenshots when UI changes
 
 ## Documentation Triggers (When to Update)
-- New repo added
-- Repo deprecated
-- Stack change
-- Build/test/health command changes
-- New OElite framework pattern
-- Repo starts/stops using OElite patterns
-- New coding standard
-- `.ai/standards/` changed (deviation-only repos only)
-- Health endpoint path/port changes
-- New feature implemented
-- New release deployed
+- **Approved factual requirement/rule/workflow/user-journey change** → amend canonical requirements docs via `REQUIREMENTS-AUTHORITY.md`; reconcile derived documents.
+- **New feature implemented without a factual requirement change** → update technical/API/config docs, user guides, and release docs; status in GitLab. Do NOT modify BRD/SRS/rulebook/stories to record implementation.
+- New repo added; repo deprecated; stack/build/test/health command changes; new OElite framework pattern; repo starts/stops using OElite patterns; new coding standard; `.ai/standards/` changed (deviation-only repos); health endpoint path/port changes; new release deployed.
 
 ## Verification Checklist
 - [ ] Standard header format on every doc
 - [ ] BRD/SRS/user stories updated BEFORE development starts if requirements changed
+- [ ] Factual documents contain no implementation status, issue/MR state, code paths, or delivery tracking; `python3 scripts/check-requirements-authority.py --staged` passes when they were touched
 - [ ] API docs updated for every endpoint change
 - [ ] User guides include Playwright screenshots
 - [ ] README links to all docs

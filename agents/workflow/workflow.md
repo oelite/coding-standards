@@ -75,8 +75,9 @@ Every completed task MUST include the sections below. **Reviewers MUST reject an
 - **Does this change require documentation updates?** YES / NO
 - If YES, specify:
   - What changed (new feature, API change, config change, UI change, etc.)
-  - What documentation needs updating (BRD, SRS, API docs, user guides, README, etc.)
+  - Descriptive docs to update (API docs, user guides, technical/configuration docs, README, CHANGELOG)
   - Specific details Isabella needs to update the documentation accurately
+- **Factual requirements impact?** YES / NO — did behavior change vs an approved BRD/SRS/rule/user story/journey? If YES, do NOT edit those documents yourself: state the discrepancy with requirement/rule IDs so Isabella can run the amendment process (`6_documentation_standards/REQUIREMENTS-AUTHORITY.md`).
 - **Isabella notified?** YES / NO
 
 ### Cleanup Evidence
@@ -124,8 +125,9 @@ Every completed task MUST include the sections below. **Reviewers MUST reject an
 **Post-merge audit:** Isabella (or designated reviewer) MUST run `issue-audit <project>` periodically to catch any issues left open after their linked MRs were merged. Orphaned open issues are escalated to Emma for immediate closure.
 
 ### Requirements Change Triggers
-- **Stakeholder or Emma specifies new business requirements** → triggers Isabella immediately. Isabella updates BRD, SRS, technical documentation, configuration documentation, and user guides BEFORE development begins. Once complete, she triggers Emma to proceed.
-- **Stakeholder or Emma updates existing business requirements** → triggers Isabella immediately. Isabella reviews impact on existing documentation, updates as needed, and notifies affected roles BEFORE they continue work.
+- **Stakeholder or Emma specifies new business requirements** → triggers Isabella immediately. Isabella records the approved facts (BRD/SRS/rulebook/stories/journeys per `6_documentation_standards/REQUIREMENTS-AUTHORITY.md`), then updates descriptive technical, configuration, and user-guide docs BEFORE development begins. Once complete, she triggers Emma to proceed.
+- **Stakeholder or Emma updates existing business requirements** → triggers Isabella immediately. Isabella amends the canonical factual documents through the authority standard, reconciles derived documents and references, and notifies affected roles BEFORE they continue work.
+- **Implementation reveals a discrepancy or gap vs approved requirements** → the implementer records it in GitLab with the requirement/rule IDs; requirements are NOT silently rewritten to match code. Isabella routes it as an implementation fix or a factual amendment.
 
 ### Backend Workflow Triggers
 1. Emma clarifies + plans → **Isabella updates docs if reqs changed** → Marcus reviews design/architecture.

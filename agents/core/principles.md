@@ -219,6 +219,12 @@ Closes #<issue>
 
 ---
 
+## 📚 REQUIREMENTS AUTHORITY (Concise Universal Guardrail)
+
+Approved business requirements, rulebooks, SRSs, user stories, journeys, and process flows are factual authority — **not implementation status reports**. Implementation progress, code paths, test outcomes, assignments, and issue/MR state belong in GitLab or delivery records. Code never authorizes rewriting requirements: report discrepancies and request an approved factual change. Load `agents/skills/requirements-authority/SKILL.md` only when changing/reviewing factual requirements; it points to the detailed policy and limits context to the scoped documents/rule IDs. Never load a complete rulebook by default. Full standard: `6_documentation_standards/REQUIREMENTS-AUTHORITY.md`.
+
+---
+
 ## 📦 DOCUMENTATION STRUCTURE (All Repos)
 
 ```
@@ -226,6 +232,7 @@ docs/
 ├── business/
 │   ├── BRD.md
 │   ├── SRS.md
+│   ├── rules/BR-XX-<topic>.md
 │   ├── user-stories/US-XXX.md
 │   └── process-flows/
 ├── technical/
@@ -273,7 +280,7 @@ Before declaring **any** task complete, run this checklist. If any item applies,
 | **New coding standard added** | Reference it in relevant role/pack files. Isabella updates onboarding docs. |
 | **Per-repo `.ai/standards/` added or changed** | Note it in per-repo `AGENTS.md` `Standards & Overrides`. Create/update `.ai/standards/` ONLY when the repo deviates from OElite patterns (deviation-only convention — non-deviating repos must NOT carry `.ai/`). Isabella ensures `docs/technical/architecture/` reflects them. |
 | **Health endpoint path/port changes** | Update per-repo `AGENTS.md` and `REPOS.md`. Update verification commands in this file if common service. Isabella updates `docs/technical/deployment/`. |
-| **New feature implemented** | Isabella updates user stories, API endpoints, user guides, CHANGELOG. Captures Playwright screenshots. |
+| **New feature implemented** | Isabella updates descriptive docs (API endpoints, user guides, CHANGELOG; Playwright screenshots). Delivery status goes to GitLab. User stories and business rulebooks change only for approved factual requirement changes (see REQUIREMENTS AUTHORITY above). |
 | **New release deployed** | Isabella creates release notes, updates CHANGELOG, creates migration guide if needed. |
 
 ### Self-Verification Checklist (run before every "done")
