@@ -13,6 +13,11 @@ scripts-regression:
     - python3 -m unittest discover -s tests/regression -p 'test_bug045_mr.py' -v
     - python3 tests/regression/test_parser_bugs.py
     - zsh tests/regression/test_bug045_sync.zsh
+    - python3 -m unittest discover -s tests/regression -p 'test_requirements_authority.py' -v
+    - |
+      if [ -n "$CI_MERGE_REQUEST_DIFF_BASE_SHA" ]; then
+        git diff --unified=0 "$CI_MERGE_REQUEST_DIFF_BASE_SHA" "$CI_COMMIT_SHA" | python3 scripts/check-requirements-authority.py --diff -
+      fi
   rules:
     - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
     - if: '$CI_COMMIT_BRANCH == "develop"'

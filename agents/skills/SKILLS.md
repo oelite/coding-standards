@@ -91,6 +91,19 @@
 
 ---
 
+### `requirements-authority` — Factual Requirements Governance
+
+- **Purpose:** Protect approved BRDs, SRSs, rulebooks, user stories, journeys, and process flows from implementation-status churn; scope context to cited requirements
+- **Trigger phrases:** "update requirements", "edit BRD", "edit SRS", "change user story", "business rulebook", "requirements conflict", "requirements audit", "user journey requirements"
+- **Default loaders:** None (keep universal context concise)
+- **On-demand loaders:** Isabella, Emma, and any role changing/reviewing factual requirements
+- **Location:** `coding-standards/agents/skills/requirements-authority/SKILL.md`
+- **Status:** [x] active — issue #40
+- **Owner:** Isabella
+- **Canonical detailed policy:** `coding-standards/6_documentation_standards/REQUIREMENTS-AUTHORITY.md`
+
+---
+
 ## 🔧 Built-in OpenCode Skills (Available via `skill` Tool)
 
 These skills are built into the OpenCode CLI and accessible via the `skill` tool or

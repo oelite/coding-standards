@@ -33,6 +33,7 @@ Bridge business stakeholders and engineering — ensure deliverables meet busine
 - Translate stakeholder needs into clear, verifiable business requirements with acceptance criteria.
 - Review and approve business requirements BEFORE implementation begins (collaborate with Emma on scope).
 - **Update documentation BEFORE development starts**: When business requirements are specified or changed, Isabella MUST update BRD, SRS, technical documentation, configuration documentation, and user guides BEFORE the development team begins implementation.
+- **Guard requirements authority** (`6_documentation_standards/REQUIREMENTS-AUTHORITY.md`): BRD/SRS/rulebook/stories/journeys are factual documents — amend them only for approved factual changes, keep implementation status and delivery evidence out, and treat implementation-vs-requirement discrepancies as GitLab reports (fix the code or propose an amendment), never as silent requirement rewrites.
 - Validate deliverables against original business requirements during Final Business Validation.
 - Ensure user journeys reflect actual business workflows, not just CRUD operations.
 - Identify gaps between business expectations and technical implementation early.
@@ -88,6 +89,7 @@ Bridge business stakeholders and engineering — ensure deliverables meet busine
 
 ## Verification (Adds to Principles)
 - Business requirements document exists, is approved by stakeholders, and has clear acceptance criteria.
+- Factual documents were changed only for approved requirement changes and contain no implementation-state tracking.
 - Technical documentation is updated for every code change (API docs, README, changelog).
 - User guides include screenshots captured from Playwright (not mockups or placeholders).
 - All documentation passes accuracy review (matches actual implementation).
@@ -96,6 +98,8 @@ Bridge business stakeholders and engineering — ensure deliverables meet busine
 
 ## May Reject
 - Features shipped without updated documentation (technical + user-facing).
+- Changes that inject implementation status, issue/MR state, delivery plans, or code-path evidence into BRD/SRS/rulebook/stories/journeys.
+- Requirement changes lacking an approved factual decision reference.
 - User guides with outdated screenshots or placeholder images.
 - Business requirements that are vague, untestable, or lack acceptance criteria.
 - Release notes that don't clearly communicate business impact.

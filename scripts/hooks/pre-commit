@@ -8,6 +8,9 @@
 #   3. Cross-checks the branch's issue ref against the worktree's .oe-scope
 #      (catches "agent committed issue #42's work into a #57 branch" mixing)
 #   4. Warns if .oe-scope is missing (compaction-resilience guard)
+#   5. Runs scripts/check-requirements-authority.py --staged when factual
+#      requirements documents changed (blocks delivery-state injection into
+#      BRD/SRS/rulebook/user stories; see 6_documentation_standards/REQUIREMENTS-AUTHORITY.md)
 #
 # Human bypass: OELITE_HUMAN=1 or `git commit --no-verify` (discouraged for agents).
 #
@@ -120,6 +123,50 @@ else
 
   Commit will proceed, but verify you are in the correct worktree.
 EOF
+fi
+
+# ── Check 5: Requirements-authority tripwire on factual requirements ──
+# Only runs when the staged diff touches factual requirements paths; the
+# validator itself decides which lines violate policy (narrow structural
+# markers only). Locate the policy script relative to the repo checkout.
+req_check=""
+probe="$toplevel/scripts/check-requirements-authority.py"
+if [[ -f "$probe" ]]; then
+  req_check="$probe"
+else
+  # Worktrees in other OElite repos share the sibling coding-standards repo.
+  # Resolve from the common git directory, walking up toward the container.
+  search_dir="$(git rev-parse --path-format=absolute --git-common-dir 2>/dev/null)"
+  while [[ "$search_dir" != / ]]; do
+    candidate="$search_dir/coding-standards/scripts/check-requirements-authority.py"
+    if [[ -f "$candidate" ]]; then req_check="$candidate"; break; fi
+    search_dir="$(dirname "$search_dir")"
+  done
+fi
+if [[ -n "$req_check" ]]; then
+  if ! command -v python3 >/dev/null 2>&1; then
+    echo "❌ Requirements-authority check requires python3; commit blocked." >&2
+    exit 1
+  fi
+  if ! python3 "$req_check" --staged; then
+    cat >&2 <<'EOF'
+
+❌ OElite Requirements-Authority Guard: COMMIT BLOCKED
+
+  Factual requirements documents (BRD/SRS/rulebook/user stories/process
+  flows) must not record implementation progress or delivery state.
+
+  To fix:
+    1. Edit the document: state the required behavior normatively, or move
+       delivery content to GitLab / a delivery record.
+    2. If a reviewer explicitly approved a flagged line, record that approval
+       in the MR and note it in the commit message; do not weaken the guard.
+
+  Policy: coding-standards/6_documentation_standards/REQUIREMENTS-AUTHORITY.md
+  Human bypass: OELITE_HUMAN=1 git commit ...
+EOF
+    exit 1
+  fi
 fi
 
 # ── All checks passed ──

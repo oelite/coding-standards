@@ -14,6 +14,8 @@ This document defines the standard templates and formats for all OElite document
 
 These templates are the single source of truth. Project files in `<repo>/.ai/standards/` (deviation-only repos) may extend but never contradict them. Non-deviating repos must NOT carry a `.ai/` directory — it duplicates the canon and causes drift.
 
+**Requirements authority**: BRD, SRS, user stories, process flows, and business rulebooks are **factual documents** — stable statements of approved requirements, workflows, and acceptance criteria. They change only through the amendment process in [REQUIREMENTS-AUTHORITY.md](./REQUIREMENTS-AUTHORITY.md), never to reflect implementation progress or delivery state. Implementation status, issue/MR tracking, ownership, and delivery plans live in GitLab and delivery records (e.g., `docs/requirements-status.json`), not in these templates.
+
 ---
 
 ## Table of Contents
@@ -28,6 +30,8 @@ These templates are the single source of truth. Project files in `<repo>/.ai/sta
 8. [Screenshot Standards](#8-screenshot-standards)
 9. [Documentation Triggers](#9-documentation-triggers)
 10. [README Maintenance Triggers](#10-readme-maintenance-triggers)
+
+**Business rulebooks**: use the dedicated standard in [REQUIREMENTS-AUTHORITY.md](./REQUIREMENTS-AUTHORITY.md) (location `docs/business/rules/BR-XX-<topic>.md`, stable `BR-XX-NNN` IDs, amendment process, content boundary).
 
 ---
 
@@ -87,6 +91,8 @@ Every documentation file MUST begin with the following header:
 > **Status**: Draft | Active | Deprecated  
 > **Version**: <semantic-version>  
 > **Stakeholder Sign-off**: <name, date>
+>
+> **Boundary**: records approved business requirements only — never implementation status, issue/MR state, or delivery tracking (see REQUIREMENTS-AUTHORITY.md).
 
 ---
 
@@ -224,6 +230,8 @@ Every documentation file MUST begin with the following header:
 > **Status**: Draft | Active | Deprecated  
 > **Version**: <semantic-version>  
 > **BRD Reference**: `BRD.md`
+>
+> **Boundary**: records approved system requirements only — never implementation status, issue/MR state, or delivery tracking (see REQUIREMENTS-AUTHORITY.md).
 
 ---
 
@@ -402,10 +410,8 @@ Every documentation file MUST begin with the following header:
 **IMPORTANT**: User stories are the PRIMARY source of truth for:
 - **Isabella's business validation** (does the deliverable match expectations?)
 - **Olivia's test automation** (what scenarios must pass?)
-- **Sprint planning** (what work needs to be done?)
-- **Task assignment** (who does what?)
 
-Each user story MUST be **precise, clear, and verifiable**.
+Each user story MUST be **precise, clear, and verifiable**. A user story is a **factual document**: it states approved user workflows and acceptance criteria and is amended only via [REQUIREMENTS-AUTHORITY.md](./REQUIREMENTS-AUTHORITY.md). Delivery tracking (status, assignment, sprint, story points, DoD progress, sign-off state) lives in the linked GitLab issue — never in this document.
 
 ```markdown
 # US-<NNN>: <User Story Title>
@@ -413,11 +419,9 @@ Each user story MUST be **precise, clear, and verifiable**.
 > **Repository**: <repo-name>  
 > **Last Updated**: <YYYY-MM-DD>  
 > **Maintained by**: Isabella (Business Analyst)  
-> **Status**: Draft | Ready | In Progress | Done | Verified  
+> **Status**: Draft | Active | Deprecated  *(document approval status — delivery status lives in the GitLab issue)*  
 > **Priority**: Critical | High | Medium | Low  
-> **Story Points**: <estimate>  
-> **Sprint**: <sprint-number>  
-> **Assigned to**: <developer-name>  
+> **GitLab Issue**: <iid>  *(delivery tracking only — never requirement authority)*  
 > **BRD Reference**: FR-<NNN>  
 > **SRS Reference**: Section <X.X>
 
@@ -598,47 +602,12 @@ Each user story MUST be **precise, clear, and verifiable**.
 
 ---
 
-## 10. Definition of Done
+## 10. Requirements Dependencies
 
-**This user story is complete when ALL of the following are true:**
+- **US-<NNN>**: <approved story prerequisite or related user journey>
+- **System**: <required external system or interface contract>
 
-- [ ] All acceptance criteria (AC-001, AC-002, AC-003) pass
-- [ ] All test scenarios (Test-001, Test-002) automated and passing
-- [ ] Code reviewed by Grace (backend) or Felix (frontend)
-- [ ] Security review by Maya (if auth/security-related)
-- [ ] Performance review by Victor (if performance-critical)
-- [ ] UI matches Jonathan's design spec (if frontend)
-- [ ] All screenshots captured by Isabella (Screenshot-001, Screenshot-002)
-- [ ] User guide updated by Isabella
-- [ ] API documentation updated by Isabella (if API changes)
-- [ ] Business validation by Isabella (matches BRD/SRS)
-- [ ] Deployed to production by Ethan
-- [ ] No unresolved risks or blocked items
-
----
-
-## 11. Dependencies & Blockers
-
-### 11.1 Dependencies
-- **US-<NNN>**: <dependency on another user story>
-- **System**: <dependency on external system>
-
-### 11.2 Blockers
-- <blocker - e.g., "API endpoint not yet available">
-- <blocker>
-
----
-
-## 12. Sign-off & Verification
-
-| Role | Name | Status | Date | Notes |
-|------|------|--------|------|-------|
-| Developer | <name> | ✅ Complete | <date> | <notes> |
-| Code Reviewer | Grace/Felix | ✅ Approved | <date> | <notes> |
-| QA (Olivia) | Olivia | ✅ Tests Pass | <date> | <notes> |
-| Security (Maya) | Maya | ✅ Approved | <date> | <notes> (if applicable) |
-| Business Analyst (Isabella) | Isabella | ✅ Verified | <date> | <notes> |
-| Product Owner | <name> | ✅ Accepted | <date> | <notes> |
+Delivery blockers, Definition of Done, reviewer sign-off, test results, and deployment state are tracked in the linked GitLab issue, not in this story.
 
 ---
 
@@ -654,9 +623,8 @@ Each user story MUST be **precise, clear, and verifiable**.
 
 | Date | Author | Version | Changes |
 |------|--------|---------|---------|
-| YYYY-MM-DD | Isabella | 1.0.0 | Initial draft |
-| YYYY-MM-DD | <developer> | 1.1.0 | Implementation notes |
-| YYYY-MM-DD | Isabella | 1.2.0 | Business validation complete |
+| YYYY-MM-DD | Isabella | 1.0.0 | Initial approved story (decision <reference>) |
+| YYYY-MM-DD | Isabella | 1.1.0 | Approved requirement clarification for AC-002 (decision <reference>) |
 ```
 
 ---
@@ -1263,14 +1231,14 @@ All screenshots in user guides MUST:
 ## 9. Documentation Triggers
 
 Isabella MUST create/update documentation when:
-- New business requirements are specified or changed (update BRD, SRS)
-- New features are implemented (update technical docs, user guides, API docs)
+- **An approved factual requirement, business rule, process, or user journey changes**: amend the canonical business document first, then reconcile BRD/SRS/stories/flows as needed through [REQUIREMENTS-AUTHORITY.md](./REQUIREMENTS-AUTHORITY.md). An implementation milestone alone is NOT a trigger.
+- New features are implemented: update **descriptive** technical docs, user guides, API docs, and release notes, plus separate delivery status in GitLab; do not update factual requirements unless a new decision was approved.
 - Architecture decisions are made (create ADR)
 - Configuration options change (update config docs)
-- UI/UX changes (update user guide screenshots via Playwright)
+- UI/UX changes (update user guide screenshots via Playwright; amend user journeys/stories only if the approved UX requirement changed)
 - New release is deployed (update CHANGELOG, release notes)
 - New repo is created (create full documentation suite + README)
-- Documentation audit identifies gaps (update as needed)
+- Documentation audit identifies gaps (report factual conflicts for approval; update factual docs only through the amendment process)
 - **New documentation is added to `docs/` folder** (update README.md Documentation Index)
 - **Tech stack, build commands, or deployment process changes** (update README.md)
 - **Repository is deprecated** (update README.md Status to "Deprecated")
@@ -1320,3 +1288,4 @@ If a README exceeds 200 lines or contains detailed technical content (API endpoi
 | Date | Author | Version | Changes |
 |------|--------|---------|---------|
 | 2026-06-29 | Isabella | 1.0.0 | Extracted documentation templates from AGENTS.md into dedicated DOC-STANDARDS.md |
+| 2026-10-13 | Isabella | 2.0.0 | Requirements-authority governance (issue #40): factual/delivery separation, de-lifecycled user story template (no status/sprint/points/DoD/sign-off), removed implementation-notes change-history example, split documentation triggers into factual vs descriptive, referenced REQUIREMENTS-AUTHORITY.md and rulebook standard |
