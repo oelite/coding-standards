@@ -419,9 +419,9 @@ Each user story MUST be **precise, clear, and verifiable**. A user story is a **
 > **Repository**: <repo-name>  
 > **Last Updated**: <YYYY-MM-DD>  
 > **Maintained by**: Isabella (Business Analyst)  
-> **Status**: Draft | Active | Deprecated  *(document approval status — delivery status lives in the GitLab issue)*  
+> **Status**: Draft | Active | Deprecated *(document approval status — delivery status lives in the GitLab issue)*
 > **Priority**: Critical | High | Medium | Low  
-> **GitLab Issue**: <iid>  *(delivery tracking only — never requirement authority)*  
+> **GitLab Issue**: <iid> *(delivery tracking only — never requirement authority)*
 > **BRD Reference**: FR-<NNN>  
 > **SRS Reference**: Section <X.X>
 
