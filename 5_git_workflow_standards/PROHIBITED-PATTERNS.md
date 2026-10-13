@@ -1151,7 +1151,7 @@ JWT signing keys MUST remain valid across rolling deploys.
 - [ ] Any added "Implementation status", "Gaps vs current code", MR/issue status, code-path evidence, test tallies, branch names, DoD checkboxes, or sign-off rows in those files?
 - [ ] Is every factual change backed by an approved decision reference (issue/change request) in Change History?
 
-**If ANY detected → REJECT MR** with the validator output attached. Exceptions require an `--allow-comment` reviewer approval recorded in the MR.
+**If ANY detected → REJECT MR** with the validator output attached. The validator has no inline bypass. If a detector is wrong, fix the narrowly scoped detector and add a regression test in a reviewed standards MR; do not suppress the finding in the affected change.
 
 ### Why This Matters
 

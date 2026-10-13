@@ -179,7 +179,12 @@ class Finding:
 
 
 def is_factual(path: str) -> bool:
-    p = path.lstrip("./")
+    # Strip only "./" and "../" prefixes WITHOUT touching a leading dot in the
+    # first path segment (e.g. `.spec/0.1_business_requirements.md` must keep
+    # its dot so the `(^|/)\.spec/` patterns still match).
+    p = path
+    while p.startswith("./"):
+        p = p[2:]
     if any(prx.search(p) for prx in EXCLUDED_PATH_PATTERNS):
         return False
     return any(prx.search(p) for prx in FACTUAL_PATH_PATTERNS)

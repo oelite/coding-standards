@@ -64,6 +64,15 @@ NON_FACTUAL_DIFF = """diff --git a/docs/technical/api/API.md b/docs/technical/ap
 +Implemented in src/Hermes.Api/Auth/JwtRsaKeyProvider.cs; 2589 unit tests pass. MR !517 merged.
 """
 
+# .spec business requirements are factual documents; a leading-dot directory
+# must not be stripped away by path normalization.
+SPEC_CONTAMINATED_DIFF = """diff --git a/.spec/0.1_business_requirements.md b/.spec/0.1_business_requirements.md
+--- a/.spec/0.1_business_requirements.md
++++ b/.spec/0.1_business_requirements.md
+@@ -10,1 +10,2 @@
++Implemented via src/Foo.cs. MR !517 merged.
+"""
+
 GAPS_DIFF = """diff --git a/docs/business/rules/BR-31-disaster-recovery.md b/docs/business/rules/BR-31-disaster-recovery.md
 --- a/docs/business/rules/BR-31-disaster-recovery.md
 +++ b/docs/business/rules/BR-31-disaster-recovery.md
@@ -145,6 +154,12 @@ class RequirementsAuthorityValidatorTests(unittest.TestCase):
     def test_non_factual_paths_ignored(self):
         result = self.run_validator(NON_FACTUAL_DIFF)
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+
+    def test_spec_business_requirements_are_factual(self):
+        result = self.run_validator(SPEC_CONTAMINATED_DIFF)
+        self.assertEqual(result.returncode, 1, result.stdout)
+        self.assertIn(".spec/0.1_business_requirements.md", result.stdout)
+        self.assertIn("code-path-evidence", result.stdout)
 
     def test_no_inline_bypass(self):
         result = self.run_validator(CONTAMINATED_DIFF, "--allow-comment", "MR !517 merged")
