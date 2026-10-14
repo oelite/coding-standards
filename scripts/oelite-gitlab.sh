@@ -2335,6 +2335,28 @@ cmd_job_token_allowlist_add() {
   echo "[OK] Added $target_project to $project_path inbound CI_JOB_TOKEN allowlist"
 }
 
+# Build the JSON body used to create a protected branch with least-privilege
+# settings: no direct pushes (No access), Maintainer (40) merge/unprotect,
+# force push disabled, and code-owner approval per requested state.
+protected_branch_create_body() {
+  local branch="$1"
+  local code_owner_value="$2"
+
+  python3 -c '
+import json, sys
+branch, code_owner = sys.argv[1], sys.argv[2] == "true"
+body = {
+    "name": branch,
+    "allow_force_push": False,
+    "code_owner_approval_required": code_owner,
+    "allowed_to_push": [{"access_level": 0}],
+    "allowed_to_merge": [{"access_level": 40}],
+    "allowed_to_unprotect": [{"access_level": 40}],
+}
+print(json.dumps(body))
+' "$branch" "$code_owner_value"
+}
+
 cmd_protected_branch_code_owner() {
   local project_path="${1:-}"
   local agent="${2:-}"
@@ -2359,12 +2381,50 @@ cmd_protected_branch_code_owner() {
   local branch_enc
   branch_enc=$(python3 -c 'import urllib.parse, sys; print(urllib.parse.quote(sys.argv[1], safe=""))' "$branch")
 
-  api_patch "/projects/$encoded_path/protected_branches/$branch_enc" "$pat" "{\"code_owner_approval_required\":$value}"
-
+  # Read the complete protected-branch list first so a missing exact branch is
+  # distinguishable from an inaccessible project. This also ensures existing
+  # entries are identified before PATCH, preserving their access settings.
+  api_get "/projects/$encoded_path/protected_branches" "$pat"
   if [[ "$_API_STATUS" != "200" ]]; then
-    echo "[ERROR] Failed to set code_owner_approval_required=$state on $project_path branch $branch (HTTP $_API_STATUS)" >&2
+    echo "[ERROR] Failed to list protected branches on $project_path (HTTP $_API_STATUS)" >&2
     api_error_hint "$_API_STATUS" "$project_path"
     return 1
+  fi
+
+  local existing
+  existing=$(printf '%s\n' "$_API_RESPONSE" | python3 -c '
+import json, sys
+raw = json.load(sys.stdin)
+branches = raw if isinstance(raw, list) else []
+name = sys.argv[1]
+match = next((branch for branch in branches if branch.get("name") == name), None)
+print(json.dumps(match) if match is not None else "")
+' "$branch")
+
+  if [[ -n "$existing" ]]; then
+    local existing_code_owner
+    existing_code_owner=$(printf '%s\n' "$existing" | python3 -c 'import json,sys; print(str(json.load(sys.stdin).get("code_owner_approval_required")).lower())')
+    if [[ "$existing_code_owner" == "$value" ]]; then
+      echo "[OK] code_owner_approval_required=$state already set on $project_path protected branch $branch (no change)"
+      return 0
+    fi
+    api_patch "/projects/$encoded_path/protected_branches/$branch_enc" "$pat" "{\"code_owner_approval_required\":$value}"
+    if [[ "$_API_STATUS" != "200" ]]; then
+      echo "[ERROR] Failed to set code_owner_approval_required=$state on $project_path branch $branch (HTTP $_API_STATUS)" >&2
+      api_error_hint "$_API_STATUS" "$project_path"
+      return 1
+    fi
+  else
+    # The exact branch is not protected. Create it with least-privilege
+    # defaults instead of failing; confirm below from the response.
+    local body
+    body=$(protected_branch_create_body "$branch" "$value")
+    api_post "/projects/$encoded_path/protected_branches" "$pat" "$body"
+    if [[ "$_API_STATUS" != "201" && "$_API_STATUS" != "200" ]]; then
+      echo "[ERROR] Failed to create protected branch $branch on $project_path with code_owner_approval_required=$state (HTTP $_API_STATUS)" >&2
+      api_error_hint "$_API_STATUS" "$project_path"
+      return 1
+    fi
   fi
 
   local confirmed
@@ -2375,6 +2435,96 @@ cmd_protected_branch_code_owner() {
   fi
 
   echo "[OK] code_owner_approval_required=$state set on $project_path protected branch $branch"
+}
+
+cmd_protected_branches() {
+  local project_path="${1:-}"
+  local agent="${2:-}"
+
+  [[ -z "$project_path" ]] && { echo "[ERROR] Project path required" >&2; return 1; }
+  validate_agent "$agent" || return 1
+
+  local pat
+  pat=$(get_pat "$agent")
+
+  local encoded_path
+  encoded_path=$(url_encode_path "$project_path")
+  api_get "/projects/$encoded_path/protected_branches" "$pat"
+
+  if [[ "$_API_STATUS" != "200" ]]; then
+    echo "[ERROR] Failed to list protected branches on $project_path (HTTP $_API_STATUS)" >&2
+    api_error_hint "$_API_STATUS" "$project_path"
+    return 1
+  fi
+
+  printf '%s\n' "$_API_RESPONSE" | python3 -c '
+import json, sys
+branches = json.load(sys.stdin)
+if not isinstance(branches, list):
+    raise SystemExit("[ERROR] Unexpected protected branches response")
+if not branches:
+    print("No protected branches found.")
+    raise SystemExit(0)
+print("NAME                 | CODE OWNER | FORCE PUSH | PUSH ACCESS | MERGE ACCESS | UNPROTECT ACCESS")
+print("-" * 105)
+for pb in branches:
+    def levels(key):
+        return ",".join(str(item.get("access_level_description") or item.get("access_level") or item) for item in (pb.get(key) or [])) or "(none)"
+    print("{:<20} | {:<10} | {:<10} | {:<11} | {:<12} | {}".format(
+        pb.get("name", ""), str(pb.get("code_owner_approval_required")).lower(),
+        str(pb.get("allow_force_push")).lower(), levels("push_access_levels"),
+        levels("merge_access_levels"), levels("unprotect_access_levels")))
+'
+}
+
+cmd_protected_branch_show() {
+  local project_path="${1:-}"
+  local agent="${2:-}"
+  local branch="${3:-}"
+
+  [[ -z "$project_path" ]] && { echo "[ERROR] Project path required" >&2; return 1; }
+  [[ -z "$branch" ]] && { echo "[ERROR] Branch name required" >&2; return 1; }
+  validate_agent "$agent" || return 1
+
+  local pat
+  pat=$(get_pat "$agent")
+
+  local encoded_path
+  encoded_path=$(url_encode_path "$project_path")
+  local branch_enc
+  branch_enc=$(python3 -c 'import urllib.parse, sys; print(urllib.parse.quote(sys.argv[1], safe=""))' "$branch")
+
+  # Read-only diagnosis: reports the exact HTTP status of the single-branch
+  # protected-branch endpoint without mutating anything.
+  api_get "/projects/$encoded_path/protected_branches/$branch_enc" "$pat"
+
+  if [[ "$_API_STATUS" == "200" ]]; then
+    printf '%s\n' "$_API_RESPONSE" | python3 -c '
+import json, sys
+pb = json.load(sys.stdin)
+print("[OK] Protected branch found on " + sys.argv[1] + ":")
+print("  name:                         " + str(pb.get("name")))
+print("  code_owner_approval_required: " + str(pb.get("code_owner_approval_required")).lower())
+print("  allow_force_push:             " + str(pb.get("allow_force_push")).lower())
+for label, key in (("push", "push_access_levels"), ("merge", "merge_access_levels"), ("unprotect", "unprotect_access_levels")):
+    levels = pb.get(key) or []
+    rendered = ", ".join(
+        str(level.get("access_level_description") or level.get("access_level") or level)
+        for level in levels
+    )
+    print("  " + label + "_access_levels:         " + (rendered or "(none)"))
+' "$project_path"
+    return 0
+  fi
+
+  if [[ "$_API_STATUS" == "404" ]]; then
+    echo "[OK] No protected branch '$branch' found on $project_path (HTTP 404) - branch is not protected or is not visible to this PAT" >&2
+    return 2
+  fi
+
+  echo "[ERROR] Failed to read protected branch $branch on $project_path (HTTP $_API_STATUS)" >&2
+  api_error_hint "$_API_STATUS" "$project_path"
+  return 1
 }
 
 cmd_pipeline_must_succeed() {
@@ -2649,8 +2799,15 @@ COMMANDS:
   job-token-allowlist-add <project-path> <agent> <target-project>
       Add a target project to the source project's inbound CI_JOB_TOKEN allowlist.
 
+  protected-branches <project-path> <agent>
+      List protected branches (read-only diagnosis).
+
+  protected-branch-show <project-path> <agent> <branch>
+      Read one protected branch configuration (read-only diagnosis).
+
   protected-branch-code-owner <project-path> <agent> <branch> <on|off>
-      Enable or disable protected-branch Code Owner approval.
+      Enable or disable protected-branch Code Owner approval, creating a
+      missing protected branch with least-privilege defaults.
 
   pipeline-must-succeed <project-path> <agent> <on|off>
       Enable or disable the project successful-pipeline merge requirement.
@@ -2746,6 +2903,8 @@ case "$command" in
   mr-show)        cmd_mr_show "$@" ;;
   pipeline-list)  cmd_pipeline_list "$@" ;;
   job-token-allowlist-add) cmd_job_token_allowlist_add "$@" ;;
+  protected-branches) cmd_protected_branches "$@" ;;
+  protected-branch-show) cmd_protected_branch_show "$@" ;;
   protected-branch-code-owner) cmd_protected_branch_code_owner "$@" ;;
   pipeline-must-succeed) cmd_pipeline_must_succeed "$@" ;;
   project-permissions) cmd_project_permissions "$@" ;;
