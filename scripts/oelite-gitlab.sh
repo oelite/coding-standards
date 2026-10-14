@@ -138,6 +138,24 @@ api_put() {
   api_call "PUT" "$1" "$2" "$3"
 }
 
+api_patch() {
+  api_call "PATCH" "$1" "$2" "$3"
+}
+
+resolve_project_id() {
+  local project_path="$1"
+  local encoded_path pat
+  encoded_path=$(url_encode_path "$project_path")
+  pat=$(get_pat "${2:-emma}")
+  api_get "/projects/$encoded_path" "$pat"
+  if [[ "$_API_STATUS" != "200" ]]; then
+    echo "[ERROR] Failed to resolve project $project_path (HTTP $_API_STATUS)" >&2
+    api_error_hint "$_API_STATUS" "$project_path"
+    return 1
+  fi
+  python3 -c 'import json,sys; value=json.load(sys.stdin).get("id"); print(value if value is not None else "")' <<< "$_API_RESPONSE"
+}
+
 api_error_hint() {
   local http_status="$1"
   local project_path="${2:-}"
@@ -2227,6 +2245,213 @@ cmd_worktree_owner() {
   fi
 }
 
+cmd_pipeline_list() {
+  local project_path="${1:-}"
+  local agent="${2:-emma}"
+  local ref="${3:-}"
+
+  [[ -z "$project_path" ]] && { echo "[ERROR] Project path required" >&2; return 1; }
+  validate_agent "$agent" || return 1
+
+  local encoded_path endpoint pat
+  encoded_path=$(url_encode_path "$project_path")
+  endpoint="/projects/$encoded_path/pipelines?per_page=50"
+  if [[ -n "$ref" ]]; then
+    endpoint+=$(printf '&ref=%s' "$(url_encode_query "$ref")")
+  fi
+
+  pat=$(get_pat "$agent")
+  api_get "$endpoint" "$pat"
+
+  if [[ "$_API_STATUS" != "200" ]]; then
+    echo "[ERROR] Failed to list pipelines for $project_path (HTTP $_API_STATUS)" >&2
+    api_error_hint "$_API_STATUS" "$project_path"
+    return 1
+  fi
+
+  printf '%s\n' "$_API_RESPONSE" | python3 -c '
+import json, sys
+
+pipelines = json.load(sys.stdin)
+if not isinstance(pipelines, list):
+    raise SystemExit("unexpected pipelines response")
+if not pipelines:
+    print("No pipelines found.")
+    raise SystemExit(0)
+
+print("ID     | STATUS     | SHA                                      | SOURCE")
+print("-" * 100)
+for p in pipelines:
+    print("{:<6} | {:<10} | {:<40} | {}".format(
+        p.get("id", ""), p.get("status", ""), p.get("sha", ""), p.get("source", "")))
+'
+}
+
+cmd_job_token_allowlist_add() {
+  local project_path="${1:-}"
+  local agent="${2:-}"
+  local target_project="${3:-}"
+
+  [[ -z "$project_path" ]] && { echo "[ERROR] Project path required" >&2; return 1; }
+  [[ -z "$target_project" ]] && { echo "[ERROR] Target project path required" >&2; return 1; }
+  validate_agent "$agent" || return 1
+
+  local pat
+  pat=$(get_pat "$agent")
+
+  local project_id target_id
+  project_id=$(resolve_project_id "$project_path" "$agent") || return 1
+  [[ -n "$project_id" ]] || { echo "[ERROR] Could not resolve project ID for $project_path" >&2; return 1; }
+
+  target_id=$(resolve_project_id "$target_project" "$agent") || return 1
+  [[ -n "$target_id" ]] || { echo "[ERROR] Could not resolve project ID for $target_project" >&2; return 1; }
+
+  local body
+  body=$(printf '{"target_project_id":%s}' "$target_id")
+
+  # GitLab's supported add operation is POST /job_token_scope/allowlist.
+  # Some installations reject numeric IDs while accepting URL-encoded paths;
+  # retry the same supported operation with the source path only on 404/410.
+  api_post "/projects/$project_id/job_token_scope/allowlist" "$pat" "$body"
+  if [[ "$_API_STATUS" == "404" || "$_API_STATUS" == "410" ]]; then
+    local encoded_source
+    encoded_source=$(url_encode_path "$project_path")
+    api_post "/projects/$encoded_source/job_token_scope/allowlist" "$pat" "$body"
+  fi
+
+  if [[ "$_API_STATUS" != "201" && "$_API_STATUS" != "200" ]]; then
+    echo "[ERROR] Failed to allow $target_project in $project_path inbound CI_JOB_TOKEN allowlist (HTTP $_API_STATUS)" >&2
+    api_error_hint "$_API_STATUS" "$project_path"
+    return 1
+  fi
+
+  local confirmed_target
+  confirmed_target=$(printf '%s\n' "$_API_RESPONSE" | python3 -c 'import json,sys; print(json.load(sys.stdin).get("target_project_id", ""))')
+  if [[ "$confirmed_target" != "$target_id" ]]; then
+    echo "[ERROR] Allowlist response did not confirm target project $target_project" >&2
+    return 1
+  fi
+
+  echo "[OK] Added $target_project to $project_path inbound CI_JOB_TOKEN allowlist"
+}
+
+cmd_protected_branch_code_owner() {
+  local project_path="${1:-}"
+  local agent="${2:-}"
+  local branch="${3:-}"
+  local state="${4:-}"
+
+  [[ -z "$project_path" ]] && { echo "[ERROR] Project path required" >&2; return 1; }
+  [[ -z "$branch" ]] && { echo "[ERROR] Branch name required" >&2; return 1; }
+  local value
+  case "$state" in
+    on)  value=true ;;
+    off) value=false ;;
+    *)   echo "[ERROR] State must be 'on' or 'off'" >&2; return 1 ;;
+  esac
+  validate_agent "$agent" || return 1
+
+  local pat
+  pat=$(get_pat "$agent")
+
+  local encoded_path
+  encoded_path=$(url_encode_path "$project_path")
+  local branch_enc
+  branch_enc=$(python3 -c 'import urllib.parse, sys; print(urllib.parse.quote(sys.argv[1], safe=""))' "$branch")
+
+  api_patch "/projects/$encoded_path/protected_branches/$branch_enc" "$pat" "{\"code_owner_approval_required\":$value}"
+
+  if [[ "$_API_STATUS" != "200" ]]; then
+    echo "[ERROR] Failed to set code_owner_approval_required=$state on $project_path branch $branch (HTTP $_API_STATUS)" >&2
+    api_error_hint "$_API_STATUS" "$project_path"
+    return 1
+  fi
+
+  local confirmed
+  confirmed=$(printf '%s\n' "$_API_RESPONSE" | python3 -c 'import json,sys; print(str(json.load(sys.stdin).get("code_owner_approval_required")).lower())')
+  if [[ "$confirmed" != "$value" ]]; then
+    echo "[ERROR] Protected branch response did not confirm code_owner_approval_required=$state" >&2
+    return 1
+  fi
+
+  echo "[OK] code_owner_approval_required=$state set on $project_path protected branch $branch"
+}
+
+cmd_pipeline_must_succeed() {
+  local project_path="${1:-}"
+  local agent="${2:-}"
+  local state="${3:-}"
+
+  local value
+  case "$state" in
+    on)  value=true ;;
+    off) value=false ;;
+    *)   echo "[ERROR] State must be 'on' or 'off'" >&2; return 1 ;;
+  esac
+  validate_agent "$agent" || return 1
+
+  local pat
+  pat=$(get_pat "$agent")
+
+  local encoded_path
+  encoded_path=$(url_encode_path "$project_path")
+
+  api_put "/projects/$encoded_path" "$pat" "{\"only_allow_merge_if_pipeline_succeeds\":$value}"
+
+  if [[ "$_API_STATUS" != "200" ]]; then
+    echo "[ERROR] Failed to set only_allow_merge_if_pipeline_succeeds=$state on $project_path (HTTP $_API_STATUS)" >&2
+    api_error_hint "$_API_STATUS" "$project_path"
+    return 1
+  fi
+
+  local confirmed
+  confirmed=$(printf '%s\n' "$_API_RESPONSE" | python3 -c 'import json,sys; print(str(json.load(sys.stdin).get("only_allow_merge_if_pipeline_succeeds")).lower())')
+  if [[ "$confirmed" != "$value" ]]; then
+    echo "[ERROR] Project response did not confirm only_allow_merge_if_pipeline_succeeds=$state" >&2
+    return 1
+  fi
+
+  echo "[OK] only_allow_merge_if_pipeline_succeeds=$state set on $project_path"
+}
+
+cmd_project_permissions() {
+  local project_path="${1:-}"
+  local agent="${2:-emma}"
+
+  [[ -z "$project_path" ]] && { echo "[ERROR] Project path required" >&2; return 1; }
+  validate_agent "$agent" || return 1
+
+  local pat
+  pat=$(get_pat "$agent")
+
+  local encoded_path
+  encoded_path=$(url_encode_path "$project_path")
+
+  api_get "/projects/$encoded_path" "$pat"
+
+  if [[ "$_API_STATUS" != "200" ]]; then
+    echo "[ERROR] Failed to inspect project $project_path (HTTP $_API_STATUS)" >&2
+    api_error_hint "$_API_STATUS" "$project_path"
+    return 1
+  fi
+
+  printf '%s\n' "$_API_RESPONSE" | python3 -c '
+import json, sys
+
+project = json.load(sys.stdin)
+permissions = project.get("permissions") or {}
+levels = []
+for key in ("project_access", "group_access"):
+    entry = permissions.get(key)
+    if isinstance(entry, dict) and isinstance(entry.get("access_level"), int):
+        levels.append(entry["access_level"])
+access = max(levels) if levels else None
+print("Project:              {}".format(project.get("path_with_namespace", "")))
+print("Caller access level:  {}".format(access if access is not None else "none"))
+print("Visibility:           {}".format(project.get("visibility", "")))
+'
+}
+
 cmd_oe_scope() {
   local wt_id="$1"
   shift
@@ -2418,7 +2643,22 @@ COMMANDS:
      Use --raw to inspect the complete read-only API response.
       Example: oelite-gitlab.sh mr-show uranus/origin-auth 15 --raw
 
-   pipeline-jobs <project-path> <pipeline-id>
+   pipeline-list <project-path> <agent> [<ref>]
+      List pipeline id, status, SHA, and source, optionally filtered by ref.
+
+  job-token-allowlist-add <project-path> <agent> <target-project>
+      Add a target project to the source project's inbound CI_JOB_TOKEN allowlist.
+
+  protected-branch-code-owner <project-path> <agent> <branch> <on|off>
+      Enable or disable protected-branch Code Owner approval.
+
+  pipeline-must-succeed <project-path> <agent> <on|off>
+      Enable or disable the project successful-pipeline merge requirement.
+
+  project-permissions <project-path> <agent>
+      Print the calling PAT's project access level.
+
+  pipeline-jobs <project-path> <pipeline-id>
       List pipeline job status and failure reasons WITHOUT printing job traces.
       Use this to diagnose a failed pipeline reported by mr-status / mr-show.
       Example: oelite-gitlab.sh pipeline-jobs venus/mellow 9342
@@ -2504,6 +2744,11 @@ case "$command" in
   mr-update)      cmd_mr_update "$@" ;;
   mr-status)      cmd_mr_status "$@" ;;
   mr-show)        cmd_mr_show "$@" ;;
+  pipeline-list)  cmd_pipeline_list "$@" ;;
+  job-token-allowlist-add) cmd_job_token_allowlist_add "$@" ;;
+  protected-branch-code-owner) cmd_protected_branch_code_owner "$@" ;;
+  pipeline-must-succeed) cmd_pipeline_must_succeed "$@" ;;
+  project-permissions) cmd_project_permissions "$@" ;;
   pipeline-jobs)  cmd_pipeline_jobs "$@" ;;
   pipeline-job-trace) cmd_pipeline_job_trace "$@" ;;
   mr-merge)       cmd_mr_merge "$@" ;;
