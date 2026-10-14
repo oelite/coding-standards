@@ -2306,18 +2306,29 @@ cmd_job_token_allowlist_add() {
   target_id=$(resolve_project_id "$target_project" "$agent") || return 1
   [[ -n "$target_id" ]] || { echo "[ERROR] Could not resolve project ID for $target_project" >&2; return 1; }
 
-  local body status response
+  local body
   body=$(printf '{"target_project_id":%s}' "$target_id")
 
-  # Preferred endpoint; fall back when the instance runs an older GitLab.
+  # GitLab's supported add operation is POST /job_token_scope/allowlist.
+  # Some installations reject numeric IDs while accepting URL-encoded paths;
+  # retry the same supported operation with the source path only on 404/410.
   api_post "/projects/$project_id/job_token_scope/allowlist" "$pat" "$body"
   if [[ "$_API_STATUS" == "404" || "$_API_STATUS" == "410" ]]; then
-    api_post "/projects/$project_id/job_token_scope" "$pat" "$body"
+    local encoded_source
+    encoded_source=$(url_encode_path "$project_path")
+    api_post "/projects/$encoded_source/job_token_scope/allowlist" "$pat" "$body"
   fi
 
   if [[ "$_API_STATUS" != "201" && "$_API_STATUS" != "200" ]]; then
     echo "[ERROR] Failed to allow $target_project in $project_path inbound CI_JOB_TOKEN allowlist (HTTP $_API_STATUS)" >&2
     api_error_hint "$_API_STATUS" "$project_path"
+    return 1
+  fi
+
+  local confirmed_target
+  confirmed_target=$(printf '%s\n' "$_API_RESPONSE" | python3 -c 'import json,sys; print(json.load(sys.stdin).get("target_project_id", ""))')
+  if [[ "$confirmed_target" != "$target_id" ]]; then
+    echo "[ERROR] Allowlist response did not confirm target project $target_project" >&2
     return 1
   fi
 
@@ -2332,6 +2343,7 @@ cmd_protected_branch_code_owner() {
 
   [[ -z "$project_path" ]] && { echo "[ERROR] Project path required" >&2; return 1; }
   [[ -z "$branch" ]] && { echo "[ERROR] Branch name required" >&2; return 1; }
+  local value
   case "$state" in
     on)  value=true ;;
     off) value=false ;;
@@ -2342,7 +2354,7 @@ cmd_protected_branch_code_owner() {
   local pat
   pat=$(get_pat "$agent")
 
-  local encoded_path encoded_branch
+  local encoded_path
   encoded_path=$(url_encode_path "$project_path")
   local branch_enc
   branch_enc=$(python3 -c 'import urllib.parse, sys; print(urllib.parse.quote(sys.argv[1], safe=""))' "$branch")
@@ -2355,6 +2367,13 @@ cmd_protected_branch_code_owner() {
     return 1
   fi
 
+  local confirmed
+  confirmed=$(printf '%s\n' "$_API_RESPONSE" | python3 -c 'import json,sys; print(str(json.load(sys.stdin).get("code_owner_approval_required")).lower())')
+  if [[ "$confirmed" != "$value" ]]; then
+    echo "[ERROR] Protected branch response did not confirm code_owner_approval_required=$state" >&2
+    return 1
+  fi
+
   echo "[OK] code_owner_approval_required=$state set on $project_path protected branch $branch"
 }
 
@@ -2363,7 +2382,7 @@ cmd_pipeline_must_succeed() {
   local agent="${2:-}"
   local state="${3:-}"
 
-  [[ -z "$project_path" ]] && { echo "[ERROR] Project path required" >&2; return 1; }
+  local value
   case "$state" in
     on)  value=true ;;
     off) value=false ;;
@@ -2382,6 +2401,13 @@ cmd_pipeline_must_succeed() {
   if [[ "$_API_STATUS" != "200" ]]; then
     echo "[ERROR] Failed to set only_allow_merge_if_pipeline_succeeds=$state on $project_path (HTTP $_API_STATUS)" >&2
     api_error_hint "$_API_STATUS" "$project_path"
+    return 1
+  fi
+
+  local confirmed
+  confirmed=$(printf '%s\n' "$_API_RESPONSE" | python3 -c 'import json,sys; print(str(json.load(sys.stdin).get("only_allow_merge_if_pipeline_succeeds")).lower())')
+  if [[ "$confirmed" != "$value" ]]; then
+    echo "[ERROR] Project response did not confirm only_allow_merge_if_pipeline_succeeds=$state" >&2
     return 1
   fi
 
@@ -2414,13 +2440,14 @@ import json, sys
 
 project = json.load(sys.stdin)
 permissions = project.get("permissions") or {}
-access = None
+levels = []
 for key in ("project_access", "group_access"):
     entry = permissions.get(key)
-    if isinstance(entry, dict) and access is None:
-        access = entry.get("access_level")
+    if isinstance(entry, dict) and isinstance(entry.get("access_level"), int):
+        levels.append(entry["access_level"])
+access = max(levels) if levels else None
 print("Project:              {}".format(project.get("path_with_namespace", "")))
-print("Caller access level:  {} ({})".format(access if access is not None else "none", access))
+print("Caller access level:  {}".format(access if access is not None else "none"))
 print("Visibility:           {}".format(project.get("visibility", "")))
 '
 }
