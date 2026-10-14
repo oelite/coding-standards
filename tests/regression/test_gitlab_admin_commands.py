@@ -201,24 +201,106 @@ class GitLabAdminCommandTests(unittest.TestCase):
                 self.assertIn("HTTP " + str(status), result.stderr)
                 self.assertNotIn("fake-pat", result.stdout + result.stderr)
 
-    def test_code_owner_patch_body_and_confirmed_state(self):
-        route = "/projects/oelite%2Fsource/protected_branches/develop"
+    def test_code_owner_existing_branch_lists_then_patches_without_access_changes(self):
+        list_route = "/projects/oelite%2Fsource/protected_branches"
+        patch_route = list_route + "/develop"
+        existing = {
+            "name": "develop", "code_owner_approval_required": False,
+            "allow_force_push": True,
+            "push_access_levels": [{"access_level": 30}],
+            "merge_access_levels": [{"access_level": 40}],
+        }
         result, requests = self.run_command(
             "protected-branch-code-owner", "oelite/source", "emma", "develop", "on",
-            routes={"PATCH " + route: {"status": 200, "response": {"code_owner_approval_required": True}}},
+            routes={
+                "GET " + list_route: {"status": 200, "response": [existing]},
+                "PATCH " + patch_route: {"status": 200, "response": {
+                    **existing, "code_owner_approval_required": True,
+                }},
+            },
         )
         self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertEqual(requests[-1], {
-            "method": "PATCH", "path": route,
+        self.assertEqual(requests[0]["method"], "GET")
+        self.assertEqual(requests[0]["path"], list_route)
+        self.assertEqual(requests[1], {
+            "method": "PATCH", "path": patch_route,
             "body": '{"code_owner_approval_required":true}',
         })
         self.assertIn("[OK]", result.stdout)
 
-    def test_code_owner_confirmation_mismatch_fails(self):
+    def test_code_owner_missing_branch_creates_least_privilege_configuration(self):
+        list_route = "/projects/oelite%2Fsource/protected_branches"
+        create_route = list_route
+        result, requests = self.run_command(
+            "protected-branch-code-owner", "oelite/source", "emma", "develop", "on",
+            routes={
+                "GET " + list_route: {"status": 200, "response": []},
+                "POST " + create_route: {"status": 201, "response": {
+                    "name": "develop", "code_owner_approval_required": True,
+                }},
+            },
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(requests[0]["method"], "GET")
+        self.assertEqual(requests[1]["method"], "POST")
+        self.assertEqual(json.loads(requests[1]["body"]), {
+            "name": "develop", "allow_force_push": False,
+            "code_owner_approval_required": True,
+            "allowed_to_push": [{"access_level": 0}],
+            "allowed_to_merge": [{"access_level": 40}],
+            "allowed_to_unprotect": [{"access_level": 40}],
+        })
+
+    def test_code_owner_read_only_single_branch_reports_missing_without_mutation(self):
         route = "/projects/oelite%2Fsource/protected_branches/develop"
+        result, requests = self.run_command(
+            "protected-branch-show", "oelite/source", "emma", "develop",
+            routes={"GET " + route: {"status": 404, "response": {"message": "404 Protected Branch Not Found"}}},
+        )
+        self.assertEqual(result.returncode, 2)
+        self.assertEqual(requests, [{"method": "GET", "path": route, "body": ""}])
+        self.assertIn("HTTP 404", result.stderr)
+
+    def test_code_owner_list_read_only_reports_branch_access_settings(self):
+        route = "/projects/oelite%2Fsource/protected_branches"
+        result, requests = self.run_command(
+            "protected-branches", "oelite/source", "emma",
+            routes={"GET " + route: {"status": 200, "response": [{
+                "name": "develop", "code_owner_approval_required": False,
+                "allow_force_push": False,
+                "push_access_levels": [{"access_level_description": "Maintainers"}],
+                "merge_access_levels": [{"access_level_description": "Maintainers"}],
+            }]}},
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(requests[0]["method"], "GET")
+        self.assertIn("develop", result.stdout)
+        self.assertIn("Maintainers", result.stdout)
+
+    def test_code_owner_create_failure_does_not_claim_success(self):
+        route = "/projects/oelite%2Fsource/protected_branches"
         result, _ = self.run_command(
             "protected-branch-code-owner", "oelite/source", "emma", "develop", "on",
-            routes={"PATCH " + route: {"status": 200, "response": {"code_owner_approval_required": False}}},
+            routes={
+                "GET " + route: {"status": 200, "response": []},
+                "POST " + route: {"status": 403, "response": {"message": "denied"}},
+            },
+        )
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("HTTP 403", result.stderr)
+        self.assertNotIn("[OK]", result.stdout)
+
+    def test_code_owner_confirmation_mismatch_fails(self):
+        route = "/projects/oelite%2Fsource/protected_branches/develop"
+        list_route = "/projects/oelite%2Fsource/protected_branches"
+        result, _ = self.run_command(
+            "protected-branch-code-owner", "oelite/source", "emma", "develop", "on",
+            routes={
+                "GET " + list_route: {"status": 200, "response": [{
+                    "name": "develop", "code_owner_approval_required": False,
+                }]},
+                "PATCH " + route: {"status": 200, "response": {"code_owner_approval_required": False}},
+            },
         )
         self.assertNotEqual(result.returncode, 0)
         self.assertNotIn("[OK]", result.stdout)
