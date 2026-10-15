@@ -1,4 +1,45 @@
 <?xml version="1.0"?>
 <clickhouse>
-  <max_server_memory_usage>1887436800</max_server_memory_usage>
+  <!--
+    Shared dev-stack memory budget (issues/28, supersedes INFRA-1279).
+
+    Measured root cause (issues/28): ClickHouse 26.5 AUTO-SIZES every cache to a
+    fixed fraction of the server memory budget. At a 4 GiB container with a
+    2.5-3.0 GiB cap, system.server_settings showed mark_cache, index_mark_cache,
+    uncompressed_cache, primary_index_cache, text_index_postings_cache and
+    vector_similarity_index_cache each at 2 GiB (iceberg 1 GiB, parquet 512 MiB)
+    — a total cache budget of ~14 GiB inside a 4 GiB box. The anonymous-RSS floor
+    therefore TRACKED whatever max_server_memory_usage we set (boot floor 2.43 GiB
+    at a 2.5 cap, 2.62 GiB at a 3.0 cap) and climbed to the cap within minutes,
+    so even trivial queries returned Code 241 (MEMORY_LIMIT_EXCEEDED). Raising the
+    cap was cosmetic — that is why 1.757/2.5/3.0 all failed identically.
+
+     Fix: bound the caches explicitly below (~800 MiB total — dev datasets are a
+     few small tables per project, this is generous). With the floor pinned well
+     under the cap, 3.0 GiB leaves ~0.2-0.3 GiB of headroom above the measured
+     steady-state anon floor (2.76-2.92 GiB on the shared volume). The 4 GiB
+     cgroup keeps a further ~1.0 GiB kernel margin so the kernel never OOM-kills the
+     server; an oversized query hits the soft 241 first. Measured 90s soak
+     (25/25 ok, no Code 241) with caches bounded and MALLOC_CONF decay active.
+
+    jemalloc page-return tuning lives in docker-compose.shared.yml as MALLOC_CONF:
+    the <jemalloc> config block here was empirically ignored by 26.5 (decay had no
+    effect; system.jemalloc_config table does not exist in this build).
+  -->
+  <max_server_memory_usage>3221225472</max_server_memory_usage>
+
+  <!-- Explicit cache bounds — stop the ~2 GiB-each auto-sizing from the memory budget -->
+  <mark_cache_size>268435456</mark_cache_size>
+  <index_mark_cache_size>268435456</index_mark_cache_size>
+  <primary_index_cache_size>67108864</primary_index_cache_size>
+  <uncompressed_cache_size>0</uncompressed_cache_size>
+  <text_index_postings_cache_size>67108864</text_index_postings_cache_size>
+  <text_index_header_cache_size>16777216</text_index_header_cache_size>
+  <text_index_tokens_cache_size>16777216</text_index_tokens_cache_size>
+  <vector_similarity_index_cache_size>67108864</vector_similarity_index_cache_size>
+  <iceberg_metadata_files_cache_size>33554432</iceberg_metadata_files_cache_size>
+  <parquet_metadata_cache_size>33554432</parquet_metadata_cache_size>
+  <query_cache>
+    <max_size_in_bytes>0</max_size_in_bytes>
+  </query_cache>
 </clickhouse>
