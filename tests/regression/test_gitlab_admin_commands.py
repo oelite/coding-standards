@@ -203,7 +203,8 @@ class GitLabAdminCommandTests(unittest.TestCase):
 
     def test_code_owner_existing_branch_lists_then_patches_without_access_changes(self):
         list_route = "/projects/oelite%2Fsource/protected_branches"
-        patch_route = list_route + "/develop"
+        patch_route = list_route + "/develop?code_owner_approval_required=true"
+        authoritative_route = list_route + "/develop"
         existing = {
             "name": "develop", "code_owner_approval_required": False,
             "allow_force_push": True,
@@ -215,6 +216,9 @@ class GitLabAdminCommandTests(unittest.TestCase):
             routes={
                 "GET " + list_route: {"status": 200, "response": [existing]},
                 "PATCH " + patch_route: {"status": 200, "response": {
+                    **existing, "code_owner_approval_required": False,
+                }},
+                "GET " + authoritative_route: {"status": 200, "response": {
                     **existing, "code_owner_approval_required": True,
                 }},
             },
@@ -222,20 +226,25 @@ class GitLabAdminCommandTests(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(requests[0]["method"], "GET")
         self.assertEqual(requests[0]["path"], list_route)
-        self.assertEqual(requests[1], {
-            "method": "PATCH", "path": patch_route,
-            "body": '{"code_owner_approval_required":true}',
-        })
+        self.assertEqual(requests[1]["method"], "PATCH")
+        self.assertEqual(requests[1]["path"], patch_route)
+        self.assertEqual(requests[1]["body"], "")
+        self.assertEqual(requests[2]["method"], "GET")
+        self.assertEqual(requests[2]["path"], authoritative_route)
         self.assertIn("[OK]", result.stdout)
 
     def test_code_owner_missing_branch_creates_least_privilege_configuration(self):
         list_route = "/projects/oelite%2Fsource/protected_branches"
         create_route = list_route
+        authoritative_route = list_route + "/develop"
         result, requests = self.run_command(
             "protected-branch-code-owner", "oelite/source", "emma", "develop", "on",
             routes={
                 "GET " + list_route: {"status": 200, "response": []},
                 "POST " + create_route: {"status": 201, "response": {
+                    "name": "develop", "code_owner_approval_required": False,
+                }},
+                "GET " + authoritative_route: {"status": 200, "response": {
                     "name": "develop", "code_owner_approval_required": True,
                 }},
             },
@@ -250,6 +259,8 @@ class GitLabAdminCommandTests(unittest.TestCase):
             "allowed_to_merge": [{"access_level": 40}],
             "allowed_to_unprotect": [{"access_level": 40}],
         })
+        self.assertEqual(requests[2]["method"], "GET")
+        self.assertEqual(requests[2]["path"], authoritative_route)
 
     def test_code_owner_read_only_single_branch_reports_missing_without_mutation(self):
         route = "/projects/oelite%2Fsource/protected_branches/develop"
@@ -290,8 +301,46 @@ class GitLabAdminCommandTests(unittest.TestCase):
         self.assertIn("HTTP 403", result.stderr)
         self.assertNotIn("[OK]", result.stdout)
 
-    def test_code_owner_confirmation_mismatch_fails(self):
+    def test_code_owner_confirmation_mismatch_fails_after_authoritative_readback(self):
         route = "/projects/oelite%2Fsource/protected_branches/develop"
+        patch_route = route + "?code_owner_approval_required=true"
+        list_route = "/projects/oelite%2Fsource/protected_branches"
+        result, requests = self.run_command(
+            "protected-branch-code-owner", "oelite/source", "emma", "develop", "on",
+            routes={
+                "GET " + list_route: {"status": 200, "response": [{
+                    "name": "develop", "code_owner_approval_required": False,
+                }]},
+                "PATCH " + patch_route: {"status": 200, "response": {"code_owner_approval_required": False}},
+                "GET " + route: {"status": 200, "response": {"code_owner_approval_required": False}},
+            },
+        )
+        self.assertNotEqual(result.returncode, 0)
+        self.assertEqual([request["method"] for request in requests], ["GET", "PATCH", "GET"])
+        self.assertIn("read-back did not confirm", result.stderr)
+        self.assertNotIn("[OK]", result.stdout)
+
+    def test_code_owner_patch_applies_but_response_omits_field_then_get_confirms(self):
+        route = "/projects/oelite%2Fsource/protected_branches/develop"
+        patch_route = route + "?code_owner_approval_required=true"
+        list_route = "/projects/oelite%2Fsource/protected_branches"
+        result, requests = self.run_command(
+            "protected-branch-code-owner", "oelite/source", "emma", "develop", "on",
+            routes={
+                "GET " + list_route: {"status": 200, "response": [{
+                    "name": "develop", "code_owner_approval_required": False,
+                }]},
+                "PATCH " + patch_route: {"status": 200, "response": {"name": "develop"}},
+                "GET " + route: {"status": 200, "response": {"code_owner_approval_required": True}},
+            },
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual([request["method"] for request in requests], ["GET", "PATCH", "GET"])
+        self.assertIn("[OK]", result.stdout)
+
+    def test_code_owner_readback_failure_reports_error_without_success(self):
+        route = "/projects/oelite%2Fsource/protected_branches/develop"
+        patch_route = route + "?code_owner_approval_required=true"
         list_route = "/projects/oelite%2Fsource/protected_branches"
         result, _ = self.run_command(
             "protected-branch-code-owner", "oelite/source", "emma", "develop", "on",
@@ -299,10 +348,12 @@ class GitLabAdminCommandTests(unittest.TestCase):
                 "GET " + list_route: {"status": 200, "response": [{
                     "name": "develop", "code_owner_approval_required": False,
                 }]},
-                "PATCH " + route: {"status": 200, "response": {"code_owner_approval_required": False}},
+                "PATCH " + patch_route: {"status": 200, "response": {"code_owner_approval_required": True}},
+                "GET " + route: {"status": 500, "response": {"message": "boom"}},
             },
         )
         self.assertNotEqual(result.returncode, 0)
+        self.assertIn("HTTP 500", result.stderr)
         self.assertNotIn("[OK]", result.stdout)
 
     def test_pipeline_must_succeed_put_body_and_confirmed_state(self):

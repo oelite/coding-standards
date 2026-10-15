@@ -2357,6 +2357,23 @@ print(json.dumps(body))
 ' "$branch" "$code_owner_value"
 }
 
+# Read the authoritative code_owner_approval_required value for one protected
+# branch via GET /projects/:id/protected_branches/:name. Prints true/false on
+# 200, prints nothing otherwise. Read-only.
+protected_branch_read_code_owner() {
+  local project_path="$1"
+  local branch_enc="$2"
+  local pat="$3"
+
+  api_get "/projects/$(url_encode_path "$project_path")/protected_branches/$branch_enc" "$pat"
+  if [[ "$_API_STATUS" != "200" ]]; then
+    echo "[ERROR] Authoritative read of protected branch failed (HTTP $_API_STATUS)" >&2
+    api_error_hint "$_API_STATUS" "$project_path"
+    return 1
+  fi
+  printf '%s\n' "$_API_RESPONSE" | python3 -c 'import json,sys; print(str(json.load(sys.stdin).get("code_owner_approval_required")).lower())'
+}
+
 cmd_protected_branch_code_owner() {
   local project_path="${1:-}"
   local agent="${2:-}"
@@ -2408,7 +2425,11 @@ print(json.dumps(match) if match is not None else "")
       echo "[OK] code_owner_approval_required=$state already set on $project_path protected branch $branch (no change)"
       return 0
     fi
-    api_patch "/projects/$encoded_path/protected_branches/$branch_enc" "$pat" "{\"code_owner_approval_required\":$value}"
+    # GitLab documents the boolean toggles for this endpoint as query
+    # parameters; JSON-body PATCHes of code_owner_approval_required have been
+    # observed to return 200 without applying the change, so send the value in
+    # the documented query form. Access levels are not sent, preserving them.
+    api_patch "/projects/$encoded_path/protected_branches/$branch_enc?code_owner_approval_required=$value" "$pat" ""
     if [[ "$_API_STATUS" != "200" ]]; then
       echo "[ERROR] Failed to set code_owner_approval_required=$state on $project_path branch $branch (HTTP $_API_STATUS)" >&2
       api_error_hint "$_API_STATUS" "$project_path"
@@ -2427,10 +2448,13 @@ print(json.dumps(match) if match is not None else "")
     fi
   fi
 
+  # The PATCH/POST response can omit or contradict the applied state (observed:
+  # HTTP 200 with code_owner_approval_required=false after a true request), so
+  # confirm with an authoritative GET read-back before reporting success.
   local confirmed
-  confirmed=$(printf '%s\n' "$_API_RESPONSE" | python3 -c 'import json,sys; print(str(json.load(sys.stdin).get("code_owner_approval_required")).lower())')
+  confirmed=$(protected_branch_read_code_owner "$project_path" "$branch_enc" "$pat") || return 1
   if [[ "$confirmed" != "$value" ]]; then
-    echo "[ERROR] Protected branch response did not confirm code_owner_approval_required=$state" >&2
+    echo "[ERROR] Protected branch read-back did not confirm code_owner_approval_required=$state" >&2
     return 1
   fi
 
