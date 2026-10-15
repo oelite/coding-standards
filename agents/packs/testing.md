@@ -165,7 +165,7 @@ Every CRUD test MUST verify data survives page refresh:
 ### Integration Tests (Data Layer)
 - **REAL Docker containers** — zero mocks
 - **Run against the SHARED singleton stack** (`infrastructure/oelite-stack/` — see `16-SHARED-LOCAL-INFRASTRUCTURE.md`)
-- **NEVER create a per-repo container** for MongoDB/Redis/ClickHouse/Kafka/RabbitMQ/MinIO/OpenSearch: no per-repo `docker-compose*.yml`, no `docker run <shared-service>`, no Testcontainers fixture. If a shared service is down, **restart the shared stack** (`./oelite-stack.sh up`) — never create a replacement. Enforced by `oelite-guard.sh` Gate E.
+- **NEVER create a per-repo container** for MongoDB/Redis/ClickHouse/Kafka/RabbitMQ/MinIO/OpenSearch/Mailpit: no per-repo `docker-compose*.yml`, no `docker run <shared-service>`, no Testcontainers fixture. If a shared service is down, **restart the shared stack** (`./oelite-stack.sh up`) — never create a replacement. Enforced by `oelite-guard.sh` Gate E.
 - Every repository method + controller action
 - Mark: `[Trait("Category", "Integration")]` + `[Category("SkipCI")]`
 - CI runs: `dotnet test --filter "Category!=Integration"`

@@ -42,6 +42,7 @@ infrastructure/oelite-stack/  (in coding-standards repo)
 | RabbitMQ | Virtual host | `/oelite/origin-auth` |
 | MinIO | Bucket-per-project | `oelite-origin-auth` |
 | OpenSearch | Index-per-project | `oelite-origin-auth-*` |
+| Mailpit | Shared mailbox; use unique recipient addresses | `to:apex-test-<guid>@example.test` |
 
 ### MongoDB Is a Sharded Replica Set — Always
 
@@ -69,9 +70,9 @@ mongodb://localhost:27017/?directConnection=true
 
 ### ✅ REQUIRED
 
-1. **All dev work uses the shared stack.** No new `docker-compose.dev.yml` in any repo may redefine MongoDB, Redis, ClickHouse, Kafka, RabbitMQ, MinIO, or OpenSearch.
+1. **All dev work uses the shared stack.** No new `docker-compose.dev.yml` in any repo may redefine MongoDB, Redis, ClickHouse, Kafka, RabbitMQ, MinIO, OpenSearch, or Mailpit.
 2. **One-time machine setup.** Each developer runs `./oelite-stack.sh up && ./oelite-stack.sh init` once per fresh machine clone. Per-project databases/vhosts/buckets are created by running the project onboarding scripts (see `scripts/init-per-project-dbs.sh`, `init-rabbitmq.sh`, `init-minio.sh`).
-3. **Connection strings use canonical ports** (27017, 6379, 9092, 5672, 9000, 8123).
+3. **Connection strings use canonical ports** (27017, 6379, 8123, 9000, 9092, 5672, 1025 SMTP, 8025 Mailpit UI/API).
 4. **Per-project databases/buckets/vhosts** are created by running the project onboarding scripts during project setup. Credentials are stored in the project's own gitignored secrets. Never committed to coding-standards.
 5. **Worktrees never spin up containers.** New worktrees connect to the existing singleton.
 6. **CI/CD skips integration tests** with `Category!=Integration` filter. CI never touches this stack.
@@ -80,7 +81,7 @@ mongodb://localhost:27017/?directConnection=true
 ### ❌ PROHIBITED
 
 1. **Per-repo MongoDB containers** in any `docker-compose*.yml`. The shared stack owns MongoDB.
-2. **Per-repo Redis/ClickHouse/Kafka/RabbitMQ/MinIO/OpenSearch** instances. Use the shared stack.
+2. **Per-repo Redis/ClickHouse/Kafka/RabbitMQ/MinIO/OpenSearch/Mailpit** instances. Use the shared stack.
 3. **Port remapping** of the canonical ports (27017, 6379, 9092, etc.) per-repo. Conflict resolution is at the compose level, not the app level.
 4. **Connecting directly to mongod** processes (configsvr, shard). All app code MUST go through mongos on 27017.
 5. **Embedding infra credentials in repos.** Use the `.env.example` template; copy to `.env` (gitignored) for local overrides.
@@ -150,3 +151,4 @@ After implementation, the **shared infrastructure** is owned by **Ethan** (DevOp
 | 2026-09-10 | Ethan (Sisyphus) | Add OpenSearch 3.7.0 + Dashboards UI to shared stack. Issue #25. |
 | 2026-09-10 | Ethan (Sisyphus) | Refactor init scripts to project-level; remove per-project hardcodings from shared infrastructure. |
 | 2026-09-28 | Ethan (Sisyphus) | Add Service Recovery Procedure; extend PROHIBITED with `docker run`, Testcontainers, and per-repo test/dev compose files; add Gate E verification. Issue #29. |
+| 2026-10-15 | Ethan | Add shared Mailpit v1.30.2, canonical SMTP/API endpoints, and singleton enforcement. Issue #45. |

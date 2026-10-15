@@ -23,7 +23,7 @@ The root `oelite/` folder is NOT a git repository — it is a monorepo container
 > | **B. Worktree-presence** | Edits inside a scoped git repo that are NOT under `.worktrees/<agent>-<iid>/` |
 > | **C. Protected-branch** | Edits in worktrees whose branch is `develop`, `main`, or `master` |
 > | **D. Issue-IID** | (Advisory) When `.oe-scope` exists, the worktree's declared issue must match the branch's issue ref |
-> | **E. No-standalone-infra** | Creating a per-repo `docker-compose*.yml` that declares a shared service (MongoDB, Redis, ClickHouse, Kafka, RabbitMQ, MinIO, OpenSearch), or running `docker run` for one of them, outside `coding-standards/infrastructure/oelite-stack/`. A down shared service is recovered with `./oelite-stack.sh up` — never by creating a replacement container |
+> | **E. No-standalone-infra** | Creating a per-repo `docker-compose*.yml` that declares a shared service (MongoDB, Redis, ClickHouse, Kafka, RabbitMQ, MinIO, OpenSearch, Mailpit), or running `docker run` for one of them, outside `coding-standards/infrastructure/oelite-stack/`. A down shared service is recovered with `./oelite-stack.sh up` — never by creating a replacement container |
 >
 > The `OELITE_HUMAN=1` environment variable bypasses the guard for intentional human maintenance.
 > `.claude/` and `.opencode/` are auto-allowed (IDE config writes).

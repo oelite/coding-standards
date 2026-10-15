@@ -52,12 +52,13 @@ Ethan (primary), Marcus (architecture review)
   - OpenSearch: `opensearchproject/opensearch:3.7.0`
   - OpenSearch Dashboards: `opensearchproject/opensearch-dashboards:3.7.0` (profile: ui)
   - MinIO: `minio/minio:RELEASE.2025-09-07T16-13-09Z`
+  - Mailpit: `axllent/mailpit:v1.30.2`
 - **Never use `latest` tags**
 - Minimal service principle: only include services actively consumed by app code (verified by `.csproj` references and actual source usage)
 - **Version Update Process**: When a new major/minor version is released, Ethan verifies compatibility with OElite.Restme providers; update the shared `infrastructure/oelite-stack/docker-compose.shared.yml`; all repos converge automatically because they share the stack.
-- **No per-repo `docker-compose.dev.yml` files** — the shared stack owns MongoDB, Redis, ClickHouse, Kafka, RabbitMQ, MinIO, OpenSearch, OpenSearch Dashboards. Per-repo compose files are prohibited (see standard 16).
+- **No per-repo `docker-compose.dev.yml` files** — the shared stack owns MongoDB, Redis, ClickHouse, Kafka, RabbitMQ, MinIO, OpenSearch, Mailpit, and their UIs. Per-repo compose files are prohibited (see standard 16).
 - **Never create a second instance of a shared service** — not via a compose file, not via `docker run`, not via Testcontainers. If a service is down, recover it with `./oelite-stack.sh up` (idempotent); if that fails, escalate to Ethan via GitLab issue. Machine-enforced by `oelite-guard.sh` Gate E.
-- **App-only compose files are still fine** — a `docker-compose.yml` that runs your app, nginx, mailpit, or a UI is not a violation. Only the 7 shared services are restricted.
+- **App-only compose files are still fine** — a `docker-compose.yml` that runs your app, nginx, or an app-specific UI is not a violation. Mailpit is a shared service; only the singleton stack may run it.
 
 ## CI/CD Pipeline Requirements
 - Stage pattern: `version → build → test → pack/deploy → build_docker → deploy_k8s`

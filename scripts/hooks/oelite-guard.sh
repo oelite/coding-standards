@@ -20,8 +20,8 @@
 #   E. NO-STANDALONE-INFRA — Shared local infrastructure is a machine-wide
 #                         SINGLETON at coding-standards/infrastructure/oelite-stack/.
 #                         Agents MUST NOT create a second instance of any of the
-#                         7 shared services (MongoDB, Redis, ClickHouse, Kafka,
-#                         RabbitMQ, MinIO, OpenSearch) — not via docker-compose
+#                         8 shared services (MongoDB, Redis, ClickHouse, Kafka,
+#                         RabbitMQ, MinIO, OpenSearch, Mailpit) — not via docker-compose
 #                         file, not via `docker run`, not via Testcontainers.
 #                         If a shared service is down, the fix is to RESTART the
 #                         shared stack (`./oelite-stack.sh up`), never to create
@@ -131,15 +131,15 @@ is_compose_filename() {
 # True if compose content declares a shared-stack service on an `image:` line.
 # Anchored to `image:` so a mention in a comment or a service NAME does not match.
 compose_declares_shared_infra() {
-  grep -Eqi '^[[:space:]]*image:[[:space:]]*["'"'"']?[^[:space:]"'"'"']*(mongo|redis|rabbitmq|minio|clickhouse|opensearch|cp-kafka)' <<<"$1"
+  grep -Eqi '^[[:space:]]*image:[[:space:]]*["'"'"']?[^[:space:]"'"'"']*(mongo|redis|rabbitmq|minio|clickhouse|opensearch|cp-kafka|mailpit)' <<<"$1"
 }
 
 # True if a docker CLI invocation names a shared-stack service image.
 # The image token may be bare (mongo:8.0) or registry-qualified
 # (docker.io/library/mongo:8.0), so the preceding char may also be "/".
 docker_cmd_targets_shared_infra() {
-  grep -Eqi '(^|[[:space:]"/])(mongo|redis|rabbitmq|minio|clickhouse|opensearch|cp-kafka)(:[0-9]|$|@)' <<<"$1" ||
-    grep -Eqi '(confluentinc/cp-kafka|apache/kafka|opensearchproject/opensearch|minio/minio|clickhouse/clickhouse-server)([:@"/]|$)' <<<"$1"
+  grep -Eqi '(^|[[:space:]"/])(mongo|redis|rabbitmq|minio|clickhouse|opensearch|cp-kafka|mailpit)(:[0-9]|$|@)' <<<"$1" ||
+    grep -Eqi '(confluentinc/cp-kafka|apache/kafka|opensearchproject/opensearch|minio/minio|clickhouse/clickhouse-server|axllent/mailpit)([:@"/]|$)' <<<"$1"
 }
 
 # Extracts EVERY -f/--file value from a docker compose command, one per line.
@@ -237,8 +237,8 @@ Editing files outside that scope is forbidden to prevent cross-issue contaminati
       ;;
     standalone-infra)
       body="This compose file declares a SHARED local-infrastructure service.
-The 7 shared services (MongoDB, Redis, ClickHouse, Kafka, RabbitMQ, MinIO,
-OpenSearch) live ONCE per machine in the singleton stack:
+The 8 shared services (MongoDB, Redis, ClickHouse, Kafka, RabbitMQ, MinIO,
+OpenSearch, Mailpit) live ONCE per machine in the singleton stack:
 
   coding-standards/infrastructure/oelite-stack/
 
@@ -259,7 +259,7 @@ of starting a local container. See standard 16-SHARED-LOCAL-INFRASTRUCTURE.md."
       ;;
     standalone-infra-cmd)
       body="This command would start a SECOND instance of a SHARED service.
-The 7 shared services run ONCE per machine in the singleton stack.
+The 8 shared services run ONCE per machine in the singleton stack.
 
 Agents MUST NOT run 'docker run' for these services, and MUST NOT bring up a
 per-repo compose file that defines them.

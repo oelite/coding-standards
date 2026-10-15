@@ -75,7 +75,7 @@ dotnet test --filter "Category=Integration"
 
 > The shared stack (see `16-SHARED-LOCAL-INFRASTRUCTURE.md`) is machine-wide and shared across all repos/worktrees. It does not need to be started per-worktree.
 
-**🚨 Never create a per-repo container for integration tests.** The 7 shared services (MongoDB, Redis, ClickHouse, Kafka, RabbitMQ, MinIO, OpenSearch) run ONCE per machine in the singleton stack. If a service is stopped or unhealthy, the ONLY correct action is to restart the shared stack (`./oelite-stack.sh up`) — never to create a replacement container, a per-repo `docker-compose.test.yml`, or a Testcontainers fixture that spins up its own instance. Machine-enforced: `oelite-guard.sh` Gate E blocks `docker run <shared-service>` and any per-repo compose file that declares one.
+**🚨 Never create a per-repo container for integration tests.** The 8 shared services (MongoDB, Redis, ClickHouse, Kafka, RabbitMQ, MinIO, OpenSearch, Mailpit) run ONCE per machine in the singleton stack. If a service is stopped or unhealthy, the ONLY correct action is to restart the shared stack (`./oelite-stack.sh up`) — never to create a replacement container, a per-repo `docker-compose.test.yml`, or a Testcontainers fixture that spins up its own instance. Machine-enforced: `oelite-guard.sh` Gate E blocks `docker run <shared-service>` and any per-repo compose file that declares one.
 
 **Service recovery procedure (when the shared stack is down):**
 
