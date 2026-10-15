@@ -115,7 +115,7 @@ ClickHouse is provisioned from `CLICKHOUSE_ADMIN_USER` and
 `CLICKHOUSE_ADMIN_PASSWORD` in the shared `.env`; the compose service maps these
 to the image's `CLICKHOUSE_USER` and `CLICKHOUSE_PASSWORD` variables. Run
 `./scripts/init-clickhouse-users.sh` during stack initialization to verify the
-same credentials used by health checks and chmonitor. Existing stacks with
+same credentials used by health checks. Existing stacks with
 conflicting legacy ClickHouse user storage must be repaired through the approved
 credential-rotation procedure; this check never deletes volumes or access data.
 
@@ -133,7 +133,6 @@ The shared stack includes web-based UIs for inspecting and monitoring all servic
 |---|---|---|---|
 | Redis | http://localhost:5540 | RedisInsight | Key browser, CLI, slowlog, memory analyzer |
 | Kafka | http://localhost:8080 | Kafka UI | Topics, consumer groups, lag, message browser |
-| ClickHouse | http://localhost:3000 | chmonitor | Queries, merges, replication, cluster health |
 | MongoDB | http://localhost:3141 | MongoStudio | Schema, collections, aggregation builder |
 | RabbitMQ | http://localhost:15672 | *(built-in management UI)* | Queues, exchanges, vhosts, message inspector |
 | MinIO | http://localhost:9001 | *(built-in console)* | Bucket browser, object inspector |
@@ -149,7 +148,6 @@ The shared stack includes web-based UIs for inspecting and monitoring all servic
 
 - **RedisInsight**: Auto-discovers the Redis instance. If prompted, connect to `oelite-redis:6379` with password from `.env` (`REDIS_PASSWORD`).
 - **Kafka UI**: Cluster `oelite` is auto-configured in `docker-compose.shared.yml`.
-- **chmonitor**: Configured via environment variables to point at `oelite-clickhouse:8123`.
 - **MongoStudio**: Connects to `oelite-mongos:27017` using root credentials from `.env`.
   Set `MONGODB_ADMIN_ACCESS_KEY` in `.env` for admin access (generated on first `oelite-stack.sh up`).
 
@@ -234,7 +232,7 @@ key to `.env.example` (committed) with an empty value.
 | mongo-shard-1 (secondary/arb) | 512 MB | 0.5 |
 | mongo-mongos | 512 MB | 0.5 |
 | redis | 512 MB | 0.5 |
-| clickhouse | 2048 MB | 1.5 |
+| clickhouse | 4096 MB | 1.5 |
 | kafka | 1024 MB | 1.0 |
 | rabbitmq | 512 MB | 0.5 |
 | minio | 512 MB | 0.5 |
@@ -242,20 +240,19 @@ key to `.env.example` (committed) with an empty value.
 | **UI Services** | | |
 | redisinsight | 256 MB | 0.25 |
 | kafka-ui | 512 MB | 0.25 |
-| chmonitor | 256 MB | 0.25 |
 | mongostudio | 512 MB | 0.25 |
 | opensearch-dashboards | 512 MB | 0.25 |
 | mailpit | 128 MB | 0.1 |
-| **Total (all)** | **~9.1 GB** | **~9.1 cores** |
-| **Total (--no-ui)** | **~7.1 GB** | **~7.6 cores** |
+| **Total (all)** | **~10.9 GB** | **~8.9 cores** |
+| **Total (--no-ui)** | **~9.1 GB** | **~7.6 cores** |
 
-> **ClickHouse sizing** (INFRA-1279): ClickHouse is pinned at a 2 GiB container limit
-> with an explicit `max_server_memory_usage` (1.5 GiB) drop-in at
-> `config/clickhouse/config.d/99-oelite-memory.xml`, plus a per-query bound at
-> `config/clickhouse/users.d/99-oelite-limits.xml`. This is deliberate — the default
-> 0.9× auto-derived cap OOMed (Code 241) on the old 1 GiB limit once merges + multiple
-> project databases exceeded baseline RSS. The health check now runs `SELECT 1`, so a
-> memory-starved ClickHouse fails `./oelite-stack.sh health` instead of reporting green.
+> **ClickHouse sizing** (issues/28): ClickHouse runs with a 4 GiB container limit,
+> a 3 GiB `max_server_memory_usage` cap, explicitly bounded caches, and jemalloc decay
+> tuning in `config/clickhouse/config.d/99-oelite-memory.xml`. A per-query bound remains
+> configured in `config/clickhouse/users.d/99-oelite-limits.xml`. This avoids the Code 241
+> OOM wedge caused by auto-sized caches consuming the old 2 GiB container budget. The
+> health check runs `SELECT 1`, so a memory-starved ClickHouse fails `./oelite-stack.sh
+> health` instead of reporting green.
 
 Tested on: 23 GB RAM, 8+ core machines. On 8 GB machines: use `--no-ui` flag to skip debug UIs.
 

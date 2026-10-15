@@ -26,7 +26,6 @@
 #   ./oelite-stack.sh up --with-ui
 #   RedisInsight:     http://localhost:5540
 #   Kafka UI:         http://localhost:8080
-#   chmonitor:        http://localhost:3000
 #   MongoStudio:      http://localhost:3141
 #   RabbitMQ Mgmt:    http://localhost:15672
 #   MinIO Console:    http://localhost:9001
@@ -369,30 +368,6 @@ services:
       - ./config/clickhouse/users.d/99-oelite-limits.xml:/etc/clickhouse-server/users.d/99-oelite-limits.xml:ro
     networks:
       - oelite-infra
-
-  # ─── chmonitor (ClickHouse Web UI) ──────────────────────────────────────────
-  # Purpose-built ClickHouse dashboard: queries, merges, replication, health.
-  # Reads system tables directly — no exporters needed.
-  # Access: http://localhost:3000 (via --profile ui)
-  oelite-chmonitor:
-    image: ghcr.io/chmonitor/chmonitor:v0.3.0
-    container_name: oelite-chmonitor
-    hostname: oelite-chmonitor
-    ports:
-      - "3000:3000"
-    mem_limit: 256m
-    depends_on:
-      oelite-clickhouse:
-        condition: service_healthy
-    environment:
-      CLICKHOUSE_HOST: oelite-clickhouse
-      CLICKHOUSE_PORT: "8123"
-      CLICKHOUSE_USER: ${CLICKHOUSE_ADMIN_USER:-default}
-      CLICKHOUSE_PASSWORD: ${CLICKHOUSE_ADMIN_PASSWORD}
-    networks:
-      - oelite-infra
-    restart: unless-stopped
-    profiles: [ui]
 
   # ─── Kafka (KRaft mode — no Zookeeper dependency) ───────────────────────
   oelite-kafka:

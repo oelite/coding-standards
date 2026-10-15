@@ -47,9 +47,6 @@ check "RedisInsight UI (5540)" "curl -sf http://localhost:5540 >/dev/null 2>&1" 
 check "ClickHouse (8123)" \
   "docker exec oelite-clickhouse clickhouse-client --user '${CLICKHOUSE_ADMIN_USER:-oelite}' --password '${CLICKHOUSE_ADMIN_PASSWORD}' -q 'SELECT 1' >/dev/null 2>&1"
 
-# chmonitor UI (optional)
-check "chmonitor UI (3000)" "curl -sf http://localhost:3000 >/dev/null 2>&1" || true
-
 # Kafka — list topics (no auth)
 check "Kafka (9092)" "docker exec oelite-kafka kafka-topics --bootstrap-server localhost:9092 --list >/dev/null 2>&1"
 
