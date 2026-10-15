@@ -74,6 +74,9 @@ check "OpenSearch (9200)" "curl -sf http://localhost:9200/_cluster/health >/dev/
 # OpenSearch Dashboards UI (optional)
 check "OpenSearch Dashboards UI (5601)" "curl -sf http://localhost:5601/api/status >/dev/null 2>&1" || true
 
+# Mailpit — REST API on 8025 (SMTP on 1025)
+check "Mailpit API (8025)" "curl -sf 'http://localhost:8025/api/v1/messages?limit=1' >/dev/null 2>&1"
+
 # MongoStudio UI (optional)
 check "MongoStudio UI (3141)" "curl -sf http://localhost:3141 >/dev/null 2>&1" || true
 

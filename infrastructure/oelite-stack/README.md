@@ -27,14 +27,17 @@ If a service below is **stopped, unhealthy, or missing**, the only correct actio
 | RabbitMQ | `rabbitmq:4.3-management-alpine` |
 | MinIO | `minio/minio:RELEASE.*` |
 | OpenSearch | `opensearchproject/opensearch:3.7.0` |
+| Mailpit | `axllent/mailpit:v1.30.2` |
 
 Prohibited (enforced by `oelite-guard.sh` Gate E, exit code 2):
 
 - a `docker-compose*.yml` in an app repo declaring any of the services above
-- `docker run mongo:8.0 ...` (or any shared-service image) outside this directory
+- `docker run mongo:8.0 ...` (or any shared-service image, including `axllent/mailpit`) outside this directory
 - a Testcontainers fixture that starts its own MongoDB/Redis/etc.
 
-App-only compose files (your app image, nginx, mailpit, a UI) are unaffected.
+App-only compose files (your app image, nginx, an app-specific UI) are unaffected.
+Mailpit is a shared service — never run a per-repo Mailpit container; point your
+app's SMTP settings at `localhost:1025` and your tests at `http://localhost:8025`.
 
 ## Quick Start
 
@@ -80,6 +83,7 @@ All app code connects to these **fixed canonical endpoints**:
 | RabbitMQ | `localhost:5672` (AMQP), `15672` (UI) | User + pass in `.env` |
 | MinIO | `localhost:9000` (API), `9001` (Console) | User + pass in `.env` |
 | OpenSearch | `localhost:9200` | Single-node, no auth in dev |
+| Mailpit | `localhost:1025` (SMTP), `http://localhost:8025` (UI/API) | Shared test mailbox — filter by recipient |
 
 ### Per-Project Onboarding
 
@@ -134,6 +138,12 @@ The shared stack includes web-based UIs for inspecting and monitoring all servic
 | RabbitMQ | http://localhost:15672 | *(built-in management UI)* | Queues, exchanges, vhosts, message inspector |
 | MinIO | http://localhost:9001 | *(built-in console)* | Bucket browser, object inspector |
 | OpenSearch | http://localhost:5601 | OpenSearch Dashboards | Index browser, Dev Tools console, visualizations |
+| Mailpit | http://localhost:8025 | *(built-in web UI)* | Captured SMTP messages, attachments, REST API — starts with the core stack (not `--profile ui`) |
+
+> **Mailpit mailbox is shared across all projects.** It has no per-project
+> namespaces — isolate test data by using unique recipient addresses
+> (e.g. `to:apex-test-<guid>@example.test`) and filtering the
+> [REST API](http://localhost:8025/api/v1/messages) by recipient.
 
 ### Connecting UIs to Services
 
@@ -235,8 +245,9 @@ key to `.env.example` (committed) with an empty value.
 | chmonitor | 256 MB | 0.25 |
 | mongostudio | 512 MB | 0.25 |
 | opensearch-dashboards | 512 MB | 0.25 |
-| **Total (all)** | **~9 GB** | **~9 cores** |
-| **Total (--no-ui)** | **~7 GB** | **~7.5 cores** |
+| mailpit | 128 MB | 0.1 |
+| **Total (all)** | **~9.1 GB** | **~9.1 cores** |
+| **Total (--no-ui)** | **~7.1 GB** | **~7.6 cores** |
 
 > **ClickHouse sizing** (INFRA-1279): ClickHouse is pinned at a 2 GiB container limit
 > with an explicit `max_server_memory_usage` (1.5 GiB) drop-in at
