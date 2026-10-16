@@ -60,6 +60,19 @@ url_encode_query() {
   python3 -c "import urllib.parse, sys; print(urllib.parse.quote(sys.argv[1], safe=''))" "$1"
 }
 
+# FIX #48: escapes a value for safe use in the *replacement* half of a sed
+# s|pat|repl| expression: backslash first, then `&` (whole-match), then the
+# `|` delimiter itself. Quotes, backticks and `$` in the value are safe
+# because the shell expands the variable exactly once and sed does not
+# re-evaluate the replacement text.
+scope_kv_escape() {
+  local s="$1"
+  s="${s//\\/\\\\}"
+  s="${s//&/\\&}"
+  s="${s//|/\\|}"
+  printf '%s' "$s"
+}
+
 get_pat() {
   local agent="$1"
   local var_name="OELITE_PAT_${agent:u}"
@@ -1143,12 +1156,15 @@ cleanup_local_worktree_for_branch() {
   [[ -z "$branch" ]] && return 0
 
   local wt_path
+  # FIX #49 (audit): avoid `| head -1` under pipefail; awk prints only the
+  # first match itself so no downstream reader can be SIGPIPE'd.
   wt_path=$(git -C "$root" worktree list --porcelain 2>/dev/null | awk -v b="$branch" '
+    BEGIN { printed = 0 }
     /^worktree / { w=$2; br="" }
     /^branch /   { split($0, a, "refs/heads/"); br = (a[2] != "" ? a[2] : "") }
-    /^$/         { if (br == b) print w }
-    END          { if (br == b) print w }
-  ' | head -1)
+    /^$/         { if (br == b && !printed) { print w; printed = 1 } }
+    END          { if (br == b && !printed) print w }
+  ')
 
   [[ -z "$wt_path" ]] && return 0
 
@@ -1326,68 +1342,88 @@ cmd_worktree_cleanup() {
 
   validate_agent "$target_agent" || return 1
 
-  local wt_info
-  wt_info=$(git -C "$root" worktree list --porcelain | while IFS= read -r line; do
+  # FIX #49: iterate ALL matching worktrees (no `| head -1` under pipefail —
+  # head closed the pipe early and SIGPIPE'd the writer as exit 141 when the
+  # agent had >1 matching worktree). Each match gets an MR-state guard so an
+  # open-MR worktree is never removed silently.
+  local wt_matches=()
+  while IFS= read -r line; do
     case "$line" in
       worktree\ *) wt_p="${line#worktree }" ;;
       branch\ *)   br="${line#branch refs/heads/}" ;;
       "")
         if [[ "$wt_p" == "$root/.worktrees/$target_agent" || \
               "$wt_p" == "$root/.worktrees/$target_agent-"* ]]; then
-          echo "$wt_p|$br"
+          wt_matches+=("$wt_p|$br")
         fi
         wt_p=""; br="" ;;
     esac
-  done | head -1)
+  done < <(git -C "$root" worktree list --porcelain 2>/dev/null)
 
-  if [[ -z "$wt_info" ]]; then
+  if [[ ${#wt_matches[@]} -eq 0 ]]; then
     echo "[INFO] No worktree found for agent: $target_agent"
     return 0
   fi
 
-  local wt_path="${wt_info%%|*}"
-  local branch="${wt_info#*|}"
+  local cleaned_count=0
+  for wt_match in "${wt_matches[@]}"; do
+    local wt_path="${wt_match%%|*}"
+    local branch="${wt_match#*|}"
 
-  if [[ "$wt_path" == "$current_wt_path" ]]; then
-    echo "[WARN] Cannot remove currently-active worktree: $wt_path"
-    echo "       Run from main repo or another worktree."
-    return 1
-  fi
-
-  echo "=== Cleaning up worktree: $wt_path ==="
-  echo "  Branch: $branch"
-  echo "[prune] Running git worktree prune..."
-  git -C "$root" worktree prune 2>&1
-
-  if [[ ! -d "$wt_path" ]]; then
-    echo "  Worktree directory already gone (prunable orphan)"
-    if (git -C "$root" branch --list "$branch" | grep -q . || true); then
-      echo "  Deleting local branch: $branch"
-      git -C "$root" branch -D "$branch" 2>/dev/null && echo "  [OK] Branch deleted"
+    if [[ "$wt_path" == "$current_wt_path" ]]; then
+      echo "[SKIP] $wt_path — currently-active worktree (run from main repo or another worktree)"
+      continue
     fi
-    echo "[OK] Orphan cleanup complete for $target_agent"
-    return 0
-  fi
 
-  echo "[remove] git worktree remove $wt_path"
-  if git -C "$root" worktree remove "$wt_path" 2>&1; then
-    echo "  [OK] Worktree removed"
-  else
-    echo "  [WARN] Standard remove failed, trying --force..."
-    git -C "$root" worktree remove "$wt_path" --force 2>&1 || echo "  [WARN] Could not remove worktree"
-  fi
+    # MR-state guard (per GIT-WORKFLOW-STANDARDS.md §1.8): never silently remove
+    # a worktree whose linked MR is still open.
+    local mr_state=""
+    if [[ -n "$branch" ]]; then
+      mr_state=$(get_mr_state_for_branch "$gitlab_project" "$branch")
+    fi
+    if [[ -n "$branch" && "$mr_state" != "merged" && "$mr_state" != "closed" && "$mr_state" != "not_found" ]]; then
+      echo "[SKIP] $target_agent ($branch) MR=$mr_state — still open; not removing"
+      continue
+    fi
 
-  if $delete_branch && [[ -n "$branch" ]]; then
-    echo "[branch] Deleting local branch: $branch"
-    if git -C "$root" branch -D "$branch" 2>/dev/null; then
-      echo "  [OK] Branch deleted"
+    echo "=== Cleaning up worktree: $wt_path ==="
+    echo "  Branch: ${branch:-<none>}"
+    echo "  MR state: ${mr_state:-orphan (no branch)}"
+    echo "[prune] Running git worktree prune..."
+    git -C "$root" worktree prune 2>&1
+
+    if [[ ! -d "$wt_path" ]]; then
+      echo "  Worktree directory already gone (prunable orphan)"
+      if [[ -n "$branch" ]] && (git -C "$root" branch --list "$branch" | grep -q . || true); then
+        echo "  Deleting local branch: $branch"
+        git -C "$root" branch -D "$branch" 2>/dev/null && echo "  [OK] Branch deleted"
+      fi
+      cleaned_count=$((cleaned_count + 1))
+      continue
+    fi
+
+    echo "[remove] git worktree remove $wt_path"
+    if git -C "$root" worktree remove "$wt_path" 2>&1; then
+      echo "  [OK] Worktree removed"
     else
-      echo "  [WARN] Could not delete branch (may not exist)" >&2
+      echo "  [WARN] Standard remove failed, trying --force..."
+      git -C "$root" worktree remove "$wt_path" --force 2>&1 || echo "  [WARN] Could not remove worktree"
     fi
-  fi
+
+    if $delete_branch && [[ -n "$branch" ]]; then
+      echo "[branch] Deleting local branch: $branch"
+      if git -C "$root" branch -D "$branch" 2>/dev/null; then
+        echo "  [OK] Branch deleted"
+      else
+        echo "  [WARN] Could not delete branch (may not exist)" >&2
+      fi
+    fi
+
+    cleaned_count=$((cleaned_count + 1))
+  done
 
   echo ""
-  echo "[OK] Worktree cleanup complete for $target_agent"
+  echo "[OK] Worktree cleanup complete for $target_agent ($cleaned_count worktree(s) cleaned)"
 }
 
 cmd_worktree_check_stale() {
@@ -2659,14 +2695,15 @@ cmd_oe_scope() {
   done
 
   if [[ -n "$task_type" || -n "$issue" || -n "$desc" ]]; then
+    # FIX #48: quote-safe KEY=VALUE line updates (see scope_kv_escape above).
     if [[ -n "$task_type" ]]; then
-      sed -i '' "s/^TASK_TYPE=.*/TASK_TYPE=$task_type/" "$scope_file"
+      sed -i '' "s|^TASK_TYPE=.*|TASK_TYPE=$(scope_kv_escape "$task_type")|" "$scope_file"
     fi
     if [[ -n "$issue" ]]; then
-      sed -i '' "s/^ISSUE=.*/ISSUE=$issue/" "$scope_file"
+      sed -i '' "s|^ISSUE=.*|ISSUE=$(scope_kv_escape "$issue")|" "$scope_file"
     fi
     if [[ -n "$desc" ]]; then
-      sed -i '' "s/^TASK_DESCRIPTION=.*/TASK_DESCRIPTION=$desc/" "$scope_file"
+      sed -i '' "s|^TASK_DESCRIPTION=.*|TASK_DESCRIPTION=$(scope_kv_escape "$desc")|" "$scope_file"
     fi
     echo "[OK] Scope updated for $wt_id:"
   else
