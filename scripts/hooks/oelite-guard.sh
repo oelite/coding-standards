@@ -112,7 +112,42 @@ in_ide_config() {
      "$1" == "$OPENCODE_DIR" || "$1" == "$OPENCODE_DIR/"* ]]
 }
 
-# ── Gate E helpers: shared local infrastructure is a machine-wide singleton ──
+# Explicit allowlist: the workspace manifest repo's OWN tooling files.
+# Deliberate maintenance of these is a legitimate agent activity
+# (workspace-maintenance session); commits are still gated by the
+# workspace repo's pre-commit hook (agent-DNA block).
+#
+# LEGACY-COMPAT: this is INERT on machines whose root is not yet converted
+# to the workspace git repo (no .git at root). Those machines keep the exact
+# pre-workspace behaviour: all root-level writes blocked.
+is_ws_tooling_file() {
+  [[ -e "$ROOT/.git" ]] || return 1
+  local d; d="$(canon "$1")"
+  case "$d" in
+    "$ROOT/manifest.yaml" | "$ROOT/oelite-workspace.sh" | \
+    "$ROOT/oelite-stack.sh"  | "$ROOT/oelite-stack-init.sh" | \
+    "$ROOT/README.md"        | "$ROOT/STRUCTURE.md" | \
+    "$ROOT/workspace.local.yaml" | "$ROOT/AGENTS.md" | "$ROOT/CLAUDE.md" | \
+    "$ROOT/.gitignore"       | "$ROOT/.gitattributes") return 0 ;;
+  esac
+  return 1
+}
+
+# True if path lives inside the workspace repo root (the monorepo container itself).
+in_workspace_root() {
+  # LEGACY-COMPAT: returns false when root is NOT yet converted to the workspace
+  # git repo (no .git at root), so root writes fall through to the original
+  # Gate A (root-write) block and preserve exact pre-workspace behaviour.
+  [[ -e "$ROOT/.git" ]] || return 1
+  local d; d="$(canon "$1")"
+  [[ "$d" == "$ROOT"/* ]] || return 1
+  in_ide_config "$d" && return 1
+  is_ws_tooling_file "$d" && return 1
+  [[ "$d" == "$ROOT/.git" || "$d" == "$ROOT/.git/"* ]] && return 0
+  # Must NOT live in any sub-repo
+  in_scoped_repo "$d" && return 1
+  return 0
+}
 # The singleton lives in coding-standards/infrastructure/oelite-stack/ (main
 # checkout or a .worktrees/<agent>-<iid>/ copy). in_shared_stack() accepts both.
 
@@ -214,6 +249,37 @@ AI agents must work ONLY inside their scoped git sub-repo
 
 Auto-allowed: .claude/ and .opencode/ (IDE config), coding-standards/scripts/hooks/."
       ;;
+    workspace-root)
+      body="This target lives inside the oelite WORKSPACE repo ($ROOT) —
+the manifest/tooling repository ('oelite/workspace' on GitLab).
+
+Agents must NOT create, edit, or commit files here. The workspace repo
+is human-maintained and contains ONLY: manifest.yaml, oelite-workspace.sh,
+README.md, AGENTS.md/CLAUDE.md symlinks, .gitignore.
+
+Fix:
+  1. Pick your project sub-repo (see manifest.yaml), e.g. helios/core/
+  2. cd into it and run the normal bootstrap (worktree-create)
+  3. Do your work in .worktrees/<role>-<iid>/
+
+If you were asked to update the workspace manifest/tooling itself,
+that is a human maintenance task (OELITE_HUMAN=1) or an explicit
+workspace-maintenance session."
+      ;;
+    workspace-root-git)
+      body="You ran a git mutation directly inside the oelite WORKSPACE repo
+root ($ROOT) — which is NOT where agents do their work.
+
+The workspace repo is the manifest/tooling repository ('oelite/workspace').
+It is human-maintained. AI agents work only in project sub-repo worktrees.
+
+Fix:
+  1. cd into your project sub-repo (see manifest.yaml), e.g. helios/core/
+  2. ../../coding-standards/scripts/oelite-gitlab.sh worktree-create <role> feature/<branch> --issue <iid>
+  3. cd .worktrees/<role>-<iid>/   and work there.
+
+If this is an intentional workspace-manifest change, run with OELITE_HUMAN=1."
+      ;;
     no-worktree)
       body="This target is inside a scoped git repo, but you are NOT in a worktree.
 The main checkout is reserved for the human developer on develop.
@@ -303,13 +369,21 @@ case "$TOOL_NAME" in
     # Auto-allow IDE config dirs (write to .claude/.opencode is fine)
     in_ide_config "$FILE" && exit 0
 
-    # A. ROOT-WRITE — if the file is under ROOT but not in a scoped repo, block
+    # NEW: Workspace-root protection.
+    # LEGACY-COMPAT: when root has no .git yet, tooling allowlist & Gate F
+    # are inert (tooling doesn't exist / root isn't a repo), so this falls
+    # through to the exact pre-workspace behaviour.
     if [[ "$FILE" == "$ROOT"/* ]]; then
-      if ! in_scoped_repo "$FILE"; then
-        # Special carve-out: coding-standards itself is a scoped repo via its
-        # .git; the guard above would catch it. But coding-standards/scripts/
-        # maintenance is sometimes done by tooling. Stay strict; rely on
-        # OELITE_HUMAN=1 for human maintenance.
+      # Allow the workspace manifest repo's OWN tooling at root
+      # (workspace-maintenance session); commits are still gated by the
+      # workspace repo's pre-commit hook (agent-DNA block).
+      is_ws_tooling_file "$FILE" && exit 0
+
+      if in_scoped_repo "$FILE"; then
+        : # fall through to Gate B (worktree-presence) for sub-repo files
+      elif in_workspace_root "$FILE"; then
+        block "$FILE_PATH" "workspace-root" "$TOOL_NAME"
+      else
         block "$FILE_PATH" "root-write" "$TOOL_NAME"
       fi
     else
@@ -379,6 +453,13 @@ check_target_path() {
 
   # Inside .claude/.opencode — allow
   in_ide_config "$abs" && return 0
+
+  # NEW: Workspace-root protection — block AI git/write ops against the
+  # workspace manifest repo (a bare `git commit` at root has no path target,
+  # which is what makes the new workspace-root git gate necessary).
+  if in_workspace_root "$abs"; then
+    block "$raw" "workspace-root" "$via"
+  fi
 
   # A. ROOT-WRITE — under ROOT but not in a scoped repo
   if ! in_scoped_repo "$abs"; then
@@ -557,6 +638,40 @@ if is_docker_cmd; then
   if (( saw_compose_file == 0 )) && [[ -f "$base_dir/docker-compose.yml" ]] \
      && compose_declares_shared_infra "$(cat "$base_dir/docker-compose.yml" 2>/dev/null)"; then
     block "$base_dir/docker-compose.yml" "standalone-infra-cmd" "Bash(docker compose)"
+  fi
+fi
+
+# ── Gate F (Bash): git mutations against the WORKSPACE root repo ────────────
+# On converted machines $ROOT is itself a git repo (oelite/workspace). A bare
+#   git add -A && git commit -m "..."   |   git push / reset / checkout
+# writes through the git binary and carries NO file-path target, so the
+# redirect/mutator scans above cannot see it. Block when the EFFECTIVE
+# repository of the git command is the workspace root.
+#
+# Effective repo = the `git -C <path>` target when present, else the command's
+# CWD (honouring a leading `cd <dir>`). Note: `git clone`/`git init` are
+# deliberately NOT in the verb list — the workspace bootstrap flow
+# (oelite-workspace.sh bootstrap) legitimately clones repos INTO the root.
+is_ws_git_cmd() {
+  [[ "$CMD" =~ (^|[[:space:];]|&&|\|\||&)git[[:space:]]+(-C[[:space:]]+[^[:space:]]+[[:space:]]+)?(add|commit|push|pull|reset|checkout|switch|restore|merge|rebase|cherry-pick|stash|apply|am|prune|clean|mv|rm)([[:space:]]|$) ]]
+}
+# LEGACY-COMPAT: Gate F only applies when root is actually the workspace git
+# repo. On unconverted machines root is not a repo — a bare `git commit` there
+# fails inside git itself ("fatal: not a git repository"), so blocking is both
+# unnecessary and would print a misleading message.
+if [[ -e "$ROOT/.git" ]] && is_ws_git_cmd; then
+  ws_target=""
+  if [[ "$CMD" =~ git[[:space:]]+-C[[:space:]]+([^[:space:]]+) ]]; then
+    # Effective repo is the -C target (relative targets resolve from the
+    # command's CWD, honouring a leading `cd <dir>`).
+    ws_target="${BASH_REMATCH[1]}"
+    [[ "$ws_target" != /* ]] && ws_target="$(cmd_base_dir)/$ws_target"
+    ws_target="$(canon "$ws_target")"
+  else
+    ws_target="$(cmd_base_dir)"
+  fi
+  if [[ "$ws_target" == "$ROOT" ]]; then
+    block "$CMD" "workspace-root-git" "Bash(git)"
   fi
 fi
 

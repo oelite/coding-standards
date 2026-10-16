@@ -12,7 +12,7 @@
 
 ### STEP 0: SELECT TARGET REPOSITORY (Hard Gate)
 **You MUST be inside a sub-repository (e.g., `helios/core/`, `uranus/origin-auth/`, `jupiter/ec-nx-01/`) before running bootstrap.**
-The root `oelite/` folder is NOT a git repository — it is a monorepo container.
+The root `oelite/` folder IS now a git repository (`oelite/workspace` manifest repo on GitLab) — it contains ONLY the workspace manifest + tooling (`manifest.yaml`, `oelite-workspace.sh`, README). It is **NOT** a project repo, so agentic AI must never work or commit there.
 
 > **⛔ MACHINE-ENFORCED:** A PreToolUse hook (`coding-standards/scripts/hooks/oelite-guard.sh`)
 > blocks ALL of the following — for both Claude Code and OpenCode (via `coding-standards/scripts/opencode-plugin-oelite/`):
