@@ -82,7 +82,7 @@ All app code connects to these **fixed canonical endpoints**:
 | Kafka | `localhost:9092` | KRaft mode (no ZK) |
 | RabbitMQ | `localhost:5672` (AMQP), `15672` (UI) | User + pass in `.env` |
 | MinIO | `localhost:9000` (API), `9001` (Console) | User + pass in `.env` |
-| OpenSearch | `localhost:9200` | Single-node, no auth in dev |
+| OpenSearch | `https://localhost:9200` | Single-node; admin credentials are in `.env` (`OPENSEARCH_PASSWORD`) |
 | Mailpit | `localhost:1025` (SMTP), `http://localhost:8025` (UI/API) | Shared test mailbox — filter by recipient |
 
 ### Per-Project Onboarding
@@ -136,7 +136,7 @@ The shared stack includes web-based UIs for inspecting and monitoring all servic
 | MongoDB | http://localhost:3141 | MongoStudio | Schema, collections, aggregation builder |
 | RabbitMQ | http://localhost:15672 | *(built-in management UI)* | Queues, exchanges, vhosts, message inspector |
 | MinIO | http://localhost:9001 | *(built-in console)* | Bucket browser, object inspector |
-| OpenSearch | http://localhost:5601 | OpenSearch Dashboards | Index browser, Dev Tools console, visualizations |
+| OpenSearch | http://localhost:5601 | OpenSearch Dashboards | Index browser, Dev Tools console, visualizations; sign in as `admin` using `OPENSEARCH_PASSWORD` |
 | Mailpit | http://localhost:8025 | *(built-in web UI)* | Captured SMTP messages, attachments, REST API — starts with the core stack (not `--profile ui`) |
 
 > **Mailpit mailbox is shared across all projects.** It has no per-project

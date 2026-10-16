@@ -112,10 +112,37 @@ write_value() {
   fi
 }
 
+is_opensearch_password_compliant() {
+  # OpenSearch's demo security installer requires a strong password: at least
+  # eight characters and at least one uppercase, lowercase, digit, and special.
+  if [ "${#1}" -ge 8 ] \
+    && [[ "$1" == *[A-Z]* ]] \
+    && [[ "$1" == *[a-z]* ]] \
+    && [[ "$1" == *[0-9]* ]] \
+    && [[ "$1" == *[^A-Za-z0-9]* ]]; then
+    return 0
+  fi
+  return 1
+}
+
+generate_opensearch_password() {
+  # Prefix all four required character classes and append a special character.
+  local random
+  random="$(gen_secret)"
+  echo "Aa1!${random}!"
+}
+
 rotate_if_requested() {
   local key="$1"
   local current
   current="$(read_value "$key")"
+  if [ "$key" = "OPENSEARCH_PASSWORD" ]; then
+    if [ "$ROTATE" -eq 1 ] || [ -z "$current" ] || ! is_opensearch_password_compliant "$current"; then
+      generate_opensearch_password
+      return
+    fi
+  fi
+
   if [ "$ROTATE" -eq 1 ] || [ -z "$current" ]; then
     gen_secret
   else
