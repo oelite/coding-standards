@@ -190,7 +190,7 @@ services:
     container_name: oelite-mongostudio
     hostname: oelite-mongostudio
     ports:
-      - "3141:3001"
+      - "3141:3141"
     mem_limit: 512m
     depends_on:
       mongo-mongos:
