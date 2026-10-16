@@ -1647,6 +1647,30 @@ cmd_mr_approve() {
   fi
 }
 
+cmd_mr_unapprove() {
+  local project_path="$1"
+  local mr_iid="$2"
+  local agent="$3"
+
+  validate_agent "$agent" || return 1
+
+  local encoded_path
+  encoded_path=$(url_encode_path "$project_path")
+
+  local pat
+  pat=$(get_pat "$agent")
+  api_post "/projects/$encoded_path/merge_requests/$mr_iid/unapprove" "$pat" ""
+
+  if [[ "$_API_STATUS" == "200" || "$_API_STATUS" == "201" || "$_API_STATUS" == "204" ]]; then
+    echo "[OK] MR !$mr_iid unapproved by $agent (${AGENT_USERNAMES[$agent]})"
+  else
+    echo "[ERROR] Failed to unapprove MR !$mr_iid (HTTP $_API_STATUS)" >&2
+    api_error_hint "$_API_STATUS" "$project_path"
+    echo "$_API_RESPONSE" >&2
+    return 1
+  fi
+}
+
 cmd_mr_update() {
   local project_path="$1"
   local mr_iid="$2"
@@ -2768,6 +2792,51 @@ print("Visibility:           {}".format(project.get("visibility", "")))
 '
 }
 
+cmd_project_approvals() {
+  local project_path="${1:-}"
+  local agent="${2:-emma}"
+
+  [[ -z "$project_path" ]] && { echo "[ERROR] Project path required" >&2; return 1; }
+  validate_agent "$agent" || return 1
+
+  local pat
+  pat=$(get_pat "$agent")
+
+  local encoded_path
+  encoded_path=$(url_encode_path "$project_path")
+
+  api_get "/projects/$encoded_path/approvals" "$pat"
+
+  if [[ "$_API_STATUS" != "200" ]]; then
+    echo "[ERROR] Failed to read approval settings for $project_path (HTTP $_API_STATUS)" >&2
+    api_error_hint "$_API_STATUS" "$project_path"
+    echo "$_API_RESPONSE" >&2
+    return 1
+  fi
+
+  printf '%s\n' "$_API_RESPONSE" | python3 -c '
+import json, sys
+
+settings = json.load(sys.stdin)
+print("Project:                    {}".format(settings.get("project_id", "")))
+print("Approvals required:         {}".format(settings.get("approvals_required", 0)))
+print("Approval rules overwrite:   {}".format(settings.get("reset_approvals_on_push", "")))
+print("Disable overwriting:        {}".format(settings.get("disable_overriding_approvers_per_merge_request", "")))
+approvers = settings.get("approvers") or []
+approver_groups = settings.get("approver_groups") or []
+if approvers:
+    print("Specific approvers:")
+    for a in approvers:
+        print("  - {}".format(a.get("user", {}).get("username", a.get("id", "?"))))
+else:
+    print("Specific approvers:         none (any eligible member may approve)")
+if approver_groups:
+    print("Approver groups:")
+    for g in approver_groups:
+        print("  - {}".format(g.get("group", {}).get("full_path", g.get("id", "?"))))
+'
+}
+
 cmd_oe_scope() {
   local wt_id="$1"
   shift
@@ -2946,6 +3015,12 @@ COMMANDS:
     Approve a merge request as the specified agent.
     Example: oelite-gitlab.sh mr-approve uranus/origin-auth 15 grace
 
+  mr-unapprove <project-path> <mr-iid> <agent>
+    Revoke the specified agent's own approval on a merge request.
+    Use to remove a stray/approved-by-mistake approval (only the approving
+    identity can revoke its own approval).
+    Example: oelite-gitlab.sh mr-unapprove uranus/origin-auth 15 grace
+
   mr-update <project-path> <mr-iid> <agent> <title> [description]
     Update MR title and description. Pass empty quotes for title to keep current title.
     Example: oelite-gitlab.sh mr-update uranus/origin-auth 420 isabella "fix: new title" "New description"
@@ -2991,6 +3066,12 @@ COMMANDS:
 
   project-permissions <project-path> <agent>
       Print the calling PAT's project access level.
+
+  project-approvals <project-path> [agent]
+      Print the project's GitLab approval settings (approvals_required, specific
+      approvers/approver-groups, reset rules). Use to verify whether the project
+      enforces named approvers. Defaults to the emma PAT.
+      Example: oelite-gitlab.sh project-approvals oelite/helios/kortex emma
 
   pipeline-jobs <project-path> <pipeline-id>
       List pipeline job status and failure reasons WITHOUT printing job traces.
@@ -3082,6 +3163,7 @@ case "$command" in
   mr-list)        cmd_mr_list "$@" ;;
   mr-comment)     cmd_mr_comment "$@" ;;
   mr-approve)     cmd_mr_approve "$@" ;;
+  mr-unapprove)   cmd_mr_unapprove "$@" ;;
   mr-update)      cmd_mr_update "$@" ;;
   mr-status)      cmd_mr_status "$@" ;;
   mr-show)        cmd_mr_show "$@" ;;
@@ -3093,6 +3175,7 @@ case "$command" in
   protected-branch-code-owner) cmd_protected_branch_code_owner "$@" ;;
   pipeline-must-succeed) cmd_pipeline_must_succeed "$@" ;;
   project-permissions) cmd_project_permissions "$@" ;;
+  project-approvals)   cmd_project_approvals "$@" ;;
   pipeline-jobs)  cmd_pipeline_jobs "$@" ;;
   pipeline-job-trace) cmd_pipeline_job_trace "$@" ;;
   pipeline-job-retry) cmd_pipeline_job_retry "$@" ;;
