@@ -314,7 +314,7 @@ services:
   # Official Redis GUI: key browser, Workbench CLI, profiler, slowlog, modules.
   # Access: http://localhost:5540 (via --profile ui)
   oelite-redisinsight:
-    image: redis/redisinsight:1.34
+    image: redislabs/redisinsight:3.8
     container_name: oelite-redisinsight
     hostname: oelite-redisinsight
     ports:
