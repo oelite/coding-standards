@@ -186,11 +186,11 @@ services:
   # MongoDB GUI: schema explorer, aggregation builder, data editor, index management.
   # Access: http://localhost:3141 (via --profile ui)
   oelite-mongostudio:
-    image: beztebya666/mongostudio:2.6.0
+    image: beztebya666/mongostudio:v2.6.0
     container_name: oelite-mongostudio
     hostname: oelite-mongostudio
     ports:
-      - "3141:3001"
+      - "3141:3141"
     mem_limit: 512m
     depends_on:
       mongo-mongos:
@@ -314,7 +314,7 @@ services:
   # Official Redis GUI: key browser, Workbench CLI, profiler, slowlog, modules.
   # Access: http://localhost:5540 (via --profile ui)
   oelite-redisinsight:
-    image: redis/redisinsight:1.34
+    image: redislabs/redisinsight:3.8
     container_name: oelite-redisinsight
     hostname: oelite-redisinsight
     ports:
