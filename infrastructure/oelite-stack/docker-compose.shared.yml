@@ -186,7 +186,7 @@ services:
   # MongoDB GUI: schema explorer, aggregation builder, data editor, index management.
   # Access: http://localhost:3141 (via --profile ui)
   oelite-mongostudio:
-    image: beztebya666/mongostudio:2.6.0
+    image: beztebya666/mongostudio:v2.6.0
     container_name: oelite-mongostudio
     hostname: oelite-mongostudio
     ports:
