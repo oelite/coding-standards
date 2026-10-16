@@ -19,7 +19,7 @@
 #   Kafka:    localhost:9092
 #   RabbitMQ: localhost:5672,  management: localhost:15672
 #   MinIO:    localhost:9000  (API),  localhost:9001 (Console)
-#   OpenSearch: localhost:9200
+#   OpenSearch: https://localhost:9200 (admin / OPENSEARCH_PASSWORD in .env)
 #   Mailpit:  localhost:1025 (SMTP),  http://localhost:8025 (UI/API)
 #
 #   Debug / Monitoring UIs (opt-in via --profile ui):
@@ -377,12 +377,12 @@ services:
     environment:
       KAFKA_NODE_ID: "1"
       KAFKA_PROCESS_ROLES: broker,controller
-      KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:9092,CONTROLLER://0.0.0.0:9093
-      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://localhost:9092
-      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT
+      KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:9092,INTERNAL://0.0.0.0:29092,CONTROLLER://0.0.0.0:9093
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://localhost:9092,INTERNAL://oelite-kafka:29092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT,INTERNAL:PLAINTEXT
       KAFKA_CONTROLLER_QUORUM_VOTERS: 1@oelite-kafka:9093
       KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
-      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      KAFKA_INTER_BROKER_LISTENER_NAME: INTERNAL
       KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: "1"
       KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: "1"
       KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: "1"
@@ -417,7 +417,7 @@ services:
         condition: service_healthy
     environment:
       KAFKA_CLUSTERS_0_NAME: oelite
-      KAFKA_CLUSTERS_0_BOOTSTRAP_SERVERS: oelite-kafka:9092
+      KAFKA_CLUSTERS_0_BOOTSTRAP_SERVERS: oelite-kafka:29092
       KAFKA_CLUSTERS_0_READ_ONLY: "true"
       DYNAMIC_CONFIG_ENABLED: "true"
     networks:
@@ -476,15 +476,14 @@ services:
     hostname: oelite-opensearch
     environment:
       - discovery.type=single-node
-      - plugins.security.disabled=true
-      - OPENSEARCH_INITIAL_ADMIN_PASSWORD=OeliteAdmin123!
+      - OPENSEARCH_INITIAL_ADMIN_PASSWORD=${OPENSEARCH_PASSWORD}
       - OPENSEARCH_JAVA_OPTS=-Xms512m -Xmx512m
       - ACTION_SEARCH_FOR_NATIVE_PLUGIN=false
     ports:
       - "9200:9200"
     mem_limit: 1024m
     healthcheck:
-      test: ["CMD-SHELL", "curl -sf http://localhost:9200/_cluster/health?wait_for_status=yellow&timeout=30s || exit 1"]
+      test: ["CMD-SHELL", "curl -skf -u 'admin:${OPENSEARCH_PASSWORD}' https://localhost:9200/_cluster/health?wait_for_status=yellow&timeout=30s || exit 1"]
       interval: 10s
       timeout: 10s
       retries: 10
@@ -502,8 +501,10 @@ services:
     container_name: oelite-opensearch-dashboards
     hostname: oelite-opensearch-dashboards
     environment:
-      - OPENSEARCH_HOSTS=["http://oelite-opensearch:9200"]
-      - DISABLE_SECURITY_DASHBOARDS_PLUGIN=true
+      - OPENSEARCH_HOSTS=["https://oelite-opensearch:9200"]
+      - OPENSEARCH_USERNAME=admin
+      - OPENSEARCH_PASSWORD=${OPENSEARCH_PASSWORD}
+      - OPENSEARCH_SSL_VERIFICATIONMODE=none
     ports:
       - "5601:5601"
     mem_limit: 512m

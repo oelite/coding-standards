@@ -65,11 +65,11 @@ check "MinIO API (9000)" "curl -sf http://localhost:9000/minio/health/live >/dev
 # MinIO Console UI (9001)
 check "MinIO Console UI (9001)" "curl -sf http://localhost:9001/minio/health/live >/dev/null 2>&1" || true
 
-# OpenSearch — health endpoint (no auth)
-check "OpenSearch (9200)" "curl -sf http://localhost:9200/_cluster/health >/dev/null 2>&1" || true
+# OpenSearch — HTTPS health endpoint authenticated with the shared admin credential
+check "OpenSearch (9200)" "curl -skf -u 'admin:${OPENSEARCH_PASSWORD}' https://localhost:9200/_cluster/health >/dev/null 2>&1" || true
 
 # OpenSearch Dashboards UI (optional)
-check "OpenSearch Dashboards UI (5601)" "curl -sf http://localhost:5601/api/status >/dev/null 2>&1" || true
+check "OpenSearch Dashboards UI (5601)" "curl -sf -u 'admin:${OPENSEARCH_PASSWORD}' http://localhost:5601/api/status >/dev/null 2>&1" || true
 
 # Mailpit — REST API on 8025 (SMTP on 1025)
 check "Mailpit API (8025)" "curl -sf 'http://localhost:8025/api/v1/messages?limit=1' >/dev/null 2>&1"
