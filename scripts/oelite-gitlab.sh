@@ -425,6 +425,73 @@ print(i.get("description", "(no description)"))
 '
 }
 
+cmd_print_notes() {
+  printf '%s\n' "$_API_RESPONSE" | python3 -c '
+import sys, json
+notes = json.load(sys.stdin)
+if not notes:
+    print("(no notes)")
+    sys.exit(0)
+for n in notes:
+    if n.get("system"):
+        continue
+    author = (n.get("author") or {}).get("username", "(unknown)")
+    print("=== Note id=%s | %s | %s ===" % (n.get("id", ""), author, n.get("created_at", "")))
+    print(n.get("body", ""))
+    print()
+'
+}
+
+cmd_mr_notes() {
+  local project_path="${1:-}"
+  local mr_iid="${2:-}"
+  local agent="${3:-emma}"
+
+  [[ -z "$project_path" ]] && { echo "[ERROR] Project path required" >&2; return 1; }
+  [[ -z "$mr_iid" ]] && { echo "[ERROR] MR IID required" >&2; return 1; }
+
+  local encoded_path
+  encoded_path=$(url_encode_path "$project_path")
+
+  local pat
+  pat=$(get_pat "$agent")
+  api_get "/projects/$encoded_path/merge_requests/$mr_iid/notes?per_page=100&sort=asc&order_by=created_at" "$pat"
+
+  if [[ "$_API_STATUS" != "200" ]]; then
+    echo "[ERROR] Failed to fetch notes for MR !$mr_iid (HTTP $_API_STATUS)" >&2
+    api_error_hint "$_API_STATUS" "$project_path"
+    echo "$_API_RESPONSE" >&2
+    return 1
+  fi
+
+  cmd_print_notes
+}
+
+cmd_issue_notes() {
+  local project_path="${1:-}"
+  local iid="${2:-}"
+  local agent="${3:-emma}"
+
+  [[ -z "$project_path" ]] && { echo "[ERROR] Project path required" >&2; return 1; }
+  [[ -z "$iid" ]] && { echo "[ERROR] Issue IID required" >&2; return 1; }
+
+  local encoded_path
+  encoded_path=$(url_encode_path "$project_path")
+
+  local pat
+  pat=$(get_pat "$agent")
+  api_get "/projects/$encoded_path/issues/$iid/notes?per_page=100&sort=asc&order_by=created_at" "$pat"
+
+  if [[ "$_API_STATUS" != "200" ]]; then
+    echo "[ERROR] Failed to fetch notes for issue #$iid (HTTP $_API_STATUS)" >&2
+    api_error_hint "$_API_STATUS" "$project_path"
+    echo "$_API_RESPONSE" >&2
+    return 1
+  fi
+
+  cmd_print_notes
+}
+
 cmd_issue_create() {
   local project_path="$1"
   local agent="$2"
@@ -2817,6 +2884,15 @@ COMMANDS:
      Use --raw to inspect the complete read-only API response.
       Example: oelite-gitlab.sh mr-show uranus/origin-auth 15 --raw
 
+  mr-notes <project-path> <mr-iid> [agent]
+    List non-system comments on a merge request (read-only);
+    defaults to emma's PAT when [agent] is omitted.
+    Example: oelite-gitlab.sh mr-notes oelite/helios/kortex 128 grace
+
+  issue-notes <project-path> <iid> [agent]
+    List non-system comments on an issue (read-only); defaults to emma's PAT.
+    Example: oelite-gitlab.sh issue-notes oelite/helios/kortex 207 olivia
+
    pipeline-list <project-path> <agent> [<ref>]
       List pipeline id, status, SHA, and source, optionally filtered by ref.
 
@@ -2907,6 +2983,7 @@ case "$command" in
   setup)          cmd_setup "$@" ;;
   issues)         cmd_issues "$@" ;;
   issue-show)     cmd_issue_show "$@" ;;
+  issue-notes)    cmd_issue_notes "$@" ;;
   issue-create)   cmd_issue_create "$@" ;;
   issue-assign)   cmd_issue_assign "$@" ;;
   issue-comment)  cmd_issue_comment "$@" ;;
@@ -2925,6 +3002,7 @@ case "$command" in
   mr-update)      cmd_mr_update "$@" ;;
   mr-status)      cmd_mr_status "$@" ;;
   mr-show)        cmd_mr_show "$@" ;;
+  mr-notes)       cmd_mr_notes "$@" ;;
   pipeline-list)  cmd_pipeline_list "$@" ;;
   job-token-allowlist-add) cmd_job_token_allowlist_add "$@" ;;
   protected-branches) cmd_protected_branches "$@" ;;
