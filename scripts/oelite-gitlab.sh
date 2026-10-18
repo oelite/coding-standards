@@ -545,6 +545,39 @@ cmd_issue_comment() {
   fi
 }
 
+cmd_issue_notes() {
+  local project_path="$1"
+  local iid="$2"
+
+  local encoded_path
+  encoded_path=$(url_encode_path "$project_path")
+
+  local pat
+  pat=$(get_pat "emma")
+  api_get "/projects/$encoded_path/issues/$iid/notes?per_page=100&sort=desc&order_by=created_at" "$pat"
+
+  if [[ "$_API_STATUS" != "200" ]]; then
+    echo "[ERROR] Failed to fetch notes for issue #$iid (HTTP $_API_STATUS)" >&2
+    api_error_hint "$_API_STATUS" "$project_path"
+    echo "$_API_RESPONSE" >&2
+    return 1
+  fi
+
+  printf '%s\n' "$_API_RESPONSE" | python3 -c '
+import sys, json
+notes = json.load(sys.stdin)
+if not notes:
+    print("(no notes)")
+for n in notes:
+    author = (n.get("author") or {}).get("username", "(unknown)")
+    nid = n.get("id")
+    created = n.get("created_at", "")
+    print("--- note {} | {} | {} ---".format(nid, author, created))
+    print(n.get("body", ""))
+    print()
+'
+}
+
 cmd_issue_status() {
   local project_path="$1"
   local iid="$2"
@@ -2731,6 +2764,10 @@ COMMANDS:
     Example: oelite-gitlab.sh issues uranus/origin-auth --label backend
 
   issue-show <project-path> <iid>
+  issue-notes <project-path> <iid>
+    Read all comments/notes on an issue (id, author, timestamp, body).
+
+    Example: oelite-gitlab.sh issue-notes oelite/helios/kortex 229
     Show issue details with description.
     Example: oelite-gitlab.sh issue-show uranus/origin-auth 42
 
@@ -2944,6 +2981,7 @@ case "$command" in
   setup)          cmd_setup "$@" ;;
   issues)         cmd_issues "$@" ;;
   issue-show)     cmd_issue_show "$@" ;;
+  issue-notes)    cmd_issue_notes "$@" ;;
   issue-create)   cmd_issue_create "$@" ;;
   issue-assign)   cmd_issue_assign "$@" ;;
   issue-comment)  cmd_issue_comment "$@" ;;
