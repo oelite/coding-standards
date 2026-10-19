@@ -305,6 +305,8 @@ scripts/oelite-gitlab.sh worktree-create daniel feature/US-001-auth
 | `pipeline-jobs <project> <pipeline-id>` | List pipeline jobs and failure reasons |
 | `pipeline-job-trace <project> <job-id>` | Read job trace; fetch only when needed because output may be sensitive |
 | `pipeline-job-retry <project> <job-id> [<agent>]` | Retry a single failed job (same SHA); attributed to the named agent, default `emma` — flaky-CI remediation only, never for real code failures |
+| `mr-notes <project> <iid> [agent]` | List non-system comments on an MR (read-only, shows up to 100 notes); defaults to emma's PAT |
+| `issue-notes <project> <iid> [agent]` | List non-system comments on an issue (read-only, shows up to 100 notes); defaults to emma's PAT |
 | `mr-check-eligible <project>` | Check per-MR pipeline evidence; unknown evidence fails closed |
 | `mr-auto-approve <project>` | Auto-approve eligible MRs under Emma's identity via the `emma` PAT |
 | `sync <agent>` | Rebase worktree on latest `origin/develop` |

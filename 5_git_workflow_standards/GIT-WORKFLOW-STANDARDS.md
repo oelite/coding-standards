@@ -1026,6 +1026,8 @@ GitLab operations are available to both agents and humans. **Agents perform thei
 | `scripts/oelite-gitlab.sh pipeline-jobs <project> <pipeline-id>` | List jobs and failure reasons for a pipeline | Reviewer — CI diagnosis |
 | `scripts/oelite-gitlab.sh pipeline-job-trace <project> <job-id>` | Fetch a job trace (may contain sensitive build output; fetch only when needed) | Reviewer — CI diagnosis |
 | `scripts/oelite-gitlab.sh pipeline-job-retry <project> <job-id> [<agent>]` | Retry a single failed job on its existing pipeline (same SHA), attributed to `<agent>` (default emma) | Implementer / reviewer — flaky CI remediation |
+| `scripts/oelite-gitlab.sh mr-notes <project> <iid> [agent]` | List non-system comments on an MR (read-only, shows up to 100 notes); defaults to emma's PAT | Anyone — read-only inspection |
+| `scripts/oelite-gitlab.sh issue-notes <project> <iid> [agent]` | List non-system comments on an issue (read-only, shows up to 100 notes); defaults to emma's PAT | Anyone — read-only inspection |
 | `scripts/oelite-gitlab.sh issue-audit <project>` | List issues still open whose linked MRs are merged | Isabella or Emma — post-merge audit |
 | `scripts/oelite-gitlab.sh mr-check-eligible <project>` | List MRs meeting approval eligibility using per-MR pipeline evidence; unknown evidence fails closed | Emma or reviewer |
 | `scripts/oelite-gitlab.sh mr-auto-approve <project>` | Auto-approve all eligible MRs (approvals are recorded under Emma's identity — the wrapper uses the `emma` PAT) | Emma or reviewer |
