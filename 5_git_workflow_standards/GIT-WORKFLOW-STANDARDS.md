@@ -1021,8 +1021,10 @@ GitLab operations are available to both agents and humans. **Agents perform thei
 | `scripts/oelite-gitlab.sh mr-list <project>` | List open MRs | Anyone |
 | `scripts/oelite-gitlab.sh mr-comment <project> <iid> <agent> <message>` | Comment on an MR | Reviewer |
 | `scripts/oelite-gitlab.sh mr-approve <project> <iid> <agent>` | Approve an MR | Assigned reviewer |
+| `scripts/oelite-gitlab.sh mr-unapprove <project> <iid> <agent>` | Revoke the caller's own approval on an MR (self-revocation only) | Any agent — approval correction |
 | `scripts/oelite-gitlab.sh mr-status <project> <iid>` | Report merge readiness, pipeline evidence, and approvals independently (fail-closed) | Reviewer or Emma — merge verification |
 | `scripts/oelite-gitlab.sh mr-show <project> <iid> [--raw]` | Read MR description and authoritative status fields (including head pipeline) through the wrapper | Anyone — read-only inspection |
+| `scripts/oelite-gitlab.sh project-approvals <project> [agent]` | Read project-level approval settings (approvals required, reset-on-push, named approvers/groups) | Anyone — read-only inspection |
 | `scripts/oelite-gitlab.sh pipeline-jobs <project> <pipeline-id>` | List jobs and failure reasons for a pipeline | Reviewer — CI diagnosis |
 | `scripts/oelite-gitlab.sh pipeline-job-trace <project> <job-id>` | Fetch a job trace (may contain sensitive build output; fetch only when needed) | Reviewer — CI diagnosis |
 | `scripts/oelite-gitlab.sh pipeline-job-retry <project> <job-id> [<agent>]` | Retry a single failed job on its existing pipeline (same SHA), attributed to `<agent>` (default emma) | Implementer / reviewer — flaky CI remediation |

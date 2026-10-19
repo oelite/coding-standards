@@ -491,9 +491,11 @@ The wrapper is the only supported interface for issues, worktrees, MRs, comments
 | `mr-list <project>` | List open MRs |
 | `mr-comment <project> <iid> <agent> <msg>` | Comment on MR as agent |
 | `mr-approve <project> <iid> <agent>` | Approve MR as agent |
+| `mr-unapprove <project> <iid> <agent>` | Revoke the caller's own approval on an MR (self-revocation only — GitLab does not allow revoking another user's approval) |
 | `mr-update <project> <iid> <agent> <title> [desc]` | Update MR title and description (pass empty title to keep current) |
 | `mr-status <project> <iid>` | Report merge readiness, pipeline evidence, and approvals independently (fail-closed) — used for merge verification |
 | `mr-show <project> <iid> [--raw]` | Read MR description and authoritative status fields through the wrapper |
+| `project-approvals <project> [agent]` | Read project-level approval settings (approvals required, reset-on-push, named approvers/groups); read-only |
 | `pipeline-jobs <project> <pipeline-id>` | List jobs and failure reasons for a pipeline |
 | `pipeline-job-trace <project> <job-id>` | Fetch a job trace (may contain sensitive build output; fetch only when needed) |
 | `pipeline-job-retry <project> <job-id> [<agent>]` | Retry a single failed job (same SHA); attributed to the named agent, default `emma` — flaky-CI remediation only, never for real code failures |
