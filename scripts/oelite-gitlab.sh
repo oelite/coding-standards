@@ -555,7 +555,10 @@ cmd_issue_status() {
   [[ -z "$new_status" ]] && { echo "[ERROR] Status required" >&2; return 1; }
 
   local valid_states="opened closed"
-  [[ ! " $valid_states " =~ " $new_status " ]] && { echo "[ERROR] Invalid status '$new_status'. Use: opened or closed" >&2; return 1; }
+  case " $valid_states " in
+    *" $new_status "*) ;;
+    *) { echo "[ERROR] Invalid status '$new_status'. Use: opened or closed" >&2; return 1; } ;;
+  esac
 
   local state_event
   case "$new_status" in
