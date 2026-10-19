@@ -754,7 +754,7 @@ The report shows MR state (`opened`, `merged`, or `closed`) separately from **Me
 | `merged` | Proceed to label issue `Done` and close (see §8.2.2) |
 | `opened` | Do NOT label `Done` — inspect each readiness axis and investigate the actual blocker |
 | Merge readiness blocked by conflicts | Rebase the branch: `scripts/oelite-gitlab.sh sync <agent>`, push, then re-check; other blockers require their own remediation |
-| Pipeline failed or unknown | Inspect `mr-show`, `pipeline-jobs`, and `pipeline-job-trace`; missing, skipped, or stale pipeline evidence is not success |
+| Pipeline failed or unknown | Inspect `mr-show`, `pipeline-jobs`, and `pipeline-job-trace`; missing, skipped, or stale pipeline evidence is not success. Confirm the failed job ran on the MR head SHA, fix the root cause, push, and re-check; only retry a single failed job via `pipeline-job-retry` when the failure is a verified flake (transient infra/network), and record the retry evidence in the merge check — a retried job that passes does not by itself prove the code is green |
 | `closed` (unmerged) | MR was closed without merging — create a new MR or investigate |
 
 **The reviewer who approves the MR is responsible for verifying the merge.** If the reviewer cannot verify (session ended), Emma MUST verify before closing the issue.
@@ -1025,6 +1025,7 @@ GitLab operations are available to both agents and humans. **Agents perform thei
 | `scripts/oelite-gitlab.sh mr-show <project> <iid> [--raw]` | Read MR description and authoritative status fields (including head pipeline) through the wrapper | Anyone — read-only inspection |
 | `scripts/oelite-gitlab.sh pipeline-jobs <project> <pipeline-id>` | List jobs and failure reasons for a pipeline | Reviewer — CI diagnosis |
 | `scripts/oelite-gitlab.sh pipeline-job-trace <project> <job-id>` | Fetch a job trace (may contain sensitive build output; fetch only when needed) | Reviewer — CI diagnosis |
+| `scripts/oelite-gitlab.sh pipeline-job-retry <project> <job-id> [<agent>]` | Retry a single failed job on its existing pipeline (same SHA), attributed to `<agent>` (default emma) | Implementer / reviewer — flaky CI remediation |
 | `scripts/oelite-gitlab.sh issue-audit <project>` | List issues still open whose linked MRs are merged | Isabella or Emma — post-merge audit |
 | `scripts/oelite-gitlab.sh mr-check-eligible <project>` | List MRs meeting approval eligibility using per-MR pipeline evidence; unknown evidence fails closed | Emma or reviewer |
 | `scripts/oelite-gitlab.sh mr-auto-approve <project>` | Auto-approve all eligible MRs (approvals are recorded under Emma's identity — the wrapper uses the `emma` PAT) | Emma or reviewer |
