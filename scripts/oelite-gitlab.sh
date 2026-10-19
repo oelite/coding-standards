@@ -462,6 +462,7 @@ cmd_mr_notes() {
 
   [[ -z "$project_path" ]] && { echo "[ERROR] Project path required" >&2; return 1; }
   [[ -z "$mr_iid" ]] && { echo "[ERROR] MR IID required" >&2; return 1; }
+  validate_agent "$agent" || return 1
 
   local encoded_path
   encoded_path=$(url_encode_path "$project_path")
@@ -487,6 +488,7 @@ cmd_issue_notes() {
 
   [[ -z "$project_path" ]] && { echo "[ERROR] Project path required" >&2; return 1; }
   [[ -z "$iid" ]] && { echo "[ERROR] Issue IID required" >&2; return 1; }
+  validate_agent "$agent" || return 1
 
   local encoded_path
   encoded_path=$(url_encode_path "$project_path")
@@ -2959,12 +2961,13 @@ COMMANDS:
       Example: oelite-gitlab.sh mr-show uranus/origin-auth 15 --raw
 
   mr-notes <project-path> <mr-iid> [agent]
-    List non-system comments on a merge request (read-only);
+    List non-system comments on a merge request (read-only, shows up to 100 notes);
     defaults to emma's PAT when [agent] is omitted.
     Example: oelite-gitlab.sh mr-notes oelite/helios/kortex 128 grace
 
   issue-notes <project-path> <iid> [agent]
-    List non-system comments on an issue (read-only); defaults to emma's PAT.
+    List non-system comments on an issue (read-only, shows up to 100 notes);
+    defaults to emma's PAT.
     Example: oelite-gitlab.sh issue-notes oelite/helios/kortex 207 olivia
 
    pipeline-list <project-path> <agent> [<ref>]

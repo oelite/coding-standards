@@ -497,6 +497,8 @@ The wrapper is the only supported interface for issues, worktrees, MRs, comments
 | `pipeline-jobs <project> <pipeline-id>` | List jobs and failure reasons for a pipeline |
 | `pipeline-job-trace <project> <job-id>` | Fetch a job trace (may contain sensitive build output; fetch only when needed) |
 | `pipeline-job-retry <project> <job-id> [<agent>]` | Retry a single failed job (same SHA); attributed to the named agent, default `emma` — flaky-CI remediation only, never for real code failures |
+| `mr-notes <project> <iid> [agent]` | List non-system comments on an MR (read-only, shows up to 100 notes); defaults to emma's PAT when no agent is named |
+| `issue-notes <project> <iid> [agent]` | List non-system comments on an issue (read-only, shows up to 100 notes); defaults to emma's PAT |
 | `mr-check-eligible <project>` | List MRs meeting approval eligibility using per-MR pipeline evidence; unknown evidence fails closed |
 | `mr-auto-approve <project>` | Auto-approve all eligible MRs (records approvals under Emma's identity via the `emma` PAT) |
 | `mr-merge <project> <iid> <agent>` | Merge MR as agent (via GitLab API) |
