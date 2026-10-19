@@ -445,13 +445,17 @@ notes = json.load(sys.stdin)
 if not notes:
     print("(no notes)")
     sys.exit(0)
+printed = False
 for n in notes:
     if n.get("system"):
         continue
+    printed = True
     author = (n.get("author") or {}).get("username", "(unknown)")
     print("=== Note id=%s | %s | %s ===" % (n.get("id", ""), author, n.get("created_at", "")))
     print(n.get("body", ""))
     print()
+if not printed:
+    print("(no non-system notes)")
 '
 }
 
