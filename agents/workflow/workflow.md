@@ -73,12 +73,16 @@ Every completed task MUST include the sections below. **Reviewers MUST reject an
 
 ### Documentation Impact
 - **Does this change require documentation updates?** YES / NO
-- If YES, specify:
-  - What changed (new feature, API change, config change, UI change, etc.)
-  - Descriptive docs to update (API docs, user guides, technical/configuration docs, README, CHANGELOG)
-  - Specific details Isabella needs to update the documentation accurately
-- **Factual requirements impact?** YES / NO — did behavior change vs an approved BRD/SRS/rule/user story/journey? If YES, do NOT edit those documents yourself: state the discrepancy with requirement/rule IDs so Isabella can run the amendment process (`6_documentation_standards/REQUIREMENTS-AUTHORITY.md`).
-- **Isabella notified?** YES / NO
+- **Business-change impact-analysis gate (`business-change-impact` skill)**:
+  - **Phase 1 (pre-dev) Emma analysis performed:** YES / N/A — product change analysed, implied business logic & edge cases identified, documentation impact advised to Isabella
+  - **Phase 1 (pre-dev) market research + team allocation:** YES / N/A — surrounding features/dependencies identified with rationale; best-fit roles assigned with dependency-sequenced plan
+  - **Phase 1 (pre-dev) Isabella confirmation:** YES / N/A — required docs updated BEFORE development (factual via REQUIREMENTS-AUTHORITY.md; descriptive to planned behavior); user stories / AC / screenshot requirements refined
+  - **Factual requirements impact?** YES / NO — did behavior change vs an approved BRD/SRS/rule/user story/journey? If YES, do NOT edit those documents yourself: state the discrepancy with requirement/rule IDs so Isabella can run the amendment process (`6_documentation_standards/REQUIREMENTS-AUTHORITY.md`).
+  - **Descriptive docs to update:** API docs / technical / configuration / deployment / README / CHANGELOG (list)
+  - **User guide / Playwright screenshots:** YES / NO (list screens)
+  - **Isabella notified + confirmed?** YES / NO
+  - **Emma retrospective goal review:** YES / N/A — original stakeholder request/goals confirmed achieved, all original AC satisfied, surrounding features/regressions checked
+  - **Phase 2 (post-dev) revisit recorded:** YES / N/A / pending — documentation revisited against implemented reality, real Playwright screenshots captured, release notes published, accuracy confirmed BEFORE Emma closes issue
 
 ### Cleanup Evidence
 - **Worktree cleanup performed**: YES / NO (mandatory if MR was merged/closed)
@@ -118,50 +122,53 @@ Every completed task MUST include the sections below. **Reviewers MUST reject an
 
 **Closure rule:** Only Emma may close an issue, and only after:
 1. MR merge is **verified** via `mr-status` (not assumed)
-2. Isabella's business validation passes
-3. Issue is labeled `Done`
-4. Issue is **closed** via `issue-status closed` in the same session
+2. **Isabella's pre-development documentation gate** passed (documentation updated BEFORE development)
+3. **Emma's retrospective goal review** passed (original stakeholder request/goals confirmed achieved, all original AC satisfied, surrounding features/regressions checked)
+4. **Isabella's post-development documentation revisit** passed (documentation accuracy confirmed against implemented reality, Playwright screenshots captured, release notes published)
+5. Issue is labeled `Done`
+6. Issue is **closed** via `issue-status closed` in the same session as merge verification
 
 **Post-merge audit:** Isabella (or designated reviewer) MUST run `issue-audit <project>` periodically to catch any issues left open after their linked MRs were merged. Orphaned open issues are escalated to Emma for immediate closure.
 
 ### Requirements Change Triggers
-- **Stakeholder or Emma specifies new business requirements** → triggers Isabella immediately. Isabella records the approved facts (BRD/SRS/rulebook/stories/journeys per `6_documentation_standards/REQUIREMENTS-AUTHORITY.md`), then updates descriptive technical, configuration, and user-guide docs BEFORE development begins. Once complete, she triggers Emma to proceed.
-- **Stakeholder or Emma updates existing business requirements** → triggers Isabella immediately. Isabella amends the canonical factual documents through the authority standard, reconciles derived documents and references, and notifies affected roles BEFORE they continue work.
-- **Implementation reveals a discrepancy or gap vs approved requirements** → the implementer records it in GitLab with the requirement/rule IDs; requirements are NOT silently rewritten to match code. Isabella routes it as an implementation fix or a factual amendment.
+- **Stakeholder or Emma specifies new business requirements** → triggers Isabella immediately via the `business-change-impact` skill gate (Emma first analyses product change + implied logic; Isabella confirms & updates factual docs per `REQUIREMENTS-AUTHORITY.md` + descriptive docs BEFORE development; once complete, she triggers Emma to proceed).
+- **Stakeholder or Emma updates existing business requirements** → triggers Isabella immediately via the same gate: Emma analyses impact → Isabella amends canonical factual documents through the authority standard, reconciles derived documents, notifies affected roles BEFORE they continue work.
+- **Implementation reveals a discrepancy or gap vs approved requirements** → the implementer records it in GitLab with the requirement/rule IDs; requirements are NOT silently rewritten to match code. Isabella routes it as an implementation fix or a factual amendment. Emma re-runs the impact-analysis gate if the new fact changes documentation scope.
 
 ### Backend Workflow Triggers
-1. Emma clarifies + plans → **Isabella updates docs if reqs changed** → Marcus reviews design/architecture.
-2. Daniel implements → builds clean, service starts, health 200, tests pass.
-3. Maya reviews if auth/security/CRUD-sensitive; Victor reviews if queries/denormalization/caching changed. **(Parallel)**
-4. Grace reviews code quality & pattern compliance.
-5. Olivia validates via API/integration tests AND E2E browser tests. **Olivia MUST enforce all 12 E2E Quality Gates.** If tests fail, hand back to Daniel with exact repro steps.
-6. Ethan validates Docker/K8s deployment & health.
-7. **Isabella final business validation** — confirms deliverable matches requirements, updates docs, publishes release notes.
+1. **Emma clarifies + plans → business-change impact-analysis gate** (load `business-change-impact` skill; Emma analyses product change + implied logic; Isabella confirms & updates required docs BEFORE development)
+2. **Isabella triggers Emma to proceed** → Marcus reviews design/architecture.
+3. Daniel implements → builds clean, service starts, health 200, tests pass.
+4. Maya reviews if auth/security/CRUD-sensitive; Victor reviews if queries/denormalization/caching changed. **(Parallel)**
+5. Grace reviews code quality & pattern compliance.
+6. Olivia validates via API/integration tests AND E2E browser tests. **Olivia MUST enforce all 12 E2E Quality Gates.** If tests fail, hand back to Daniel with exact repro steps.
+7. Ethan validates Docker/K8s deployment & health.
+8. **Isabella post-development documentation revisit** — updates docs to merged behavior, captures real Playwright screenshots, publishes release notes; confirms accuracy/quality before Emma closes issue.
 
 ### Frontend Workflow Triggers
-1. **Emma + Marcus brief Jonathan on business context** → **Isabella updates docs if reqs changed**.
-2. Jonathan produces design spec.
+1. **Emma + Marcus brief Jonathan on business context → business-change impact-analysis gate** (load `business-change-impact` skill; Emma analyses product change + implied logic; Isabella confirms & updates required docs BEFORE development)
+2. **Isabella triggers Emma to proceed** → Jonathan produces design spec.
 3. Emma approves (product); Marcus reviews (architecture/API contracts).
 4. Sophia implements in correct stack with real APIs (no mock data).
 5. Jonathan reviews UX/design fidelity; Felix reviews frontend code quality. **(Parallel)**
 6. Build succeeds (`npx next build` / `ng build` + lint clean).
 7. Olivia validates E2E browser tests. **Olivia MUST enforce all 12 E2E Quality Gates.** If tests fail, hand back to Sophia with exact repro steps.
 8. Ethan validates deployment.
-9. **Isabella final business validation** — captures Playwright screenshots, updates docs, publishes release notes.
+9. **Isabella post-development documentation revisit** — captures real Playwright screenshots, updates docs to merged behavior, publishes release notes; confirms accuracy/quality before Emma closes issue.
 
 ### Infrastructure Workflow Triggers
-1. **Isabella updates infrastructure documentation if reqs changed** → Implement → Marcus reviews.
+1. **Emma analyses product change + impact-analysis gate** → **Isabella updates infrastructure documentation** (if reqs changed) BEFORE implementation → Implement → Marcus reviews.
 2. Olivia validates containers/health; Maya reviews secrets/config. **(Parallel)**
 3. Ethan validates deployment.
-4. **Isabella final business validation** — confirms infrastructure meets operational requirements, updates docs.
+4. **Isabella post-development documentation revisit** — confirms infrastructure meets operational requirements, updates docs, captures screenshots where user-facing; confirms accuracy before Emma closes issue.
 
 ### Identity / Auth Change Triggers (origin-auth / Kortex)
-1. **Isabella updates security documentation and API docs if reqs changed** → Marcus reviews architecture & tenancy impact.
+1. **Emma analyses product change + impact-analysis gate** → **Isabella updates security documentation and API docs** (if reqs changed) BEFORE development → Marcus reviews architecture & tenancy impact.
 2. Daniel implements against established TokenService/crypto patterns.
 3. **Maya MUST review** (mandatory trigger) — JWT/keys/Argon2id/encryption/authorization/secrets.
 4. Olivia validates token issuance/validation/revocation and tenant-scoping via unit/integration tests AND E2E for UI components.
 5. Grace reviews quality; Ethan validates deployment & scan.
-6. **Isabella final business validation** — confirms auth flows meet security and business requirements.
+6. **Isabella post-development documentation revisit** — confirms auth flows meet security and business requirements, updates docs to merged behavior, confirms accuracy before Emma closes issue.
 
 ### Failure Escalation Protocol
 1. **Failure report format** (mandatory):
@@ -191,29 +198,55 @@ Every completed task MUST include the sections below. **Reviewers MUST reject an
 
 ## 🏁 FINAL BUSINESS VALIDATION (Project Completion Gate)
 
-**No project is complete until business validation passes.**
+**No project is complete until Isabella's two-phase gate passes.**
+
+### Phase 1 — Pre-development documentation (before development begins)
+
+After Emma clarifies requirements and performs the business-change impact-analysis:
+
+1. **Isabella reviews the request** and confirms Emma's impact analysis.
+2. **Isabella updates documentation** BEFORE development begins:
+   - Factual documents (BRD, SRS, user stories, rulebook, process flows): amend ONLY via `REQUIREMENTS-AUTHORITY.md` for approved factual changes
+   - Descriptive documentation (API docs, README, changelog, architecture decisions, configuration, deployment docs): update to planned behavior
+   - User guides with **Playwright screenshot requirements** specified (which screens/states to capture after development)
+3. **Validation criteria** (pre-dev):
+   - Are business requirements clearly documented and approved?
+   - Are acceptance criteria precise enough for QA and validation?
+   - Is the documentation scope clear (factual vs descriptive)?
+4. If pre-dev validation fails → hand back to Emma for clarification or business decision.
+5. If pre-dev passes → **Isabella triggers Emma to proceed** to implementation.
+
+### Phase 2 — Post-development documentation revisit (after development completes)
 
 After all technical reviews, tests, and deployment succeed:
 
-1. **Isabella reviews the deliverable** against original business requirements.
+1. **Isabella reviews the deliverable** against the implemented reality (not just the plan).
 2. **Isabella updates documentation**:
-   - Technical documentation (API docs, README, changelog, architecture decisions)
-   - User guides with **Playwright screenshots** capturing actual UI/UX
+   - Technical documentation (API docs, README, changelog, architecture decisions): update to merged behavior
+   - User guides with **Playwright screenshots** capturing actual UI/UX (not mockups, not placeholders)
    - Release notes with business impact summary
-3. **Validation criteria**:
+3. **Validation criteria** (post-dev):
    - Does the implementation match the business requirements Emma documented?
    - Are all user journeys working as expected?
    - Are edge cases and error flows handled per business context?
    - Does the UX reflect actual business workflows (not just CRUD)?
    - Is all documentation current, accurate, and complete?
    - Do user guides include actual screenshots (not mockups)?
+   - If implementation deviates from an approved requirement, has the discrepancy been recorded in GitLab with requirement/rule IDs and routed via `REQUIREMENTS-AUTHORITY.md`?
 4. If validation fails → hand back to implementing role with specific gaps.
 5. If documentation incomplete → Isabella creates/updates documentation before declaring complete.
-6. If validation passes → **Project Complete**.
+6. If validation passes → **Emma performs a retrospective goal review** before handing the issue back to herself for closure:
+   - Compare the shipped deliverable against the original stakeholder request/goals documented in the issue.
+   - Verify all original acceptance criteria (US-XXX/AC-YYY) are satisfied — not only the enhanced/implied ones added in Phase 1.
+   - Confirm no surrounding feature/logic was broken by the change (regression check against Phase 1a market research).
+   - If goals are not met or gaps are found → hand back to the implementing role with specific gaps; only re-run this step once fixed.
+   - If goals are met → close the issue only after MR merge verified via `mr-status` and `issue-status closed` run in the same session.
 
 **Definition of Project Complete**:
 - ✅ All workflow steps passed
-- ✅ Business validation passed
+- ✅ **Phase 1 pre-dev documentation gate** passed (market research + team allocation + Isabella confirmation)
+- ✅ **Phase 2 post-dev documentation revisit** passed
+- ✅ **Emma retrospective goal review** passed (original request/goals achieved; all original AC satisfied)
 - ✅ All documentation updated
 - ✅ No unresolved risks or blocked items
 - ✅ Handoff to operations complete

@@ -41,11 +41,11 @@ Emma, Marcus, Jonathan, Isabella (and anyone doing planning/architecture tasks)
 - If requirements new/changed: Isabella must update BRD, SRS, technical docs, config docs, user guides BEFORE development begins
 
 ## Workflow
-1. Emma receives request → clarifies requirements, resolves ambiguity
-2. Emma notifies Isabella if requirements new/changed
-3. Isabella updates docs (BRD, SRS, technical, config, user guides)
-4. Marcus reviews architecture/API contracts
-5. Plan approved → hand off to Daniel (backend) / Sophia (frontend) / Ethan (infra)
+1. **Emma receives request → runs business-change impact-analysis gate** (per `business-change-impact` skill): analyses product change + implied logic, advises Isabella on documentation impact
+2. **Isabella confirms & updates documentation** BEFORE development begins (factual/docs via `REQUIREMENTS-AUTHORITY.md`; descriptive to planned behavior; user stories refined with screenshot requirements)
+3. **Emma triggers team** → Marcus reviews architecture/API contracts → Daniel/Sophia/Ethan/Jonathan begin implementation
+4. **During implementation**: Emma monitors consistency; team flags any implementation-vs-requirement discrepancy (route to Isabella via `requirements-authority`)
+5. **Isabella post-development revisit**: updates docs to merged behavior, captures real Playwright screenshots, publishes release notes; confirms accuracy before Emma closes issue
 
 ## Handoff Targets
 - Backend planning → Daniel (backend-impl)
