@@ -75,11 +75,13 @@ Every completed task MUST include the sections below. **Reviewers MUST reject an
 - **Does this change require documentation updates?** YES / NO
 - **Business-change impact-analysis gate (`business-change-impact` skill)**:
   - **Phase 1 (pre-dev) Emma analysis performed:** YES / N/A — product change analysed, implied business logic & edge cases identified, documentation impact advised to Isabella
+  - **Phase 1 (pre-dev) market research + team allocation:** YES / N/A — surrounding features/dependencies identified with rationale; best-fit roles assigned with dependency-sequenced plan
   - **Phase 1 (pre-dev) Isabella confirmation:** YES / N/A — required docs updated BEFORE development (factual via REQUIREMENTS-AUTHORITY.md; descriptive to planned behavior); user stories / AC / screenshot requirements refined
   - **Factual requirements impact?** YES / NO — did behavior change vs an approved BRD/SRS/rule/user story/journey? If YES, do NOT edit those documents yourself: state the discrepancy with requirement/rule IDs so Isabella can run the amendment process (`6_documentation_standards/REQUIREMENTS-AUTHORITY.md`).
   - **Descriptive docs to update:** API docs / technical / configuration / deployment / README / CHANGELOG (list)
   - **User guide / Playwright screenshots:** YES / NO (list screens)
   - **Isabella notified + confirmed?** YES / NO
+  - **Emma retrospective goal review:** YES / N/A — original stakeholder request/goals confirmed achieved, all original AC satisfied, surrounding features/regressions checked
   - **Phase 2 (post-dev) revisit recorded:** YES / N/A / pending — documentation revisited against implemented reality, real Playwright screenshots captured, release notes published, accuracy confirmed BEFORE Emma closes issue
 
 ### Cleanup Evidence
@@ -121,9 +123,10 @@ Every completed task MUST include the sections below. **Reviewers MUST reject an
 **Closure rule:** Only Emma may close an issue, and only after:
 1. MR merge is **verified** via `mr-status` (not assumed)
 2. **Isabella's pre-development documentation gate** passed (documentation updated BEFORE development)
-3. **Isabella's post-development documentation revisit** passed (documentation accuracy confirmed against implemented reality, Playwright screenshots captured, release notes published)
-4. Issue is labeled `Done`
-5. Issue is **closed** via `issue-status closed` in the same session as merge verification
+3. **Emma's retrospective goal review** passed (original stakeholder request/goals confirmed achieved, all original AC satisfied, surrounding features/regressions checked)
+4. **Isabella's post-development documentation revisit** passed (documentation accuracy confirmed against implemented reality, Playwright screenshots captured, release notes published)
+5. Issue is labeled `Done`
+6. Issue is **closed** via `issue-status closed` in the same session as merge verification
 
 **Post-merge audit:** Isabella (or designated reviewer) MUST run `issue-audit <project>` periodically to catch any issues left open after their linked MRs were merged. Orphaned open issues are escalated to Emma for immediate closure.
 
@@ -232,12 +235,18 @@ After all technical reviews, tests, and deployment succeed:
    - If implementation deviates from an approved requirement, has the discrepancy been recorded in GitLab with requirement/rule IDs and routed via `REQUIREMENTS-AUTHORITY.md`?
 4. If validation fails → hand back to implementing role with specific gaps.
 5. If documentation incomplete → Isabella creates/updates documentation before declaring complete.
-6. If validation passes → hand back to Emma to close the issue.
+6. If validation passes → **Emma performs a retrospective goal review** before handing the issue back to herself for closure:
+   - Compare the shipped deliverable against the original stakeholder request/goals documented in the issue.
+   - Verify all original acceptance criteria (US-XXX/AC-YYY) are satisfied — not only the enhanced/implied ones added in Phase 1.
+   - Confirm no surrounding feature/logic was broken by the change (regression check against Phase 1a market research).
+   - If goals are not met or gaps are found → hand back to the implementing role with specific gaps; only re-run this step once fixed.
+   - If goals are met → close the issue only after MR merge verified via `mr-status` and `issue-status closed` run in the same session.
 
 **Definition of Project Complete**:
 - ✅ All workflow steps passed
-- ✅ **Phase 1 pre-dev documentation gate** passed
+- ✅ **Phase 1 pre-dev documentation gate** passed (market research + team allocation + Isabella confirmation)
 - ✅ **Phase 2 post-dev documentation revisit** passed
+- ✅ **Emma retrospective goal review** passed (original request/goals achieved; all original AC satisfied)
 - ✅ All documentation updated
 - ✅ No unresolved risks or blocked items
 - ✅ Handoff to operations complete

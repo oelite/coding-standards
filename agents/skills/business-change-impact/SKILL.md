@@ -42,27 +42,46 @@ The gate has **two mandatory phases**. Neither may be skipped. Both are recorded
 
 This runs **before any implementation worktree is created** and **before Daniel/Sophia/Ethan/Jonathan begin work**.
 
+#### Phase 1a — Product analysis & market research (Emma, as product manager)
+
 1. **Emma receives the request** and analyses the *product change*, not just the implementation ask.
    - What user-facing behavior changes?
    - Which business rules / workflows / user journeys are affected or newly introduced?
    - Which API / data / config / architecture surfaces are touched?
    - Are there **additional / underlying functional changes** the request implies but does not state (edge cases, error flows, permission boundaries, state transitions, derived values, integrations, backward compatibility)?
    - Emma *enhances & details* the request: fills in the implied logic, clarifies ambiguity, and resolves scope before implementation.
-2. **Emma advises Isabella** on documentation impact, naming each affected document class:
+2. **Emma conducts/reviews market research** as product manager to ensure the change is fully supported by surrounding features/logics:
+   - Gather market context: user interviews, stakeholder input, competitive analysis, industry standards where applicable.
+   - Identify all **related/surrounding features** that the change touches or depends on — upstream, downstream, and adjacent features.
+   - Verify each surrounding feature/logic still aligns with, and fully supports, the proposed change. Surface any conflicts or missing prerequisite features as risks or dependencies.
+   - Document the market/feature analysis (decision rationale, affected features, dependencies) as part of the issue record so the team can see *why* the change is scoped this way.
+   - Do **not** silently add scope: if market research reveals a need for new surrounding features beyond the request, surface them as separate child issues for business approval.
+
+#### Phase 1b — Team allocation analysis (Emma, as delivery coordinator)
+
+3. **Emma analyses required team members** to allocate the best-fit roles *before* implementation begins:
+   - Map the change to the roles needed (Daniel backend / Sophia frontend / Jonathan UX / Marcus architecture / Maya security / Victor performance / Ethan infrastructure / Olivia QA / Grace/Felix review).
+   - Assign each deliverable to the role with the matching expertise; do not default to "any available person" for role-specific work (e.g., do not assign auth/security work to a general backend slot without Maya review).
+   - Sequence assignments by dependency: architecture → UX design → implementation → QA → deployment; document the dependency chain and any cross-role handoffs.
+   - Record role assignments in the issue/task plan with explicit success criteria per role (per `packs/planning.md` Required Outputs).
+
+#### Phase 1c — Isabella confirmation (documentation)
+
+4. **Emma advises Isabella** on documentation impact, naming each affected document class:
    - Factual (BRD, SRS, user stories, business rulebook, process flows, user journeys)
    - Descriptive (API docs, technical docs, configuration, deployment, user guides, README, CHANGELOG)
    - For factual documents: is this an *approved new/corrected/changed fact* (amend via `REQUIREMENTS-AUTHORITY.md`), or just implementation status (do NOT rewrite factual docs — see skill `requirements-authority`)?
-3. **Isabella confirms and authors/updates the required documentation BEFORE development starts:**
+5. **Isabella confirms and authors/updates the required documentation BEFORE development starts:**
    - Factual docs: only for approved requirement changes, via the amendment process; record decision provenance.
    - Descriptive docs: update to the planned (not yet implemented) behavior, flagged as "planned" where the code is not yet merged.
    - User stories / acceptance criteria: refine so Olivia's tests and Isabella's validation have a precise target.
    - Playwright screenshot requirements in the story are specified *now* (which screens/states to capture), so Isabella captures them after development.
-4. **Isabella triggers Emma to proceed.** Only after Isabella's confirmation does Emma hand the request to Marcus (architecture) → Daniel/Sophia/… (implementation). Emma *monitors and orchestrates* team progress toward the documented goal, tracking that the work stays aligned with the enhanced request.
-5. **Emma records the gate in the handoff** (Documentation Impact: YES/NO; factual impact YES/NO; Isabella notified = YES).
+6. **Isabella triggers Emma to proceed.** Only after Isabella's confirmation does Emma hand the request to Marcus (architecture) → Daniel/Sophia/… (implementation). Emma *monitors and orchestrates* team progress toward the documented goal, tracking that the work stays aligned with the enhanced request.
+7. **Emma records the gate in the handoff** (Documentation Impact: YES/NO; factual impact YES/NO; Isabella notified = YES).
 
-**Gate rule:** No worktree creation, no code, no design spec for an affected surface until Phase 1 is recorded. Emma may assign the issue to an implementer only after Isabella's confirmation.
+**Gate rule:** No worktree creation, no code, no design spec for an affected surface until Phase 1 (a–c) is recorded. Emma may assign the issue to an implementer only after Isabella's confirmation.
 
-### Phase 2 — Post-development documentation revisit (Isabella leads)
+### Phase 2 — Post-development documentation revisit (Isabella leads, Emma retrospective)
 
 This runs **after team development is complete** (implementation + reviews + tests green), **before Emma closes the issue**.
 
@@ -72,9 +91,14 @@ This runs **after team development is complete** (implementation + reviews + tes
    - User guides updated with **actual Playwright screenshots** captured from the real UI (not mockups, not the pre-development "planned" placeholders).
    - Release notes / business-impact summary published.
 2. **Isabella confirms documentation accuracy & quality** and hands back to Emma.
-3. **Emma closes the issue** only after Phase 2 passes, the MR merge is verified via `mr-status`, and `issue-status closed` is run in the same session.
+3. **Emma conducts a retrospective goal review** to confirm the deliverable actually meets the original request:
+   - Compare the shipped deliverable against the original stakeholder request and goals documented in the issue.
+   - Verify all original acceptance criteria (US-XXX/AC-YYY) are satisfied — not only the enhanced/implied ones Emma added in Phase 1.
+   - Confirm no surrounding feature/logic was broken by the change (regression check against Phase 1a market research).
+   - If goals are not met or gaps are found, hand back to the implementing role with specific gaps before closure.
+4. **Emma closes the issue** only after Phase 2 passes, her retrospective goal review passes, the MR merge is verified via `mr-status`, and `issue-status closed` is run in the same session.
 
-**Gate rule:** Emma MUST NOT label an issue `Done` or close it while Isabella's Phase 2 documentation revisit is outstanding or failing.
+**Gate rule:** Emma MUST NOT label an issue `Done` or close it while Isabella's Phase 2 documentation revisit or Emma's retrospective goal review is outstanding or failing.
 
 ---
 
@@ -109,6 +133,8 @@ Every Phase 1 and Phase 2 handoff appends to the `Documentation Impact` section 
 - **Descriptive docs to update:** API docs / technical / config / deployment / README / CHANGELOG (list)
 - **User guide / Playwright screenshots:** YES / NO (list screens)
 - **Isabella notified + confirmed?** YES / NO
+- **Market research + team allocation analysis:** YES / N/A — surrounding features/dependencies identified with rationale; best-fit roles assigned with dependency-sequenced plan
+- **Emma retrospective goal review:** YES / N/A — original stakeholder request/goals confirmed achieved, all original AC satisfied, surrounding features/regressions checked
 - **Phase 1 (pre-dev) gate recorded:** YES / N/A
 - **Phase 2 (post-dev) revisit recorded:** YES / N/A / pending
 ```
@@ -121,9 +147,12 @@ Reviewers reject a handoff missing any of these fields.
 
 ### Emma (gate orchestrator)
 - Runs Phase 1 impact analysis on every business-change / feature request.
+- **Product analysis & market research (as product manager):** analyses surrounding features/logics, gathers market context (user interviews, stakeholder input, competitive analysis, industry standards), verifies the change is fully supported by related features, documents decision rationale and dependencies; surfaces new feature needs as child issues for business approval rather than silently adding scope.
+- **Team allocation analysis:** maps the change to required roles, assigns each deliverable to the best-fit role by expertise, sequences work by dependency, and records role assignments with explicit success criteria per role.
 - Enhances & details the request: identifies implied business logic, edge cases, error flows, permission boundaries, state transitions, integrations, backward-compatibility concerns.
 - Advises Isabella with the documentation impact decision (section 3 matrix).
 - Monitors and orchestrates team progress toward the documented goal; keeps the enhanced request as the single alignment target.
+- **Post-development retrospective goal review:** compares the shipped deliverable against the original stakeholder request/goals, verifies all original acceptance criteria are satisfied, confirms no surrounding feature/logic was broken by the change; hands back to implementing role with specific gaps if goals are not met.
 - Does NOT close an issue while Phase 1 or Phase 2 is outstanding.
 - Escalates to the human/stakeholder for any business decision (new objective, scope, new rule, priority).
 
@@ -141,8 +170,9 @@ Reviewers reject a handoff missing any of these fields.
 
 ## 6. Verification
 
-- **Phase 1 evidence:** Emma's impact analysis + Isabella's confirmation are both present in the issue record (GitLab) before any implementer worktree exists.
+- **Phase 1 evidence:** Emma's impact analysis + market research + team allocation + Isabella's confirmation are all present in the issue record (GitLab) before any implementer worktree exists.
 - **Phase 2 evidence:** Isabella's revisit + Playwright screenshots + descriptive doc updates are present before Emma labels `Done`.
+- **Retrospective evidence:** Emma's original-goal review (original request/goals confirmed achieved, all original AC satisfied, surrounding-feature/regression check) is present in the issue record before closure.
 - **Gate enforcement:** Reviewers reject a handoff missing the Documentation Impact fields. Emma's closure checklist includes "Phase 1 recorded" and "Phase 2 recorded/passing".
 - **No factual drift:** Factual docs changed only via the `requirements-authority` amendment process; `python3 scripts/check-requirements-authority.py --staged` passes when factual docs are touched.
 - **Enhancement quality:** The issue's AC list is more detailed than the user's raw request where implied logic / edge cases were identified (Emma's enhancement is visible in the task's GIVEN/WHEN/THEN).
