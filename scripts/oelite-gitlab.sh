@@ -2039,6 +2039,41 @@ print("  Web URL:  {}".format(job.get("web_url", "")))
 '
 }
 
+cmd_pipeline_cancel() {
+  local project_path="${1:-}"
+  local pipeline_id="${2:-}"
+  local agent="${3:-emma}"
+
+  [[ -z "$project_path" ]] && { echo "[ERROR] Project path required" >&2; return 1; }
+  [[ -z "$pipeline_id" || ! "$pipeline_id" == <-> ]] && { echo "[ERROR] Numeric pipeline ID required" >&2; return 1; }
+
+  validate_agent "$agent" || return 1
+
+  local encoded_path pat
+  encoded_path=$(url_encode_path "$project_path")
+  pat=$(get_pat "$agent")
+  api_post "/projects/$encoded_path/pipelines/$pipeline_id/cancel" "$pat" ""
+
+  if [[ "$_API_STATUS" != "201" && "$_API_STATUS" != "200" ]]; then
+    echo "[ERROR] Failed to cancel pipeline $pipeline_id (HTTP $_API_STATUS)" >&2
+    api_error_hint "$_API_STATUS" "$project_path"
+    echo "$_API_RESPONSE" >&2
+    return 1
+  fi
+
+  printf '%s\n' "$_API_RESPONSE" | python3 -c '
+import json, sys
+pipeline = json.load(sys.stdin)
+print("[OK] Pipeline canceled")
+print("  ID:        {}".format(pipeline.get("id", "")))
+print("  Status:    {}".format(pipeline.get("status", "")))
+print("  Ref:       {}".format(pipeline.get("ref", "")))
+print("  SHA:       {}".format(pipeline.get("sha", "")))
+print("  Source:    {}".format(pipeline.get("source", "")))
+print("  Web URL:   {}".format(pipeline.get("web_url", "")))
+'
+}
+
 cmd_mr_merge() {
   local project_path="${1:-}"
   local mr_iid="${2:-}"
@@ -3091,6 +3126,12 @@ COMMANDS:
       <agent> (default emma). Use for known-flaky failures so the reviewed head SHA
       is preserved instead of pushing a new commit.
       Example: oelite-gitlab.sh pipeline-job-retry oelite/helios/kortex 84300 ethan
+   pipeline-cancel <project-path> <pipeline-id> [<agent>]
+      Cancel a queued/running pipeline, attributed to <agent> (default emma). Use
+      to clear redundant push pipelines (duplicates of MR pipelines) and superseded
+      pipelines (merged branches) so the serialized runner is freed for work that
+      actually gates a merge.
+      Example: oelite-gitlab.sh pipeline-cancel oelite/uranus/origin-auth 11034 ethan
 
 
 
@@ -3183,6 +3224,7 @@ case "$command" in
   pipeline-jobs)  cmd_pipeline_jobs "$@" ;;
   pipeline-job-trace) cmd_pipeline_job_trace "$@" ;;
   pipeline-job-retry) cmd_pipeline_job_retry "$@" ;;
+  pipeline-cancel) cmd_pipeline_cancel "$@" ;;
   mr-merge)       cmd_mr_merge "$@" ;;
   mr-close)       cmd_mr_close "$@" ;;
   mr-check-eligible) cmd_mr_check_eligible "$@" ;;
