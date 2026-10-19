@@ -104,6 +104,19 @@
 
 ---
 
+### `business-change-impact` — Emma→Isabella Impact-Analysis Gate
+
+- **Purpose:** Mandatory two-phase gate for business changes: Emma analyses product change + implied logic and advises Isabella on documentation impact BEFORE development; Isabella revisits documentation accuracy AFTER development, before Emma closes the issue
+- **Trigger phrases:** "business change", "feature request", "new feature", "change business logic", "change workflow", "documentation impact", "impact analysis", "update BRD", "update SRS", "UI change", "user-facing change", "what else changes if we do this"
+- **Default loaders:** Emma, Isabella
+- **On-demand loaders:** Marcus, Jonathan, Daniel, Sophia, Olivia, Grace, Felix (when their work reveals a factual-requirements impact)
+- **Location:** `coding-standards/agents/skills/business-change-impact/SKILL.md`
+- **Status:** [x] active — issue #54
+- **Owners:** Emma (gate orchestration) + Isabella (documentation execution)
+- **Related skills:** `requirements-authority` (#40) — load together whenever a factual requirement may need amending
+
+---
+
 ## 🔧 Built-in OpenCode Skills (Available via `skill` Tool)
 
 These skills are built into the OpenCode CLI and accessible via the `skill` tool or
