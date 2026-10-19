@@ -2818,9 +2818,9 @@ cmd_project_approvals() {
 import json, sys
 
 settings = json.load(sys.stdin)
-print("Project:                    {}".format(settings.get("project_id", "")))
+print("Project:                    {}".format(sys.argv[1]))
 print("Approvals required:         {}".format(settings.get("approvals_required", 0)))
-print("Approval rules overwrite:   {}".format(settings.get("reset_approvals_on_push", "")))
+print("Approvals reset on push:    {}".format(settings.get("reset_approvals_on_push", "")))
 print("Disable overwriting:        {}".format(settings.get("disable_overriding_approvers_per_merge_request", "")))
 approvers = settings.get("approvers") or []
 approver_groups = settings.get("approver_groups") or []
@@ -2834,7 +2834,7 @@ if approver_groups:
     print("Approver groups:")
     for g in approver_groups:
         print("  - {}".format(g.get("group", {}).get("full_path", g.get("id", "?"))))
-'
+' "$project_path"
 }
 
 cmd_oe_scope() {

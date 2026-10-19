@@ -300,8 +300,10 @@ scripts/oelite-gitlab.sh worktree-create daniel feature/US-001-auth
 | `mr-list <project>` | List open MRs |
 | `mr-comment <project> <iid> <agent> <msg>` | Comment on MR |
 | `mr-approve <project> <iid> <agent>` | Approve MR |
+| `mr-unapprove <project> <iid> <agent>` | Revoke the caller's own approval on an MR (self-revocation only) |
 | `mr-status <project> <iid>` | Report state, merge readiness, CI evidence, and approvals independently |
 | `mr-show <project> <iid> [--raw]` | Read MR description and authoritative status fields |
+| `project-approvals <project> [agent]` | Read project-level approval settings (approvals required, reset-on-push, named approvers/groups); read-only |
 | `pipeline-jobs <project> <pipeline-id>` | List pipeline jobs and failure reasons |
 | `pipeline-job-trace <project> <job-id>` | Read job trace; fetch only when needed because output may be sensitive |
 | `pipeline-job-retry <project> <job-id> [<agent>]` | Retry a single failed job (same SHA); attributed to the named agent, default `emma` — flaky-CI remediation only, never for real code failures |
