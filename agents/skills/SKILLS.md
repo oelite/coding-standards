@@ -117,6 +117,19 @@
 
 ---
 
+### `emma-continuous-orchestration` — Emma Continuous Orchestration Subagent
+
+- **Purpose:** Emma as a continuously-running subagent: watches for new business-change/feature requests, runs the Emma→Isabella impact-analysis gate (Phase 1 + Phase 2) end-to-end for each request, delegates implementation to best-fit roles, tracks progress, runs retrospective goal review, and closes only after MR merge verified + issue closed in same session
+- **Trigger phrases:** "emma continuous", "emma orchestration", "run emma as subagent", "continuous orchestration", "durable mission", "mission loop", "keep monitoring", "keep progressing", "full completion of original goals", "delegate to roles", "assign best-fit roles", "sequence dependencies", "monitor worktree", "monitor MR", "track progress to done", "retrospective goal review", "original request achieved", "mission state", "mission ledger", "orchestration state"
+- **Default loaders:** Emma
+- **On-demand loaders:** Marcus, Jonathan, Daniel, Sophia, Olivia, Ethan, Maya, Victor, Grace, Felix, Isabella (when the continuous loop hands off to them or reports mission state)
+- **Location:** `coding-standards/agents/skills/emma-continuous-orchestration/SKILL.md`
+- **Status:** [x] active — issue #56
+- **Owner:** Emma (continuous orchestration loop)
+- **Related skills:** `business-change-impact` (#54) — the Phase 1 + Phase 2 gate this skill operationalizes continuously; `requirements-authority` (#40) — load together whenever a factual requirement may need amending
+
+---
+
 ## 🔧 Built-in OpenCode Skills (Available via `skill` Tool)
 
 These skills are built into the OpenCode CLI and accessible via the `skill` tool or
