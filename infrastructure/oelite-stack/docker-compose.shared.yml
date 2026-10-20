@@ -450,8 +450,11 @@ services:
       - oelite-infra
 
   # ─── MinIO (S3-compatible, multi-tenant buckets) ─────────────────────────
+  # NOTE: MinIO community images were removed from Docker Hub/quay.io (Oct 2026).
+  # Chainguard publishes a free, zero-CVE MinIO (AGPL) image instead.
+  # Consistent with remote clusters: infrastructure/oelite-stack/clusters/<ENV>/cluster-config/apps/minio/
   oelite-minio:
-    image: quay.io/minio/minio:RELEASE.2025-09-07T16-13-09Z
+    image: cgr.dev/chainguard/minio:latest
     container_name: oelite-minio
     hostname: oelite-minio
     command: ["server", "/data", "--console-address", ":9001"]
@@ -462,7 +465,7 @@ services:
       - "9001:9001"
     mem_limit: 512m
     healthcheck:
-      test: ["CMD", "mc", "ready", "local"]
+      test: ["CMD-SHELL", "curl -f http://localhost:9000/minio/health/live || exit 1"]
       interval: 15s
       timeout: 10s
       retries: 5

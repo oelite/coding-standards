@@ -25,7 +25,7 @@ If a service below is **stopped, unhealthy, or missing**, the only correct actio
 | ClickHouse | `clickhouse/clickhouse-server:26.5` |
 | Kafka | `confluentinc/cp-kafka:8.3.0` |
 | RabbitMQ | `rabbitmq:4.3-management-alpine` |
-| MinIO | `minio/minio:RELEASE.*` |
+| MinIO | `cgr.dev/chainguard/minio:latest` (Chainguard; zero-CVE, AGPL, no license required) |
 | OpenSearch | `opensearchproject/opensearch:3.7.0` |
 | Mailpit | `axllent/mailpit:v1.30.2` |
 
