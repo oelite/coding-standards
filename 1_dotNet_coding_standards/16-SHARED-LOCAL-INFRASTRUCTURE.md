@@ -31,6 +31,20 @@ infrastructure/oelite-stack/  (in coding-standards repo)
 
 **All** OElite services that a local dev needs are here. **No per-repo compose file may redefine these services.**
 
+### Remote K8s Clusters (UAT / Production)
+
+The same `infrastructure/oelite-stack/` directory also hosts **gitignored** per-environment remote cluster material:
+
+```
+clusters/<ENV>/kubeconfig/      ← exactly ONE kubeconfig file per environment (any filename)
+clusters/<ENV>/cluster-config/  ← cluster bootstrap scripts + per-app manifests
+```
+
+- **Never commit** `infrastructure/oelite-stack/clusters/` — kubeconfigs are credentials. The path is enforced via `.gitignore`.
+- Only high-privilege operators distribute these files; not every developer checkout has a `clusters/` folder.
+- Manage connections via `./oelite-stack.sh cluster <ENV> {kubectl|health|audit|kubeconfig-path}` (see `infrastructure/oelite-stack/README.md`).
+- CI/CD deploys use GitLab CI/CD **file variables** `$OElite_K8S` (Production) and `$PHANES_K8S` (UAT) — never committed kubeconfigs.
+
 ### Per-Service Isolation
 
 | Service | Isolation | Example |

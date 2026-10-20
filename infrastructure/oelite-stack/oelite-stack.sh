@@ -115,6 +115,92 @@ case "$cmd" in
     docker compose -f docker-compose.shared.yml logs -f "${2:-}"
     ;;
 
+  cluster)
+    ENV_NAME="${2:-}"
+    ACTION="${3:-}"
+    if [ -z "$ENV_NAME" ]; then
+      echo "Usage: ./oelite-stack.sh cluster <ENV> [kubectl|health|audit|kubeconfig-path] [args...]"
+      echo ""
+      echo "Available environments:"
+      for d in clusters/*/; do
+        env_name="$(basename "$d")"
+        echo "  - $env_name"
+      done
+      exit 1
+    fi
+    KC_DIR="clusters/$ENV_NAME/kubeconfig"
+    if [ ! -d "$KC_DIR" ]; then
+      echo "[ERR] No kubeconfig dir for env '$ENV_NAME' (expected $KC_DIR/). Available: "
+      ls -1 clusters/ 2>/dev/null | sed 's/^/  - /'
+      exit 1
+    fi
+    # Resolve the single kubeconfig file (any name) inside the kubeconfig/ dir.
+    KC_FILE=""
+    count=0
+    for f in "$KC_DIR"/*; do
+      # Skip dotfiles and .DS_Store
+      [ -e "$f" ] || continue
+      base="$(basename "$f")"
+      case "$base" in .*) continue ;; esac
+      [ -f "$f" ] || continue
+      KC_FILE="$f"
+      count=$((count+1))
+    done
+    if [ "$count" -eq 0 ]; then
+      echo "[ERR] No kubeconfig found in $KC_DIR/"
+      exit 1
+    fi
+    if [ "$count" -gt 1 ]; then
+      echo "[WARN] Multiple kubeconfig files in $KC_DIR/; using first ($KC_FILE)."
+      echo "       Standard: exactly ONE kubeconfig per environment."
+      ls -1 "$KC_DIR" | grep -v '^\.'
+    fi
+    export KUBECONFIG="$(pwd)/$KC_FILE"
+
+    case "$ACTION" in
+      kubectl|run|"")
+        # Either 'kubectl' subcommand or run the action itself as kubectl args
+        if [ "$ACTION" = "kubectl" ] || [ -z "$ACTION" ]; then
+          kubectl "${@:4}" 2>/dev/null || exec kubectl "${@:4}"
+        else
+          # Treat ACTION as first kubectl arg: e.g. `cluster UAT get pods`
+          kubectl "$ACTION" "${@:4}" 2>/dev/null || exec kubectl "$ACTION" "${@:4}"
+        fi
+        ;;
+      health)
+        echo "=== Cluster: $ENV_NAME ($KUBECONFIG) ==="
+        echo "--- Nodes ---"
+        kubectl get nodes -o wide
+        echo "--- All Pods (non-Completed) ---"
+        kubectl get pods -A -o custom-columns='NS:.metadata.namespace,NAME:.metadata.name,READY:.status.containerStatuses[*].ready,STATUS:.status.phase,RESTARTS:.status.containerStatuses[*].restarts,AGE:.metadata.creationTimestamp' 2>/dev/null | head -60
+        echo "--- OElite infra Pods (statefulset: mongo/clickhouse/opensearch/rabbitmq/kafka/redis) ---"
+        kubectl get pods -A -o wide | grep -Ei 'mongo|clickhouse|kafka|opensearch|rabbit|redis|zookeeper' || echo "(none found)"
+        echo "--- Non-Ready / Error Pods ---"
+        kubectl get pods -A --no-headers 2>/dev/null | awk '$4!="Running" && $4!="Completed" && $4!="" {print}' | head -20 || true
+        ;;
+      audit)
+        echo "=== Resource audit: $ENV_NAME ==="
+        echo "--- Node Allocatable / Requests ---"
+        kubectl top nodes 2>/dev/null || kubectl describe nodes | grep -A 8 "Allocated resources"
+        echo "--- Top Pods (default ns infra) ---"
+        kubectl top pods -n default 2>/dev/null | head -30 || echo "(metrics-server unavailable or no metrics)"
+        echo "--- Per-namespace CPU/Mem requests ---"
+        for ns in default cert-manager ingress-nginx metallb-system; do
+          kubectl get pods -n "$ns" -o json 2>/dev/null \
+            | jq -r '.items[] | select(.spec.containers) | .metadata.name as $n | .spec.containers[] | [.name, (.resources.requests.cpu // "-"), (.resources.requests.memory // "-"), (.resources.limits.memory // "-")] | @tsv' 2>/dev/null \
+            | awk -v ns="$ns" 'BEGIN{cpu=0;mem=0} {cpu+=$2; mem+=$3} END{if(NR>0) print ns": "NR" pods"}'
+        done
+        ;;
+      kubeconfig-path)
+        echo "$KUBECONFIG"
+        ;;
+      *)
+        echo "Unknown cluster action '$ACTION'. Use: kubectl|health|audit|kubeconfig-path"
+        exit 1
+        ;;
+    esac
+    ;;
+
   help|*)
     cat <<EOF
 OElite Shared Local Infrastructure Manager
@@ -128,6 +214,15 @@ Usage:
   ./oelite-stack.sh logs      Tail logs (optionally: ./oelite-stack.sh logs oelite-mongos)
    ./oelite-stack.sh secrets   Rotate all credentials (regenerates .env)
    ./oelite-stack.sh clean     DELETE all data volumes (.env/.mongo.key preserved)
+
+Remote K8s cluster helpers (per-environment, gitignored under clusters/):
+  ./oelite-stack.sh cluster list                 List available environments
+  ./oelite-stack.sh cluster UAT kubectl get pods  Connect to UAT and run arbitrary kubectl
+  ./oelite-stack.sh cluster UAT health            Summary health of UAT oelite infrastructure
+  ./oelite-stack.sh cluster UAT audit             Resource audit of UAT nodes + infra pods
+  ./oelite-stack.sh cluster UAT kubeconfig-path   Print resolved KUBECONFIG for UAT
+
+  (env names: UAT, Production, ... — see clusters/<ENV>/kubeconfig/)
 
 First-time setup:
   ./oelite-stack.sh up

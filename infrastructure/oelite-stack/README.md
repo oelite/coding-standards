@@ -291,6 +291,68 @@ mechanism. That is the only supported path for a new local-dev dependency.
 
 CI/CD pipelines **must not** spin up these services. Use `Category!=Integration` filter on `dotnet test`. See `coding-standards/1_dotNet_coding_standards/14-TESTING-STANDARDS.md` for the full test categorization rules.
 
+## CI/CD
+
+CI/CD pipelines **must not** spin up these services. Use `Category!=Integration` filter on `dotnet test`. See `coding-standards/1_dotNet_coding_standards/14-TESTING-STANDARDS.md` for the full test categorization rules.
+
+## Remote K8s Clusters (UAT / Production)
+
+Per-environment remote cluster configs live under `clusters/` and are **gitignored** (they contain kubeconfigs and credentials). Only high-privilege operators place these files locally; they are **never committed**.
+
+```
+infrastructure/oelite-stack/
+└── clusters/
+    ├── UAT/
+    │   ├── kubeconfig/           ← exactly ONE kubeconfig file (any filename)
+    │   └── cluster-config/       ← cluster bootstrap scripts + app manifests
+    │       ├── 1.k8s-metallb-public-ips.sh
+    │       ├── 2.storage-class.sh
+    │       ├── 3.cert-manager.sh
+    │       ├── 4.nginx-ingress.sh
+    │       ├── 5.private-registry-and-secrets.sh
+    │       ├── 6.apps-installs.sh
+    │       ├── metallb/ cert-manager/ ingress/ storage/
+    │       └── apps/ (mongodb, redis, clickhouse, kafka, rabbitmq, opensearch)
+    └── Production/
+        ├── kubeconfig/
+        └── cluster-config/
+```
+
+### oelite-stack.sh cluster helpers
+
+```bash
+cd infrastructure/oelite-stack
+
+./oelite-stack.sh cluster list                      # list environments
+./oelite-stack.sh cluster UAT kubectl get pods      # run kubectl against UAT
+./oelite-stack.sh cluster UAT health                # health summary of UAT
+./oelite-stack.sh cluster UAT audit                 # resource audit (nodes + top pods)
+./oelite-stack.sh cluster Production kubectl get nodes
+./oelite-stack.sh cluster UAT kubeconfig-path       # print resolved KUBECONFIG path
+```
+
+The helper resolves the single kubeconfig inside `clusters/<ENV>/kubeconfig/` (exactly one per environment, any filename) and exports `KUBECONFIG` for the command.
+
+### CI/CD kubeconfig injection
+
+CI/CD pipelines deploy to K8s using GitLab CI/CD variables, **not** local kubeconfig files:
+
+- `$OElite_K8S` — kubeconfig for the oelite.io cluster (Production)
+- `$PHANES_K8S` — kubeconfig for the phanes.ltd cluster (UAT)
+
+Store these as GitLab **file-type** CI/CD variables. In `.gitlab-ci.yml`:
+
+```yaml
+deploy_uat:
+  stage: deploy_k8s
+  image: bitnami/kubectl:latest
+  script:
+    - kubectl --kubeconfig "$PHANES_K8S" -n oelite-uat apply -f k8s/
+    - kubectl --kubeconfig "$PHANES_K8S" -n oelite-uat rollout status deploy/<name>
+```
+
+Namespaces follow the platform convention: `oelite-dev`, `oelite-uat`, `oelite-prod`; production deploys are `when: manual`.
+
 ## Related
 
 - Standard: `coding-standards/1_dotNet_coding_standards/16-SHARED-LOCAL-INFRASTRUCTURE.md`
