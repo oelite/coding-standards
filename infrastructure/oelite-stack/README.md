@@ -353,6 +353,29 @@ deploy_uat:
 
 Namespaces follow the platform convention: `oelite-dev`, `oelite-uat`, `oelite-prod`; production deploys are `when: manual`.
 
+### Public TCP port allowlist (firewall)
+
+The nginx-ingress LoadBalancer exposes shared-infra TCP ports publicly (MongoDB 27017, RabbitMQ 5672/1883, Redis 6379, ClickHouse 8123/9000, Kafka 9092/9094, OpenSearch 9200). Services enforce their own credentials; add a node-level allowlist for defense-in-depth:
+
+```bash
+cd infrastructure/oelite-stack
+
+# 1. Operator-local config (gitignored): clusters/<ENV>/firewall-allowlist.conf + allowlist.ips
+#    Copy scripts/tcp-allowlist.conf.example → clusters/<ENV>/firewall-allowlist.conf
+
+# 2. Add your current public IP to the allowlist
+./scripts/tcp-allowlist.sh UAT add-my-ip
+
+# 3. Preview, then apply (keep an SSH session open while applying!)
+./scripts/tcp-allowlist.sh UAT dry-run
+./scripts/tcp-allowlist.sh UAT apply
+
+# 4. Verify
+./scripts/tcp-allowlist.sh UAT status
+```
+
+SSH (22) and the Kubernetes API (6443) are always protected and never denied by the tool. Denied ports keep working from cluster-internal pods — only external sources are filtered.
+
 ## Related
 
 - Standard: `coding-standards/1_dotNet_coding_standards/16-SHARED-LOCAL-INFRASTRUCTURE.md`
