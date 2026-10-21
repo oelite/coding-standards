@@ -75,6 +75,31 @@ if [[ "$_validate_pats" == "true" && "$_pat_cache_ttl" -gt 0 ]]; then
   fi
 fi
 
+# ── Keychain Session Self-Heal ──
+# When OpenCode or other apps relaunch, child processes may lose their
+# SECURITYSESSIONID and be unable to attach to securityd. The error is
+# "SecKeychainSearchCreateFromAttributes: One or more parameters passed to a
+# function were not valid" — identical to a missing/locked keychain.
+# We detect this once at startup and attempt a lightweight re-attach.
+_keychain_healthy=true
+if ! security find-generic-password -s "oelite-gitlab-emma" -a "oelite" -w >/dev/null 2>&1; then
+  _keychain_healthy=false
+  echo "[WARN] Keychain PAT lookup failed for emma — attempting securityd re-attach..." >&2
+  # Unlock-keychain with empty password forces a fresh securityd session
+  # without requiring user interaction (keychain is already unlocked by session)
+  if security unlock-keychain -p "" ~/Library/Keychains/login.keychain-db 2>/dev/null; then
+    if security find-generic-password -s "oelite-gitlab-emma" -a "oelite" -w >/dev/null 2>&1; then
+      echo "[INFO] Keychain session re-attached successfully" >&2
+      _keychain_healthy=true
+    fi
+  fi
+  if [[ "$_keychain_healthy" != "true" ]]; then
+    echo "[ERROR] Keychain access unavailable — PATs cannot be loaded" >&2
+    echo "        Verify: security find-generic-password -s oelite-gitlab-emma -a oelite -w" >&2
+    return 1 2>/dev/null || exit 1
+  fi
+fi
+
 # ── Phase 1: Load all PATs from Keychain (sequential) ──
 # Keychain access is fast when warm (~10-50ms per call) and cannot be safely
 # parallelized (Keychain may lock). We load all PATs first, then validate
