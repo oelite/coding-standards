@@ -82,21 +82,23 @@ fi
 # function were not valid" — identical to a missing/locked keychain.
 # We detect this once at startup and attempt a lightweight re-attach.
 _keychain_healthy=true
-if ! security find-generic-password -s "oelite-gitlab-emma" -a "oelite" -w >/dev/null 2>&1; then
-  _keychain_healthy=false
-  echo "[WARN] Keychain PAT lookup failed for emma — attempting securityd re-attach..." >&2
-  # Unlock-keychain with empty password forces a fresh securityd session
-  # without requiring user interaction (keychain is already unlocked by session)
-  if security unlock-keychain -p "" ~/Library/Keychains/login.keychain-db 2>/dev/null; then
-    if security find-generic-password -s "oelite-gitlab-emma" -a "oelite" -w >/dev/null 2>&1; then
-      echo "[INFO] Keychain session re-attached successfully" >&2
-      _keychain_healthy=true
+# Only attempt keychain re-attach when running on macOS (security CLI exists).
+# On Linux CI runners, keychain access is unavailable by design; skip gracefully.
+if command -v security >/dev/null 2>&1; then
+  if ! security find-generic-password -s "oelite-gitlab-emma" -a "oelite" -w >/dev/null 2>&1; then
+    _keychain_healthy=false
+    echo "[WARN] Keychain PAT lookup failed for emma — attempting securityd re-attach..." >&2
+    if security unlock-keychain -p "" ~/Library/Keychains/login.keychain-db 2>/dev/null; then
+      if security find-generic-password -s "oelite-gitlab-emma" -a "oelite" -w >/dev/null 2>&1; then
+        echo "[INFO] Keychain session re-attached successfully" >&2
+        _keychain_healthy=true
+      fi
     fi
-  fi
-  if [[ "$_keychain_healthy" != "true" ]]; then
-    echo "[ERROR] Keychain access unavailable — PATs cannot be loaded" >&2
-    echo "        Verify: security find-generic-password -s oelite-gitlab-emma -a oelite -w" >&2
-    return 1 2>/dev/null || exit 1
+    if [[ "$_keychain_healthy" != "true" ]]; then
+      echo "[ERROR] Keychain access unavailable — PATs cannot be loaded" >&2
+      echo "        Verify: security find-generic-password -s oelite-gitlab-emma -a oelite -w" >&2
+      return 1 2>/dev/null || exit 1
+    fi
   fi
 fi
 
