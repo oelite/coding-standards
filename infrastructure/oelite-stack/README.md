@@ -25,7 +25,7 @@ If a service below is **stopped, unhealthy, or missing**, the only correct actio
 | ClickHouse | `clickhouse/clickhouse-server:26.5` |
 | Kafka | `confluentinc/cp-kafka:8.3.0` |
 | RabbitMQ | `rabbitmq:4.3-management-alpine` |
-| MinIO | `minio/minio:RELEASE.*` |
+| MinIO | `cgr.dev/chainguard/minio:latest` (Chainguard; zero-CVE, AGPL, no license required) |
 | OpenSearch | `opensearchproject/opensearch:3.7.0` |
 | Mailpit | `axllent/mailpit:v1.30.2` |
 
@@ -290,6 +290,91 @@ mechanism. That is the only supported path for a new local-dev dependency.
 ## CI/CD
 
 CI/CD pipelines **must not** spin up these services. Use `Category!=Integration` filter on `dotnet test`. See `coding-standards/1_dotNet_coding_standards/14-TESTING-STANDARDS.md` for the full test categorization rules.
+
+## CI/CD
+
+CI/CD pipelines **must not** spin up these services. Use `Category!=Integration` filter on `dotnet test`. See `coding-standards/1_dotNet_coding_standards/14-TESTING-STANDARDS.md` for the full test categorization rules.
+
+## Remote K8s Clusters (UAT / Production)
+
+Per-environment remote cluster configs live under `clusters/` and are **gitignored** (they contain kubeconfigs and credentials). Only high-privilege operators place these files locally; they are **never committed**.
+
+```
+infrastructure/oelite-stack/
+└── clusters/
+    ├── UAT/
+    │   ├── kubeconfig/           ← exactly ONE kubeconfig file (any filename)
+    │   └── cluster-config/       ← cluster bootstrap scripts + app manifests
+    │       ├── 1.k8s-metallb-public-ips.sh
+    │       ├── 2.storage-class.sh
+    │       ├── 3.cert-manager.sh
+    │       ├── 4.nginx-ingress.sh
+    │       ├── 5.private-registry-and-secrets.sh
+    │       ├── 6.apps-installs.sh
+    │       ├── metallb/ cert-manager/ ingress/ storage/
+    │       └── apps/ (mongodb, redis, clickhouse, kafka, rabbitmq, opensearch)
+    └── Production/
+        ├── kubeconfig/
+        └── cluster-config/
+```
+
+### oelite-stack.sh cluster helpers
+
+```bash
+cd infrastructure/oelite-stack
+
+./oelite-stack.sh cluster list                      # list environments
+./oelite-stack.sh cluster UAT kubectl get pods      # run kubectl against UAT
+./oelite-stack.sh cluster UAT health                # health summary of UAT
+./oelite-stack.sh cluster UAT audit                 # resource audit (nodes + top pods)
+./oelite-stack.sh cluster Production kubectl get nodes
+./oelite-stack.sh cluster UAT kubeconfig-path       # print resolved KUBECONFIG path
+```
+
+The helper resolves the single kubeconfig inside `clusters/<ENV>/kubeconfig/` (exactly one per environment, any filename) and exports `KUBECONFIG` for the command.
+
+### CI/CD kubeconfig injection
+
+CI/CD pipelines deploy to K8s using GitLab CI/CD variables, **not** local kubeconfig files:
+
+- `$OElite_K8S` — kubeconfig for the oelite.io cluster (Production)
+- `$PHANES_K8S` — kubeconfig for the phanes.ltd cluster (UAT)
+
+Store these as GitLab **file-type** CI/CD variables. In `.gitlab-ci.yml`:
+
+```yaml
+deploy_uat:
+  stage: deploy_k8s
+  image: bitnami/kubectl:latest
+  script:
+    - kubectl --kubeconfig "$PHANES_K8S" -n oelite-uat apply -f k8s/
+    - kubectl --kubeconfig "$PHANES_K8S" -n oelite-uat rollout status deploy/<name>
+```
+
+Namespaces follow the platform convention: `oelite-dev`, `oelite-uat`, `oelite-prod`; production deploys are `when: manual`.
+
+### Public TCP port allowlist (firewall)
+
+The nginx-ingress LoadBalancer exposes shared-infra TCP ports publicly (MongoDB 27017, RabbitMQ 5672/1883, Redis 6379, ClickHouse 8123/9000, Kafka 9092/9094, OpenSearch 9200). Services enforce their own credentials; add a node-level allowlist for defense-in-depth:
+
+```bash
+cd infrastructure/oelite-stack
+
+# 1. Operator-local config (gitignored): clusters/<ENV>/firewall-allowlist.conf + allowlist.ips
+#    Copy scripts/tcp-allowlist.conf.example → clusters/<ENV>/firewall-allowlist.conf
+
+# 2. Add your current public IP to the allowlist
+./scripts/tcp-allowlist.sh UAT add-my-ip
+
+# 3. Preview, then apply (keep an SSH session open while applying!)
+./scripts/tcp-allowlist.sh UAT dry-run
+./scripts/tcp-allowlist.sh UAT apply
+
+# 4. Verify
+./scripts/tcp-allowlist.sh UAT status
+```
+
+SSH (22) and the Kubernetes API (6443) are always protected and never denied by the tool. Denied ports keep working from cluster-internal pods — only external sources are filtered.
 
 ## Related
 

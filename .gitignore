@@ -4,3 +4,8 @@
 .env
 .mongo.key
 *.key
+
+# Remote cluster configurations (contain sensitive credentials, kubeconfigs, and environment cluster definitions)
+# High-privilege operators place per-environment clusters under infrastructure/oelite-stack/clusters/<ENV>/
+infrastructure/oelite-stack/clusters/
+

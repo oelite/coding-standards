@@ -51,7 +51,7 @@ Ethan (primary), Marcus (architecture review)
   - RabbitMQ: `rabbitmq:4.3-management-alpine`
   - OpenSearch: `opensearchproject/opensearch:3.7.0`
   - OpenSearch Dashboards: `opensearchproject/opensearch-dashboards:3.7.0` (profile: ui)
-  - MinIO: `minio/minio:RELEASE.2025-09-07T16-13-09Z`
+  - MinIO: `cgr.dev/chainguard/minio:latest` (Chainguard free MinIO; community images removed from docker.io/quay.io Oct 2026)
   - Mailpit: `axllent/mailpit:v1.30.2`
 - **Never use `latest` tags**
 - Minimal service principle: only include services actively consumed by app code (verified by `.csproj` references and actual source usage)
