@@ -26,6 +26,246 @@ One canonical source for OElite design quality so dashboards and apps stop shipp
 
 ## Standards & Rules
 
+### 0. Foundational CSS Defaults (Ground Layer)
+
+> The layer beneath the token system: document-root, `html`/`body` and element-level defaults. These rules apply **before** any component styling; every new app's `globals.css` starts from the `foundation.css` snippet at the end of this section.
+
+#### 0.1 Token / Variable Root
+
+```css
+:root {
+  --font-sans: 'InterVariable', 'Inter', -apple-system, BlinkMacSystemFont,
+    'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, 'SF Mono', Consolas, monospace;
+  --focus: var(--primary); /* focus ring token; see §0.7 */
+}
+
+:root {
+  color-scheme: light dark;          /* declares OS intent — form controls, scrollbars, autofill render correctly in both modes */
+  accent-color: var(--primary);      /* checkboxes, radios, range, progress */
+  scroll-behavior: smooth;           /* only when motion is not reduced — see foundation.css guard */
+  interpolate-size: allow-keywords;  /* progressive: enables height: auto / intrinsic-size transitions */
+}
+```
+
+- `color-scheme` must be declared on `:root` (all apps) — without it, native `<select>`, scrollbars, and autofill stay light inside dark themes.
+- `accent-color` maps to the primary token — never leave the browser default blue.
+
+#### 0.2 `html` Element Defaults
+
+```css
+html {
+  font-family: var(--font-sans);
+  font-size: 100%; /* 16px, follows the user's browser preference */
+}
+body {
+  line-height: 1.5;
+}
+```
+
+- **`font-size: 100%` on `html` is mandatory. The `62.5%` rem hack (`font-size: 62.5%` so `1rem = 10px`) is BANNED ecosystem-wide.** Rem-based sizing exists to respect the user's browser font preference; the 62.5% hack silently discards accessibility settings and makes the rem scale wrong on every non-default browser zoom/font setting.
+- All text sizes use `rem` against the un-hacked 100% root (scale in §1).
+
+#### 0.3 Rendering & Smoothing Defaults
+
+```css
+html {
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+  font-synthesis: none;      /* no synthesized fake bold/italic — missing weights are a bug, not something to fake */
+  font-optical-sizing: auto; /* Inter v4 opsz axis */
+}
+body {
+  text-wrap: pretty; /* paragraphs — avoids orphan last lines */
+}
+h1, h2, h3, h4, h5, h6 {
+  text-wrap: balance; /* headings — even ragged edges */
+}
+```
+
+#### 0.4 Font Features (Inter Specifics — Copy-Paste Block)
+
+```css
+body {
+  /* Belt & braces: tnum is the deterministic switch; font-variant-numeric is the
+     scoped/inheritable form. Both together are the ecosystem standard. */
+  font-feature-settings: 'tnum' 1, 'cv11' 1;
+  font-variant-numeric: tabular-nums;
+}
+```
+
+- **`'tnum' 1`** (tabular numerals) — the §1 Numerals Rule expressed at the ground layer; `font-variant-numeric: tabular-nums` remains the per-component scoping form (table cells, KPI values). Use both so either mechanism covers the gap.
+- **`'cv11' 1`** (single-storey "a") — the default ecosystem glyph style; set globally.
+- **Opt-in alternates** (documented, NOT default): `'ss01'` (alternate digits), `'ss02'` (open digits/disambiguation), `'ss03'` (c slashed zero contexts), `'ss04'` (open digits + slashed zero). Enable per context only with reason.
+- **Code blocks must not use typographic ligatures** (ID glyphs like `=>`→`⇒` harm code readability):
+
+```css
+code, kbd, pre, samp {
+  font-family: var(--font-mono);
+  font-feature-settings: 'liga' 0, 'clig' 0;
+}
+```
+
+#### 0.5 Scale Wiring & Effective Floor
+
+- The §1 rem scale computes against the 100% root from §0.2 (`1rem` = user's 16px default).
+- **Optional fluid sizing** (opt-in per app): `clamp()` per step with documented min/max — `font-size: clamp(0.875rem, 0.75rem + 0.35vw, 1rem);`. Fluid steps must be documented next to the scale table where used. Default is fixed rem steps.
+- **Effective size floors:** body text never renders below **12px effective** (0.75rem); the 11px (0.6875rem) step of §1 is permitted **only** for uppercase meta-labels and must pair `letter-spacing: .05em` + uppercase; never for sentence-case or body copy.
+
+#### 0.6 Modern Reset Block
+
+```css
+*, *::before, *::after { box-sizing: border-box; }
+* { margin: 0; }
+img, svg, video, canvas { display: block; max-width: 100%; }
+input, button, textarea, select { font: inherit; color: inherit; }
+button, input, select, textarea { appearance: none; background: none; border: 0 solid; }
+button { cursor: pointer; }
+:disabled { cursor: not-allowed; }
+::placeholder { color: var(--text-3); opacity: 1; } /* opacity-1 — color is the token's job, not transparency */
+::selection { color: var(--primary-foreground); background-color: var(--primary); }
+h1, h2, h3, h4, h5, h6 { line-height: 1.2; letter-spacing: -0.02em; margin-block: var(--space-4) auto; }
+nav ul { list-style: none; padding: 0; }
+```
+
+- **min-width: 0 (overflow prevention):** every flex/grid child that hosts text or tables needs `min-width: 0` (`min-w-0`) so long identifiers/tables scroll inside the container instead of blowing out the layout. Tailwind: add `min-w-0` to the scroll-host chain (`overflow-x-auto` parents).
+- Heading margins use spacing tokens (`--space-*` / Tailwind spacing), not raw defaults.
+- `appearance: none` on controls only where a styled equivalent ships in the app's component layer (Shadcn inputs/buttons ship their own); keep native `appearance` elsewhere.
+
+#### 0.7 Focus & Interaction Defaults
+
+```css
+:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+/* never outline: none — if a custom ring is used, it must meet ≥2px / ≥3:1 contrast and appear on :focus-visible */
+```
+
+- **`disabled` vs `aria-disabled`:** `disabled` removes element from interability AND focus order; reserve it for genuinely inert controls. For controls that must remain reachable (e.g., a submit button that shows the reason it is unavailable, or step-locked items), use `aria-disabled="true"` + styles that communicate unavailability via color token, and reject clicks in the handler with explanation.
+- **Active/press feedback:** scale **max 0.98** (`active:scale-[0.98]` or `transform: scale(0.98)`), 150ms; exempt entirely under `prefers-reduced-motion` (drop the scale, keep the color change).
+
+#### 0.8 Dark Mode Wiring
+
+```css
+:root { /* light token values */ }
+[data-theme='dark'] { /* dark token values */ }
+
+/* OS-level fallback when app has no toggle */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) { /* dark token values */ }
+}
+```
+
+- Apps WITH a theme toggle: set `data-theme` from preference; the `@media` fallback covers first-paint before hydration and OS-following users.
+- Apps WITHOUT a toggle: `:root` + the `@media` block only.
+- **Dark elevation:** shadows read as mud on dark backgrounds — in dark mode swap deep shadows for `border: 1px solid var(--border)` + a lightened `--surface` step; keep `box-shadow` only where it fades from black, at ≤ level-2 opacity.
+
+#### 0.9 Banned Practices
+
+| ✗ Banned | ↳ Why | ✅ Use instead |
+|----------|-------|----------------|
+| Arial / Roboto / system-ui as PRIMARY font | breaks brand + optical grid | `--font-sans` (Inter). system-ui/Roboto are fallback-only members of the stack |
+| Fonts loaded from CDN (`<link>` fonts.googleapis.com etc.) | privacy, CSP, offline builds, render blocking | self-hosted (`@fontsource`, `next/font`) |
+| font-weight < 400 or > 700 | fake-thin fails contrast; extrabold reads shouty | 400/500/600/700 only |
+| Non-token hex/rgb/hsl anywhere in components | breaks theming + dark mode | semantic tokens |
+| `outline: none` on any focusable element | invisible focus = a11y failure | `:focus-visible` outline per §0.7 |
+| px-based font sizes in components | ignores user preference | rem only (`html` stays 100%) |
+| The `62.5%` rem hack | discards browser font settings | `font-size: 100%` (§0.2) |
+| Italic for body text | Inter has no true italic body voice built-in; synthesized oblique is ugly + slower to read | weight (500) or color (`--text-2`) for emphasis |
+| `font-synthesis` left on (default) | browser fakes missing weights | `font-synthesis: none` (§0.3); ship the real weight or don't use it |
+| Ligatures inside `code`/`pre` | alters code glyphs | §0.4 `'liga' 0, 'clig' 0` |
+
+#### 0.10 Bootstrap Snippet — `foundation.css`
+
+Complete copy-paste file for any new app (`src/styles/foundation.css` / `globals.css` prelude, after token definitions):
+
+```css
+/* foundation.css — OElite ground-layer defaults (design-system skill §0) */
+
+/* --- tokens ---------------------------------------------------- */
+:root {
+  --font-sans: 'InterVariable', 'Inter', -apple-system, BlinkMacSystemFont,
+    'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, 'SF Mono', Consolas, monospace;
+  --focus: var(--primary);
+  /* color, spacing, radius tokens defined per skill §2/§3 (see §0.8 wiring) */
+}
+
+/* --- root intent ----------------------------------------------- */
+:root {
+  color-scheme: light dark;
+  accent-color: var(--primary);
+  scroll-behavior: smooth;
+  interpolate-size: allow-keywords;
+}
+@media (prefers-reduced-motion: reduce) {
+  :root { scroll-behavior: auto; }
+}
+
+/* --- html / body ------------------------------------------------ */
+html {
+  font-family: var(--font-sans);
+  font-size: 100%;              /* user preference wins; 62.5% hack banned */
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+  font-synthesis: none;
+  font-optical-sizing: auto;
+}
+body {
+  line-height: 1.5;
+  text-wrap: pretty;
+}
+:where(h1, h2, h3, h4, h5, h6) {
+  text-wrap: balance;
+  line-height: 1.2;
+  letter-spacing: -0.02em;
+  margin-block: var(--space-4, 1rem) auto;
+}
+
+/* --- font features ---------------------------------------------- */
+body {
+  font-feature-settings: 'tnum' 1, 'cv11' 1;
+  font-variant-numeric: tabular-nums;
+}
+code, kbd, pre, samp {
+  font-family: var(--font-mono);
+  font-feature-settings: 'liga' 0, 'clig' 0;
+}
+
+/* --- reset ------------------------------------------------------ */
+*, *::before, *::after { box-sizing: border-box; }
+* { margin: 0; }
+img, svg, video, canvas { display: block; max-width: 100%; }
+input, button, textarea, select { font: inherit; color: inherit; }
+button { cursor: pointer; }
+:disabled { cursor: not-allowed; }
+::placeholder { color: var(--text-3); opacity: 1; }
+::selection { color: var(--primary-foreground); background-color: var(--primary); }
+nav ul { list-style: none; padding: 0; }
+/* scroll-host chain: text/table hosts inside flex/grid must allow shrink */
+.flex > *, .grid > *, .flex > .min-w-0 { min-width: 0; }
+
+/* --- focus & interaction ---------------------------------------- */
+:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+@media (prefers-reduced-motion: no-preference) {
+  .active-press { transition: transform 150ms ease-out; }
+  .active-press:active { transform: scale(0.98); }
+}
+
+/* --- dark mode wiring -------------------------------------------- */
+:root { color-scheme: light; }
+[data-theme='dark'] { color-scheme: dark; }
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) { color-scheme: dark; }
+}
+/* token values: :root = light; [data-theme='dark'] = dark;
+   @media (prefers-color-scheme: dark) { :root:not([data-theme='light']) { ...same as [data-theme='dark'] } }
+   dark elevation = border + surface, not shadow (§0.8) */
+```
+
 ### 1. Typography (Canonical Font Stacks)
 
 **Product UI (first choice — self-hosted, never via public CDN):** `Inter`, self-hosted via `@fontsource/inter` (npm/CLI) or `next/font` (Next.js). Do not load fonts from CDN `<link>` tags (privacy, offline builds, CSP strictness).
@@ -41,6 +281,7 @@ font-family: ui-monospace, 'JetBrains Mono', 'SF Mono', Consolas, monospace;
 
 - **font-display:** `swap` on every `@font-face`.
 - **Allowed weights:** `400` (regular), `500` (medium), `600` (semibold), `700` (bold) only. Body/paragraph: 400. Emphasis, buttons, labels: 500. Headings & emphasis: 600. Number-one-per-page hero titles may use 700. **Forbidden: 300 and 800+** (thin weights fail contrast on tinted surfaces; extrabold reads shouty).
+- **Font selection decision (platform-level, rationale inline):** **Inter wins as the single ecosystem font.** Rationale: *neutral* (non-proprietary brand identity — Geist is tied to the Vercel ecosystem), *superior multi-language coverage*, *variable font* (InterVariable, dynamic optical sizing via `opsz`), *permissive license*, and *widest tooling support* (Figma, Fontsource, Shadcn/ui presets intentionally default to Inter). **JetBrains Mono stays for code.** This decision supersedes the Geist Sans/Geist Mono guidance in `agents/skills/frontend-design/SKILL.md` (issue #21) — tracked for alignment in a child issue; do not copy Geist into new apps.
 - This supersedes any other font recommendation in legacy docs — including the stray `Roboto` pairing in older Next.js examples.
 
 **Type scale (rem-based, ~1.25 modular steps per breakpoint; 16px root):**
