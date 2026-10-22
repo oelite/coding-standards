@@ -435,7 +435,7 @@ MANDATORY: Read .oe-scope in your worktree to restore full task context after co
 |--------|-------|
 | **Helios** | `core/`, `nexus/`, `kortex/`, `oesterling/`, `compass/`, `k8s/` |
 | **Jupiter** | `ec-std-01`, `ec-nx-01`, `occ`, `bizsmart`, `apex/`, `apps-ec-store`, `apps-biz-suite` |
-| **Mercury** | `runners/Backplane`, `DataSync`, `LoadBalanceHealthCheckker`, `SubscriptionBilling` |
+| **Mercury** | `runners/` (**single git repo** — background-service projects are FOLDERS inside it: `OElite.Runners.Backplane`, `OElite.Runners.DataSync`, `OElite.Runners.LoadBalanceHealthCheckker`, `OElite.Runners.SubscriptionBilling`, …), `synapse/` |
 | **Uranus** | `origin-auth/`, `restme/`, `restme-dapper/`, `orion/`, `stella/`, `hermes/`, `lattice/`, `quantrix/`, `slate/`, `arc-cli/`, `arc-agents/` |
 | **Venus** | `obelisk/`, `sip/`, `stela/` |
 
@@ -451,7 +451,7 @@ The table above lists **local sub-repository folders** inside the monorepo conta
 | `helios/nexus/` | `oelite/helios/nexus` |
 | `uranus/origin-auth/` | `oelite/uranus/origin-auth` |
 | `jupiter/ec-nx-01/` | `oelite/jupiter/ec-nx-01` |
-| `mercury/runners/Backplane/` | `oelite/mercury/runners/Backplane` |
+| `mercury/runners/` | `oelite/mercury/runners` (ONE repo; interior projects are folders `OElite.Runners.*`, NOT separate GitLab projects) |
 
 Always pass the full GitLab project path (`oelite/<family>/<repo>`) to `scripts/oelite-gitlab.sh`.
 
