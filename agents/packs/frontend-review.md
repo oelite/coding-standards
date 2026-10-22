@@ -35,6 +35,9 @@ Felix (primary), Jonathan (UX/design fidelity review)
 - `coding-standards/agents/packs/ux-design.md` (for Jonathan: UX fidelity review)
 - Target repo `.ai/standards/coding-standards.md` (deviation-only — skip unless repo is in AGENTS.md STANDARDS AUTHORITY §2)
 
+## Skills to Load
+- `load_skills: ["design-system"]` — canonical ecosystem design defaults; review tokens, typography, async states, and dashboard patterns against it.
+
 ## Review Dimensions
 
 ### Felix: Code Quality / Theme / TypeScript / Performance

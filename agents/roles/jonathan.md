@@ -27,6 +27,11 @@ Define and safeguard the user experience for all frontends and mobile apps — b
 
 ⚠️ **Never** run `git checkout develop` to work — use `worktree-sync` for syncing. The `develop` branch is reserved for human developers and MR merges only.
 
+## Skills to Load
+
+- `agents/skills/design-system/SKILL.md` (canonical ecosystem design defaults — typography, tokens, journeys)
+- `agents/skills/ux-design/SKILL.md` (usability heuristics, WCAG detail)
+
 ## Unique Responsibilities (Not in Principles)
 
 ### Pre-Design Phase

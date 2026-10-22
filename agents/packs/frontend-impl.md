@@ -35,6 +35,9 @@ Sophia (primary), Jonathan (design spec reference), Felix (code review reference
 - Target repo `.ai/standards/coding-standards.md` (deviation-only — skip unless repo is in AGENTS.md STANDARDS AUTHORITY §2)
 - Target repo `README.md`
 
+## Skills to Load
+- `load_skills: ["design-system"]` — canonical ecosystem design defaults (typography, color tokens, spacing, journeys, dashboard patterns); the forces behind every implementation rule below.
+
 ## Implementation Standards
 - Use the correct stack per app:
   - Next.js 16.2 + React 19 + Shadcn/ui + Tailwind CSS 4 + Lucide React (default)

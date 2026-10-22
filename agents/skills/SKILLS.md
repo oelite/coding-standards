@@ -78,6 +78,19 @@
 
 ---
 
+### `design-system` — Canonical Ecosystem Design Principles (Typography, Color, Spacing, Journeys)
+
+- **Purpose:** Ecosystem-wide canonical design defaults — font stacks & type scale, semantic color tokens (light/dark), 4px spacing grid, component behavior, mandatory async state triad, user-journey practices, dashboard patterns (KPI cards, tabular numerals), motion, and the per-project override policy
+- **Trigger phrases:** "new UI", "dashboard design", "styling", "design tokens", "typography", "fonts", "color system", "user journey", "empty state", "KPI card", "spacing grid", "dark mode", "design principles"
+- **Default loaders:** Jonathan, Sophia, Felix
+- **On-demand loaders:** Emma, Isabella, any role touching UI/UX
+- **Location:** `coding-standards/agents/skills/design-system/SKILL.md`
+- **Status:** [x] active — see issue #70
+- **Owner:** Jonathan
+- **Related skills:** `ux-design` (#20) and `frontend-design` (#21) — load together for any user-facing feature; `design-system` sets the ecosystem defaults they implement and review against
+
+---
+
 ### `security-design` — OWASP Top 10, Threat Modeling & Pre-MR Security Checklist
 
 - **Purpose:** OWASP Top 10 (2025) awareness, threat modeling (STRIDE), secure coding patterns for auth/authz/validation/secrets, pre-MR security checklist (40+ items), dependency security, GDPR/PII handling, and security audit framework for AI agents

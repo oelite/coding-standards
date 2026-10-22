@@ -35,6 +35,9 @@ Jonathan (primary), Sophia (design spec reference), Felix (design fidelity revie
 - Target repo `.ai/standards/design-standards.md` (deviation-only — skip unless repo is in AGENTS.md STANDARDS AUTHORITY §2)
 - Target repo `README.md` (app-specific theming)
 
+## Skills to Load
+- `load_skills: ["design-system"]` — canonical ecosystem design defaults (typography, color tokens, spacing, component behavior, journeys, dashboard patterns).
+
 ---
 
 ## 1. Design Process and Deliverables
