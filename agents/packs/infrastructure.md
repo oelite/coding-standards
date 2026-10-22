@@ -44,7 +44,7 @@ Ethan (primary), Marcus (architecture review)
 
 ## Docker Compose Standards
 - Standardized versions (verified 2026-06-20, applied to the shared stack):
-  - MongoDB: `mongo:8.0` (sharded replica set: configsvr×3 + shard1 + mongos)
+  - MongoDB: `mongo:8.2` (sharded replica set: configsvr×3 + shard1 + mongos)
   - Redis: `redis:8.8-alpine`
   - ClickHouse: `clickhouse/clickhouse-server:26.5`
   - Kafka: `confluentinc/cp-kafka:8.3.0` (NOT `apache/kafka`)

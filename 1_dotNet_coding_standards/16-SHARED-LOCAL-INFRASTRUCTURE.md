@@ -99,7 +99,7 @@ mongodb://localhost:27017/?directConnection=true
 3. **Port remapping** of the canonical ports (27017, 6379, 9092, etc.) per-repo. Conflict resolution is at the compose level, not the app level.
 4. **Connecting directly to mongod** processes (configsvr, shard). All app code MUST go through mongos on 27017.
 5. **Embedding infra credentials in repos.** Use the `.env.example` template; copy to `.env` (gitignored) for local overrides.
-6. **`docker run` for a shared service.** `docker run mongo:8.0`, `docker run -p 27020:27017 redis`, etc. are all prohibited — the stack is managed exclusively through `oelite-stack.sh`.
+6. **`docker run` for a shared service.** `docker run mongo:8.2`, `docker run -p 27020:27017 redis`, etc. are all prohibited — the stack is managed exclusively through `oelite-stack.sh`.
 7. **Testcontainers-style ephemeral containers** for MongoDB/Redis/etc. in integration test fixtures. The shared stack is the machine-wide singleton; a per-test container is a second instance.
 8. **Per-repo test/dev compose files that define shared services** — `docker-compose.test.yml`, `docker-compose.dev.yml`, `docker-compose.int.yml`, `docker-compose.e2e.yml`. Machine-enforced by `oelite-guard.sh` Gate E.
 
