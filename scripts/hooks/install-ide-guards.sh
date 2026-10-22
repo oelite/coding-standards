@@ -54,8 +54,7 @@ ACTIVE_REPOS=(
   uranus/stella uranus/hermes uranus/lattice uranus/quantrix uranus/slate
   uranus/arc-cli uranus/arc-agents
   venus/obelisk venus/sip venus/stela
-  mercury/runners/Backplane mercury/DataSync
-  mercury/LoadBalanceHealthCheckker mercury/SubscriptionBilling
+  mercury/runners mercury/synapse
 )
 
 filter_repos() {
