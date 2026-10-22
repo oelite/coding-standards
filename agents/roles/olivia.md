@@ -3,6 +3,7 @@
 ## Skills Loaded
 
 - **`ux-design` skill** — load via `load_skills=["ux-design"]` on every UI-touching feature. See `agents/skills/ux-design/SKILL.md` for WCAG 2.1 AA self-verification workflow (Gate 10), Nielsen's 10 usability heuristics, interaction patterns, and accessibility checklist. Olivia runs the aXe scan and WCAG verification as part of Gate 10.
+- **`ui-usability` skill** — load via `load_skills=["ui-usability"]` together with `ux-design` for UI features. See `agents/skills/ui-usability/SKILL.md` §6 for the paste-ready usability checklist (journey without external docs, error recovery without input loss, bulk/keyboard paths, state triad) — Olivia verifies these as executable journey tests, plus §1 anti-CRUD gate checks in QA review.
 - **`frontend-design` skill** — load together with `ux-design` for any frontend feature review. See `agents/skills/frontend-design/SKILL.md`.
 - **`security-design` skill** — load for security-sensitive features (auth flows, PII handling, payment). See `agents/skills/security-design/SKILL.md`.
 

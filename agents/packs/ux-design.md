@@ -36,7 +36,7 @@ Jonathan (primary), Sophia (design spec reference), Felix (design fidelity revie
 - Target repo `README.md` (app-specific theming)
 
 ## Skills to Load
-- `load_skills: ["design-system"]` — canonical ecosystem design defaults (typography, color tokens, spacing, component behavior, journeys, dashboard patterns).
+- `load_skills: ["design-system", "ui-usability"]` — design-system for canonical ecosystem design defaults (typography, color tokens, spacing, component behavior, journeys, dashboard patterns); ui-usability for the pre-design analysis (§1), feature-type playbooks (§3), and validation strategy (§4) that decide WHAT to build before HOW to style it.
 
 ---
 

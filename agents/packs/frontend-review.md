@@ -36,7 +36,7 @@ Felix (primary), Jonathan (UX/design fidelity review)
 - Target repo `.ai/standards/coding-standards.md` (deviation-only — skip unless repo is in AGENTS.md STANDARDS AUTHORITY §2)
 
 ## Skills to Load
-- `load_skills: ["design-system"]` — canonical ecosystem design defaults; review tokens, typography, async states, and dashboard patterns against it.
+- `load_skills: ["design-system", "ui-usability"]` — design-system for canonical ecosystem design defaults; review tokens, typography, async states, and dashboard patterns against it. ui-usability §6 is the paste-ready usability review checklist; §1 classification + anti-CRUD gate and §4 error-message format are reviewer gates.
 
 ## Review Dimensions
 

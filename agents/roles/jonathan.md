@@ -31,6 +31,7 @@ Define and safeguard the user experience for all frontends and mobile apps — b
 
 - `agents/skills/design-system/SKILL.md` (canonical ecosystem design defaults — typography, tokens, journeys)
 - `agents/skills/ux-design/SKILL.md` (usability heuristics, WCAG detail)
+- `agents/skills/ui-usability/SKILL.md` (pre-design analysis framework §1 — mandatory answers before designing; feature-type playbooks §3; validation strategy §4)
 
 ## Unique Responsibilities (Not in Principles)
 

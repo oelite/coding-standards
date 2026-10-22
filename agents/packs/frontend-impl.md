@@ -36,7 +36,7 @@ Sophia (primary), Jonathan (design spec reference), Felix (code review reference
 - Target repo `README.md`
 
 ## Skills to Load
-- `load_skills: ["design-system"]` — canonical ecosystem design defaults (typography, color tokens, spacing, journeys, dashboard patterns); the forces behind every implementation rule below.
+- `load_skills: ["design-system", "ui-usability"]` — design-system for canonical ecosystem design defaults (typography, color tokens, spacing, journeys, dashboard patterns); ui-usability for pre-design analysis (§1), playbooks (§3), and validation strategy (§4) — the forces behind every implementation rule below.
 
 ## Implementation Standards
 - Use the correct stack per app:
