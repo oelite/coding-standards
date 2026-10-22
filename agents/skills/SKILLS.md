@@ -69,6 +69,7 @@
 
 - **Purpose:** OElite design aesthetic, design tokens, Shadcn/ui patterns, typography scale, brand consistency, anti-pattern catalog, before/after examples
 - **Trigger phrases:** "frontend design", "design tokens", "Shadcn", "typography", "brand", "visual QA", "UI aesthetic", "styling", "component", "responsive", "animation", "spacing", "color"
+- **Cross-load:** for UI feature work, load `ui-usability` (#73) together — implementation patterns apply after pre-design analysis and playbook selection.
 - **Default loaders:** Sophia, Felix
 - **On-demand loaders:** Jonathan, Isabella
 - **Location:** `coding-standards/agents/skills/frontend-design/SKILL.md`
@@ -84,10 +85,24 @@
 - **Trigger phrases:** "new UI", "dashboard design", "styling", "design tokens", "typography", "fonts", "color system", "user journey", "empty state", "KPI card", "spacing grid", "dark mode", "design principles"
 - **Default loaders:** Jonathan, Sophia, Felix
 - **On-demand loaders:** Emma, Isabella, any role touching UI/UX
+- **Cross-load:** for UI feature work, load `ui-usability` (#73) together — it supplies the pre-design thinking this skill's values are applied to.
 - **Location:** `coding-standards/agents/skills/design-system/SKILL.md`
 - **Status:** [x] active — see issue #70
 - **Owner:** Jonathan
 - **Related skills:** `ux-design` (#20) and `frontend-design` (#21) — load together for any user-facing feature; `design-system` sets the ecosystem defaults they implement and review against
+
+---
+
+### `ui-usability` — Professional UI Usability: Pre-Design Thinking, Playbooks & Validation Strategy
+
+- **Purpose:** The usability THINKING layer applied before any UI work — mandatory pre-design analysis (users/task/data/decisions + screen-type classification with anti-CRUD gate), feature-type playbooks (CRUD / Business Workflow / Dashboard / Operator Console), applied Nielsen heuristics, validation & error-prevention strategy, in-product guidance, and a measurable reviewer/QA usability checklist
+- **Trigger phrases:** "UI design", "new feature UI", "usability review", "is this CRUD", "form validation", "approval flow", "error messages", "empty states", "user workflow", "how should this screen work"
+- **Default loaders:** Jonathan, Sophia, Olivia, Felix
+- **On-demand loaders:** Emma, Isabella
+- **Location:** `coding-standards/agents/skills/ui-usability/SKILL.md`
+- **Status:** [x] active — see issue #73
+- **Owner:** Jonathan
+- **Related skills & layering:** `design-system` (#70) = the VALUES layer (tokens, typography, async states) · **`ui-usability` (this) = the THINKING layer (analysis before building)** · `frontend-design` (#21) = the IMPLEMENTATION layer (Shadcn patterns, aesthetic) · `ux-design` (#20) = WCAG/heuristic detail reference. Load together for any user-facing feature.
 
 ---
 
