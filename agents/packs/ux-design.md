@@ -62,6 +62,7 @@ Every feature with frontend impact MUST produce ALL of the following before Soph
 | Deliverable | Format | Description |
 |-------------|--------|-------------|
 | User Journey Map | Markdown document | Step-by-step user flow across pages, including decision points, branching, error recovery paths |
+| Competitive Reference / Moodboard | Image collage + notes — **consumer-facing products only** | 3–5 reference apps/screens with explicit adopt/avoid notes; anchors the visual direction before any screen is built (e.g., a social video app anchors to its genre references). Implementation that ships without this anchor is how "no feel at all" consumer UI gets built |
 | Wireframes / Layout Spec | Mermaid diagram or visual mockup | Page layout, component placement, information hierarchy |
 | Navigation Flow | Mermaid state diagram | Page-to-page transitions, redirects, modal triggers |
 | Interaction State Spec | Text table | All states per component: default, hover, focus, active, disabled, loading, empty, error, success |
@@ -302,6 +303,7 @@ Every list/data component MUST have designed empty state:
 
 - [ ] User journey map covers all roles and permissions
 - [ ] All edge cases and error flows documented
+- [ ] Consumer-facing products: competitive reference/moodboard approved (visual direction anchored before implementation)
 - [ ] Wireframes cover all states (default, loading, empty, error, edge)
 - [ ] Responsive behavior defined at all breakpoints
 - [ ] Accessibility requirements documented per component

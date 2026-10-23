@@ -175,7 +175,7 @@ These skills are built into the OpenCode CLI and accessible via the `skill` tool
 | `debugging` | Runtime Debugging | Hypothesis-driven debugging loop for crashes, hangs, memory leaks, async issues | "debug", "why is X not working", "hanging", "attach debugger" |
 | `security-research` | Security Research (Team Mode) | 5-agent parallel: 3 vulnerability hunters + 2 PoC engineers, exploitability audit | "security research", "security review", "vulnerability audit" |
 | `security-review` | Security Review (Team Mode) | Alias for `security-research` | Same as above |
-| `visual-qa` | Visual QA | Screenshot/TUI diff, design-system check, responsive check, CJK text clipping | "visual QA", "screenshot diff", "design fidelity" |
+| `visual-qa` | Visual QA (**OpenCode example — IDE-agnostic capability**) | Screenshot/TUI diff, design-system check, responsive check, CJK text clipping. **This entry is an example implementation, not a requirement to use OpenCode**: visual QA is a mandatory capability for user-facing UI on ANY IDE/toolchain — Playwright screenshot capture, browser devtools, or another IDE's equivalent tooling satisfies it equally | "visual QA", "screenshot diff", "design fidelity" |
 | `team-mode` | Team Orchestration | Create and manage parallel agent teams | "team", "parallel agents", "orchestrate" |
 | `context7-mcp` | Context7 Documentation | Fetch up-to-date library/framework docs for React, Next.js, Prisma, Express, etc. | "React docs", "Next.js", "Prisma", "Express", "how to use X" |
 

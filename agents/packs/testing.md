@@ -185,6 +185,16 @@ Every CRUD test MUST verify data survives page refresh:
    7. No-Op Detection
    8. Execution Evidence
 
+### Visual Regression Coverage for Consumer Surfaces (MANDATORY)
+
+Text/role-selector assertions alone do not protect the *rendered look* of consumer-facing UI (feeds, media cards, galleries, marketing pages). For every consumer-facing surface, the e2e suite MUST include visual regression evidence in addition to functional selectors:
+
+- **Screenshot assertions** (`page.screenshot()` / `toHaveScreenshot()` with a baseline) for each consumer surface's primary states — populated, empty, and (where reachable) error — at minimum the mobile breakpoint. Baselines live in-repo (`e2e/__screenshots__/`) and are reviewed like code.
+- **Layout-shift guard**: consumer media surfaces assert on fixed aspect-ratio slots (element bounding box) so media loading cannot reflow the card.
+- **Chip/trust-surface posture**: shape-coded accessibility chips (colour-blind-safe per product requirements) get an explicit screenshot baseline — a colour-only regression must fail the suite.
+- Tooling is IDE-agnostic (Playwright capture, browser devtools, or an IDE visual-QA skill such as OpenCode's `visual-qa`); the capability is mandatory, the tool is not.
+- API-level (headless HTTP) specs do not satisfy this for consumer surfaces — they verify contracts, not rendering.
+
 ### Business Logic Validation in UI (MANDATORY — New Gate 9)
 
 Every E2E test MUST verify that UI components enforce business rules correctly. Tests must validate that business logic is applied in the UI layer before data reaches the API, and that the UI correctly reflects server-side business logic responses.

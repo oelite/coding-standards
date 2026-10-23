@@ -81,7 +81,7 @@ Felix (primary), Jonathan (UX/design fidelity review)
 - [ ] Accessibility audit passes (Lighthouse ≥ 90)
 - [ ] No mock data
 - [ ] Design spec matched
-- [ ] Specific fixes provided for any rejection
+- [ ] **Visual QA evidence — user-facing UI requires rendered screenshots, not just code reads**: the reviewer MUST inspect rendered screenshots of every user-facing surface in its primary states (default/populated, loading, empty, error — at minimum mobile breakpoint) attached to the MR or captured in the review worktree. Screenshot mechanism is IDE-agnostic — use your IDE's visual QA tooling (e.g., OpenCode's built-in `visual-qa` skill as one example), Playwright screenshot capture, or browser devtools; the capability is mandatory, the tool is not. A UI MR approved without rendered-screenshot evidence is an incomplete review.
 
 ## Failure Report Format
 - Exact files/lines needing changes

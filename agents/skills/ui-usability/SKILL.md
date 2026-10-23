@@ -38,7 +38,7 @@ Answer these BEFORE designing, implementing, or estimating. Put the answers in t
 | **Task** | WHAT job does the screen do? What are the consequences of errors — **reversible? financial? legal? clinical?** Task frequency: daily vs annual? Annual + consequential = guided + heavily validated; daily + benign = fast, dense, keyboardable. |
 | **Data** | Volume per view (10 rows or 10,000)? Density needs (scanning many rows vs mostly empty space in 6 months)? Growth over time? |
 | **Decisions** | How many choices per screen? Branching workflows (answer A sends it to a different queue)? More than ~7 significant choices per zone = you need grouping or progressive disclosure (§2). |
-| **Output — classification** | Screen-type classification (§3): **Simple CRUD · Business Workflow · Analytical Dashboard · Operator Console · Mixed** — with the DESIGN IMPLICATIONS chosen from the corresponding playbook. |
+| **Output — classification** | Screen-type classification (§3): **Simple CRUD · Business Workflow · Analytical Dashboard · Operator Console · Consumer Media Surface · Mixed** — with the DESIGN IMPLICATIONS chosen from the corresponding playbook. |
 
 **Every UI PR description includes a one-line classification**, e.g.:
 `UI classification: Business Workflow (approval state machine, priority playbook §3.2)` — Felix/Olivia reject UI PRs missing it.
@@ -67,6 +67,20 @@ Common OElite failure patterns this gate catches — do NOT build plain CRUD for
 | Metrics / revenue / ops monitoring | Aggregates, drill-down, comparison | §3.3 Analytical Dashboard |
 | Support / ops triage queues | High volume, keyboard-first, modes | §3.4 Operator Console |
 | Onboarding wizards | Multi-step, resumable, per-step validation | §3.2 (stepper patterns) |
+| Consumer media feed / video grid | Media-first cards, not data rows | §3.5 Consumer Media Surface |
+| Consumer media feed / video grid | Media-first cards, not data rows | §3.5 Consumer Media Surface |
+
+#### API-to-UI Shape Mapping (MANDATORY before implementing data-bound UI)
+
+Before writing any component that renders API data, map every UI surface area to its served API field. Designing from imagination and typing from assumption is how contract-drift crashes happen (the UI assumes a nested shape the API never served; the page renders raw internals or crashes).
+
+| Rule | Requirement |
+|------|-------------|
+| **Mapping table in the PR** | Every data-bound UI MR includes a field map: UI surface area → exact served field name + shape (from the controller DTO/projection, never from an assumed client-side shape). Felix/Olivia reject data-bound UI PRs missing it. |
+| **Served contract is the source** | Field names/types come from the SERVED response (read the controller/projection), not from client-side TypeScript assumptions. A component whose types don't match the served shape is a defect even if it compiles. |
+| **No internal terminology as user copy** | Server/rank/tier/status strings (`RANK tier=E4`, `status_name`, entity ids) NEVER render as user-facing body copy — map to designed vocabulary from the domain rulebook (§2 Match the real world). A raw internal string in the rendered UI = reviewer-blocked defect. |
+| **Missing documented fields = blocking contract gap** | If the documented experience requires a field the API does not serve (e.g., media in a video feed card), that is a BLOCKING contract gap: raise it to Marcus/Isabella/Emma and ship a DESIGNED interim state (media-shaped skeleton, honest empty state) — never silently degrade the card into a raw data dump. |
+
 
 ### §2 Cognitive & Heuristic Foundations (Applied, Not Textbook)
 
@@ -135,10 +149,25 @@ Classify first (§1), then apply the matching playbook. Each playbook gives: scr
 **Common mistakes:** mouse-only flows for keyboard operators; hidden modes (`bulk edits firing silently`); confirm-dialog spam instead of undo (§4).
 **When NOT to use:** for occasional/admin users this is hostile — §3.2/§3.3 fit better.
 
+#### §3.5 Consumer Media Surface
+
+**When to use:** any consumer-facing surface where the primary content unit is MEDIA (video, photo, audio) — social feeds, video-first home tabs, galleries, product-media grids, review-with-media cards. Distinct from §3.3 (analytical) and §3.1 (CRUD lists): the card is a *media object*, not a data row.
+
+**Screen pattern:** media-first cards with a fixed aspect-ratio slot (e.g. 9:16 vertical, 1:1 square, 16:9 landscape — locked per surface, never free-height); poster frame + low-quality/blur placeholder while media loads; text overlay sits on a gradient scrim (never raw text on unpredictable media — WCAG contrast must hold over the darkest and lightest frame); title clamped to 2 lines; persistent, thumb-reachable engagement affordances (like/save/share) OUTSIDE the media hit area so tapping the card opens the media, not the like button; immersive vertical scroll on mobile (one card ≈ one viewport for video surfaces); designed empty state ("content appears once creators publish" — never a sample/fake card).
+
+**State→screen mapping:** skeleton card shaped like the media slot (aspect-ratio box, not a spinner) → poster/blur-up → playing media; per-card error keeps the card frame (broken-media glyph + retry) so the feed never collapses; media-load-failure ≠ empty-feed.
+
+**Validation strategy:** media dimensions/aspect validated at upload (server-side, not just client); caption/alt-text presence is a publish gate where accessibility law applies (see domain rulebook — e.g. prerecorded-video captions); no autoplay with sound.
+
+**Common mistakes:** free-height cards causing layout shift as media loads; text directly on media without a scrim; engagement buttons overlapping the media tap target; a data-row card (title + metadata) masquerading as a media card because the API serves no media field (see §1 API-to-UI Shape Mapping — that is a blocking contract gap, not a design choice); auto-playing video with sound; infinite scroll with no designed end/empty state.
+
+**When NOT to use:** if the primary unit is a record with attributes (orders, tickets, claims), it's §3.1/§3.2/§3.4 — media, if present, is a thumbnail attribute, not the card.
+
 #### Mapping Table
 
 | Feature example | Playbook | Key patterns |
 |----------------|----------|---------------|
+| Social/video feed, gallery, discovery grid | §3.5 Consumer Media | Aspect-locked media cards, poster frames, scrims, thumb-reachable engagement, designed empty state |
 | Payer / specialty reference lists | §3.1 CRUD | Table + drawer form, inline edit, pagination |
 | Claim approval queue | §3.2 Workflow | State screens, my-tasks inbox, audit panel, bulk + reason |
 | Patient appointment booking & handling | §3.2 Workflow | Draft autosave, conflict checks, per-state actions, cancellation reasons |
