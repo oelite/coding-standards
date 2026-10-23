@@ -89,5 +89,7 @@ Sophia (primary), Jonathan (design spec reference), Felix (code review reference
 - [ ] Uses Shadcn/ui components where applicable
 - [ ] Theme tokens consistent
 - [ ] Accessibility audit passes (Lighthouse ≥ 90)
+- [ ] **Visual QA evidence — user-facing UI ships with rendered screenshots**: attach screenshots of every user-facing surface in its primary states (default/populated, loading, empty, error; minimum mobile breakpoint) to the handoff/MR. Screenshot mechanism is IDE-agnostic — your IDE's visual QA tooling (e.g., OpenCode's built-in `visual-qa` skill as one example), Playwright capture, or browser devtools all satisfy this; the capability is mandatory, the tool is not. Text-only handoffs for user-facing UI are rejected.
+- [ ] **API-to-UI shape mapping included** (ui-usability §1): data-bound surfaces carry the field map from served API contract → UI surface in the MR description
 - [ ] Worktree created with correct role identity
 - [ ] Next owner identified and triggered

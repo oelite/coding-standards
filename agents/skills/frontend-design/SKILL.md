@@ -876,6 +876,37 @@ For component-level responsiveness (e.g., a card that changes layout based on it
 
 Requires `@tailwindcss/container-queries` plugin.
 
+### 9.7 Consumer Media & Rich-Content Cards (Feed/Gallery Surfaces)
+
+Consumer-facing media surfaces (social feeds, video grids, galleries) have a DIFFERENT visual bar than dashboard cards: **the media IS the content** — the dashboard rules (§9 KPI anatomy, tabular numerals) do not produce a consumer feed feel. When the product is a media-first consumer app, apply this section.
+
+**Canonical media card anatomy:**
+
+```
+┌─────────────────────────────┐
+│                             │
+│   MEDIA SLOT                │  ← aspect-ratio LOCKED (9:16 / 1:1 / 16:9 per surface)
+│   (aspect-[9/16])           │     never free-height — no layout shift on load
+│                             │
+│   ▓▓▓ gradient scrim ▓▓▓    │  ← bottom scrim when text overlays media
+│   @handle · caption…        │  ← 2-line clamp, scrim-safe contrast (WCAG AA
+│   ♥ 1.2k   💬 89   ↗ share  │     over darkest AND lightest frame)
+└─────────────────────────────┘   ↑ engagement affordances: persistent,
+                                    thumb-reachable, OUTSIDE the media tap area
+```
+
+**Rules (mandatory for consumer media surfaces):**
+
+- **Aspect-ratio locked slots** (`aspect-[9/16]`, `aspect-square`, `aspect-video`) — the card frame never reflows when the asset loads. Layout shift on media load = defect.
+- **Poster frame + blur-up placeholder** for video/images; `next/image` with `sizes` + `priority` for above-the-fold media; broken media keeps the card frame (glyph + retry), never collapses the feed.
+- **Gradient scrim** (`bg-gradient-to-t from-black/70 to-transparent`) whenever text overlays media — readability is non-negotiable and must hold over the darkest and lightest frames.
+- **Typography over media**: handle + 2-line-clamped caption at scrim-safe sizes; **raw internal strings (rank/tier codes, status enums) NEVER render as user copy** — map to designed vocabulary (ui-usability §1 API-to-UI Shape Mapping).
+- **Engagement affordances**: persistent, ≥44px targets, thumb-reachable on mobile, and outside the media hit area (tap card = open media; tap control = engage).
+- **Feed layout**: single-column immersive on mobile (one card ≈ one viewport for video surfaces); responsive grid on web; infinite scroll with a DESIGNED end state and scroll-position-safe error recovery.
+- **Designed empty state**: a media feed's empty state is a brand moment — branded illustration/icon + narrative voice + CTA ("Follow creators to fill your feed"), never a bare sentence and never a sample/fake card (zero-fabrication still applies).
+- **Video**: muted auto-play on viewport entry; sound always user-initiated; reduced-motion respected (`prefers-reduced-motion` → poster frame, no autoplay); captions per product accessibility requirements.
+- **API cannot serve media yet?** That is a BLOCKING contract gap (ui-usability §1): raise it — do not ship a text-only data card as the "feed". A media surface without media slots is a design defect, not an interim state.
+
 ---
 
 ## 10. Before / After Examples
