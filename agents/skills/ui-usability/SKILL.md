@@ -68,7 +68,6 @@ Common OElite failure patterns this gate catches — do NOT build plain CRUD for
 | Support / ops triage queues | High volume, keyboard-first, modes | §3.4 Operator Console |
 | Onboarding wizards | Multi-step, resumable, per-step validation | §3.2 (stepper patterns) |
 | Consumer media feed / video grid | Media-first cards, not data rows | §3.5 Consumer Media Surface |
-| Consumer media feed / video grid | Media-first cards, not data rows | §3.5 Consumer Media Surface |
 
 #### API-to-UI Shape Mapping (MANDATORY before implementing data-bound UI)
 
