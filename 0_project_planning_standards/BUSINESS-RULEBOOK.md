@@ -33,6 +33,7 @@ Rules of authority:
 | uranus/hermes | `docs/business/BRD.md`, `SRS.md` (3166 lines), 166 user stories (multi-series IDs: US-0xx, US-3xx, US-5xx, US-44xx, US-A11Y/DR/PERF/TKN/ML/UX/NOTIF/SUB) | Authoritative; ID series inconsistent — TODO(owner): renumber scheme documented in BRD § ID scheme |
 | uranus/origin-auth | `docs/business/BRD.md`, `SRS.md`, `rules/BR-01…BR-25` (incl. BR-23-AMENDMENTS), `rulebook/traceability-matrix.md`, `USER-STORY-CATALOG.md`, 60 stories | **Most mature rulebook in the platform — use this as the reference pattern** |
 | uranus/orion | `docs/business/BRD.md`, `SRS.md`, 32 user stories | Authoritative |
+| **uranus/evitale** | `docs/business/BRD.md`, `SRS.md`, `rules/BR-EVT-*.md` (42 rules incl. BR-EVT-115/116/206), `process-flows/WF-01..08`, `user-stories/US-101..153.md` (15 stories), `AMENDMENTS-2026-10.md` (post-dev) | Authoritative for business logic; post-dev documentation revisit in progress (evitale#16); architecture/API-contract detail in repo `docs/architecture/` |
 | uranus/restpdf | `docs/business/BRD.md`, `SRS.md`, 21 user stories (US-001…US-021, API-first product) | Authoritative |
 | venus/mellow | `docs/business/BRD.md`, `SRS.md`, 1 user story (US-001-initialization) + `docs/validation/` (BRD validation report, rulebook mapping, SRS gap analysis) | Incomplete — TODO(owner): decompose stories |
 | venus/obelisk | `docs/business/BRD.md`, `SRS.md`, 43 stories, 4 rulebook-related docs, `BRD-AMENDMENTS.md`, `BRD-GAP-ANALYSIS-v2.md` | Authoritative; progress content must move to GitLab |
