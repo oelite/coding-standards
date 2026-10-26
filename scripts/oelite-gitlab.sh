@@ -1675,6 +1675,51 @@ cmd_mr_unapprove() {
   fi
 }
 
+cmd_mr_reviewer() {
+  # Add reviewer(s) to an MR. Usage: mr-reviewer <project> <mr-iid> <agent> <reviewer>...
+  # Multiple reviewers are accepted; each resolves through the agent registry.
+  local project_path="$1"
+  local mr_iid="$2"
+  local agent="$3"
+  shift 3
+  local reviewers=("$@")
+
+  [[ ${#reviewers[@]} -eq 0 ]] && { echo "[ERROR] mr-reviewer requires at least one reviewer agent" >&2; return 1; }
+  validate_agent "$agent" || return 1
+  for r in "${reviewers[@]}"; do validate_agent "$r" || return 1; done
+
+  local encoded_path
+  encoded_path=$(url_encode_path "$project_path")
+
+  local ids_csv
+  ids_csv=""
+  for r in "${reviewers[@]}"; do
+    local rid
+    rid=$(get_agent_id "$r")
+    if [[ -n "$ids_csv" ]]; then ids_csv+=","; fi
+    ids_csv+="$rid"
+  done
+
+  local data
+  data=$(python3 -c "import json; print(json.dumps({'reviewer_ids': [${ids_csv}]}))")
+
+  local pat
+  pat=$(get_pat "$agent")
+  api_put "/projects/$encoded_path/merge_requests/$mr_iid" "$pat" "$data"
+
+  if [[ "$_API_STATUS" == "200" ]]; then
+    local names
+    names=""
+    for r in "${reviewers[@]}"; do names+="${AGENT_USERNAMES[$r]} "; done
+    echo "[OK] Reviewers added to MR !$mr_iid: ${names% }"
+  else
+    echo "[ERROR] Failed to add reviewers to MR !$mr_iid (HTTP $_API_STATUS)" >&2
+    api_error_hint "$_API_STATUS" "$project_path"
+    echo "$_API_RESPONSE" >&2
+    return 1
+  fi
+}
+
 cmd_mr_update() {
   local project_path="$1"
   local mr_iid="$2"
@@ -3064,6 +3109,10 @@ COMMANDS:
     Update MR title and description. Pass empty quotes for title to keep current title.
     Example: oelite-gitlab.sh mr-update uranus/origin-auth 420 isabella "fix: new title" "New description"
 
+  mr-reviewer <project-path> <mr-iid> <agent> <reviewer>...
+    Add one or more reviewers to an MR (reviewer agents resolved via registry).
+    Example: oelite-gitlab.sh mr-reviewer uranus/origin-auth 420 daniel maya grace
+
   mr-status <project-path> <mr-iid>
      Report independent merge readiness, pipeline evidence, and approval state.
      Used for merge verification before labeling an issue Done.
@@ -3210,6 +3259,7 @@ case "$command" in
   mr-approve)     cmd_mr_approve "$@" ;;
   mr-unapprove)   cmd_mr_unapprove "$@" ;;
   mr-update)      cmd_mr_update "$@" ;;
+  mr-reviewer)    cmd_mr_reviewer "$@" ;;
   mr-status)      cmd_mr_status "$@" ;;
   mr-show)        cmd_mr_show "$@" ;;
   mr-notes)       cmd_mr_notes "$@" ;;
