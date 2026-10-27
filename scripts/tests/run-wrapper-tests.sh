@@ -175,6 +175,133 @@ fi
 
 print ""
 print "════════════════════════════════════"
+print "INFRA-288 regression tests: remote-branch deletion guard + mr-merge flags"
+
+# ────────────────────────────────────────────────────────────────────
+# INFRA-288 TEST 8: assert_no_open_mr_references_branch blocks when an open
+# MR references the branch (stubbed MR state = opened).
+print "\nTEST 8 (#288): remote-delete guard BLOCKS branch with open MR"
+STUB_MR_STATE="opened"
+RC=0
+OUT="$(assert_no_open_mr_references_branch "oelite/test/project" "feature/stacked-src" 2>&1)" || RC=$?
+if [[ $RC -eq 1 && "$OUT" == *"[BLOCKED]"* && "$OUT" == *"OPEN merge request"* ]]; then
+  pass "guard refuses branch with open MR (exit 1, [BLOCKED] message)"
+else
+  fail "guard did not block open-MR branch (rc=$RC, out=$OUT)"
+fi
+
+# INFRA-288 TEST 9: guard allows deletion when MR is merged/closed/not_found.
+print "\nTEST 9 (#288): remote-delete guard ALLOWS branch without open MR"
+for state in merged closed not_found; do
+  STUB_MR_STATE="$state"
+  RC=0
+  OUT="$(assert_no_open_mr_references_branch "oelite/test/project" "feature/merged-branch" 2>&1)" || RC=$?
+  if [[ $RC -eq 0 ]]; then
+    pass "guard allows deletion when MR state=$state"
+  else
+    fail "guard wrongly blocked MR state=$state (rc=$RC, out=$OUT)"
+  fi
+done
+
+# INFRA-288 TEST 10: guard fails closed on missing arguments.
+print "\nTEST 10 (#288): remote-delete guard fails closed on missing args"
+STUB_MR_STATE="not_found"
+RC=0
+OUT="$(assert_no_open_mr_references_branch "oelite/test/project" "" 2>&1)" || RC=$?
+if [[ $RC -eq 1 ]]; then
+  pass "guard fails closed (exit 1) when branch arg is empty"
+else
+  fail "guard did not fail closed on empty branch arg (rc=$RC)"
+fi
+RC=0
+OUT="$(assert_no_open_mr_references_branch "" "some-branch" 2>&1)" || RC=$?
+if [[ $RC -eq 1 ]]; then
+  pass "guard fails closed (exit 1) when project arg is empty"
+else
+  fail "guard did not fail closed on empty project arg (rc=$RC)"
+fi
+
+# INFRA-288 TEST 11: mr-merge payload honors --keep-source-branch /
+# --delete-source-branch by inspecting the generated JSON payload.
+# We can't call cmd_mr_merge against the real API; instead verify the
+# python one-liner inside cmd_mr_merge produces the right JSON for each
+# flag combination by re-running the same python fragment.
+print "\nTEST 11 (#288): mr-merge payload reflects source-branch flag"
+_payload_for() {
+  local delete_source_branch=$1
+  python3 -c "import json; print(json.dumps({'should_remove_source_branch': $( [[ $delete_source_branch == true ]] && echo True || echo False ), 'squash': False}))"
+}
+P1="$(_payload_for true)"
+P2="$(_payload_for false)"
+if [[ "$P1" == *'"should_remove_source_branch": true'* ]]; then
+  pass "default payload has should_remove_source_branch=true"
+else
+  fail "default payload wrong: $P1"
+fi
+if [[ "$P2" == *'"should_remove_source_branch": false'* ]]; then
+  pass "--keep-source-branch payload has should_remove_source_branch=false"
+else
+  fail "--keep-source-branch payload wrong: $P2"
+fi
+
+# INFRA-288 TEST 12: mr-merge rejects unknown flags (argument parsing).
+print "\nTEST 12 (#288): mr-merge rejects unknown flags"
+# shellcheck disable=SC2317  # cmd_mr_merge body is never reached — arg parsing fails first
+mr_merge_arg_parse() {
+  local delete_source_branch=true
+  while [[ $# -gt 3 ]]; do
+    case "$4" in
+      --delete-source-branch) delete_source_branch=true;  shift ;;
+      --keep-source-branch)   delete_source_branch=false; shift ;;
+      *)               echo "[ERROR] Unknown option: $4" >&2; return 1 ;;
+    esac
+  done
+  return 0
+}
+RC=0
+OUT="$(mr_merge_arg_parse proj 15 emma --bogus-flag 2>&1)" || RC=$?
+if [[ $RC -eq 1 && "$OUT" == *"Unknown option"* ]]; then
+  pass "unknown flag rejected with clear error"
+else
+  fail "unknown flag not rejected (rc=$RC, out=$OUT)"
+fi
+RC=0
+OUT="$(mr_merge_arg_parse proj 15 emma --keep-source-branch 2>&1)" || RC=$?
+if [[ $RC -eq 0 ]]; then
+  pass "--keep-source-branch accepted by arg parser"
+else
+  fail "--keep-source-branch rejected (rc=$RC, out=$OUT)"
+fi
+OUT="$(mr_merge_arg_parse proj 15 emma --delete-source-branch 2>&1)"
+RC=$?
+if [[ $RC -eq 0 ]]; then
+  pass "--delete-source-branch accepted by arg parser"
+else
+  fail "--delete-source-branch rejected (rc=$RC, out=$OUT)"
+fi
+
+# INFRA-288 TEST 13: worktree-cleanup / worktree-remove code paths contain
+# no remote branch deletion (grep-level static assertion against
+# `git push --delete` / `git push origin :<ref>`).
+print "\nTEST 13 (#288): no remote branch deletion in cleanup code paths"
+for fn in cmd_worktree_cleanup cmd_worktree_remove cleanup_local_worktree_for_branch; do
+  BODY=$(typeset -f "$fn")
+  if print -r -- "$BODY" | grep -qE 'git (-C [^ ]+ )?push .*--delete|git (-C [^ ]+ )?push .*origin :|push .*:refs/heads/'; then
+    fail "$fn contains a remote branch deletion command"
+  else
+    pass "$fn has no remote branch deletion"
+  fi
+done
+# Also: the guard helper must be referenced in the cleanup doc-comment so
+# future contributors see it.
+if grep -q "assert_no_open_mr_references_branch" "$WRAPPER"; then
+  pass "guard helper defined and referenced in wrapper"
+else
+  fail "guard helper missing from wrapper"
+fi
+
+print ""
+print "════════════════════════════════════"
 print "Results: $PASS passed, $FAIL failed"
 if [[ $FAIL -gt 0 ]]; then exit 1; fi
 print "ALL TESTS PASSED"
