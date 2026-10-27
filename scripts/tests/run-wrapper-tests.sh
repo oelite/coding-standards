@@ -221,63 +221,95 @@ else
   fail "guard did not fail closed on empty project arg (rc=$RC)"
 fi
 
-# INFRA-288 TEST 11: mr-merge payload honors --keep-source-branch /
-# --delete-source-branch by inspecting the generated JSON payload.
-# We can't call cmd_mr_merge against the real API; instead verify the
-# python one-liner inside cmd_mr_merge produces the right JSON for each
-# flag combination by re-running the same python fragment.
-print "\nTEST 11 (#288): mr-merge payload reflects source-branch flag"
-_payload_for() {
-  local delete_source_branch=$1
-  python3 -c "import json; print(json.dumps({'should_remove_source_branch': $( [[ $delete_source_branch == true ]] && echo True || echo False ), 'squash': False}))"
-}
-P1="$(_payload_for true)"
-P2="$(_payload_for false)"
-if [[ "$P1" == *'"should_remove_source_branch": true'* ]]; then
-  pass "default payload has should_remove_source_branch=true"
+# INFRA-288 TEST 10b (Grace review, MR !91 warning #2): guard FAILS CLOSED
+# when the GitLab API query fails (unreachable / non-200). The real
+# get_mr_state_for_branch now returns 1 on API error (it used to swallow
+# non-200 and return "not_found", wrongly allowing deletion); the guard
+# must propagate that failure. Re-source the wrapper to restore the REAL
+# functions (the harness stub overwrote them), then stub api_get + get_pat
+# to simulate a 500 — no network, no keychain.
+print "\nTEST 10b (#288): remote-delete guard FAILS CLOSED on API failure"
+source "$WRAPPER" help >/dev/null   # restore REAL get_mr_state_for_branch / assert
+api_get() { _API_STATUS=500; _API_RESPONSE='{"message":"500 Internal Server Error"}'; }
+get_pat() { print "testpat"; }
+RC=0
+OUT="$(assert_no_open_mr_references_branch "oelite/test/project" "feature/stacked-src" 2>&1)" || RC=$?
+if [[ $RC -eq 1 && "$OUT" == *"[BLOCKED]"* && "$OUT" == *"fail-closed"* ]]; then
+  pass "guard refuses deletion when GitLab API query fails (fail-closed)"
 else
-  fail "default payload wrong: $P1"
+  fail "guard did NOT fail closed on API failure (rc=$RC, out=$OUT)"
 fi
-if [[ "$P2" == *'"should_remove_source_branch": false'* ]]; then
-  pass "--keep-source-branch payload has should_remove_source_branch=false"
+# And the real get_mr_state_for_branch itself must return 1 on API error.
+RC=0
+OUT="$(get_mr_state_for_branch "oelite/test/project" "feature/stacked-src" 2>&1)" || RC=$?
+if [[ $RC -eq 1 ]]; then
+  pass "get_mr_state_for_branch returns 1 on API error (no 'not_found' swallowed)"
 else
-  fail "--keep-source-branch payload wrong: $P2"
+  fail "get_mr_state_for_branch swallowed API error (rc=$RC, out=$OUT)"
+fi
+# Restore the harness stubs for any later tests.
+get_mr_state_for_branch() { print -r -- "$STUB_MR_STATE"; }
+api_get() { :; }  # neutralize the 500 stub (re-stubbed per-test as needed)
+
+# INFRA-288 TEST 11: mr-merge payload honors --keep-source-branch /
+# --delete-source-branch — exercises the REAL shipped cmd_mr_merge code
+# (Grace review, MR !91 blocker #1: the previous version of this test
+# rebuilt the payload with its OWN expression, testing a copy instead of
+# the shipped code). api_put is stubbed to capture the JSON payload and
+# get_pat is stubbed so no GitLab state is touched. The test FAILS if the
+# truthiness bug (`[[ $delete_source_branch ]]` — always true for a
+# non-empty string) is reintroduced, because --keep-source-branch would
+# then still emit should_remove_source_branch: true.
+print "\nTEST 11 (#288): mr-merge payload reflects source-branch flag (real cmd_mr_merge)"
+_captured_data=""
+api_put()   { _captured_data="$3"; _API_STATUS=200; _API_RESPONSE='{"state":"merged"}'; }
+get_pat()   { print "testpat"; }
+export OELITE_HUMAN=1  # skip post-merge local cleanup in cmd_mr_merge
+
+# --keep-source-branch must produce should_remove_source_branch: false
+_captured_data=""
+cmd_mr_merge oelite/helios/kortex 999 emma --keep-source-branch >/dev/null 2>&1 || true
+KEEP_PAYLOAD="$_captured_data"
+if [[ "$KEEP_PAYLOAD" == *'"should_remove_source_branch": false'* ]]; then
+  pass "--keep-source-branch payload has should_remove_source_branch=false (real cmd_mr_merge)"
+else
+  fail "--keep-source-branch payload wrong: $KEEP_PAYLOAD"
+fi
+if [[ "$KEEP_PAYLOAD" != *'"should_remove_source_branch": true'* ]]; then
+  pass "--keep-source-branch payload does NOT contain true (truthiness-bug regression guard)"
+else
+  fail "TRUTHINESS BUG reintroduced: --keep-source-branch still sends true"
 fi
 
-# INFRA-288 TEST 12: mr-merge rejects unknown flags (argument parsing).
-print "\nTEST 12 (#288): mr-merge rejects unknown flags"
-# shellcheck disable=SC2317  # cmd_mr_merge body is never reached — arg parsing fails first
-mr_merge_arg_parse() {
-  local delete_source_branch=true
-  while [[ $# -gt 3 ]]; do
-    case "$4" in
-      --delete-source-branch) delete_source_branch=true;  shift ;;
-      --keep-source-branch)   delete_source_branch=false; shift ;;
-      *)               echo "[ERROR] Unknown option: $4" >&2; return 1 ;;
-    esac
-  done
-  return 0
-}
+# Default (no flag) must produce should_remove_source_branch: true (unchanged)
+_captured_data=""
+cmd_mr_merge oelite/helios/kortex 999 emma >/dev/null 2>&1 || true
+DEFAULT_PAYLOAD="$_captured_data"
+if [[ "$DEFAULT_PAYLOAD" == *'"should_remove_source_branch": true'* ]]; then
+  pass "default payload has should_remove_source_branch=true (real cmd_mr_merge)"
+else
+  fail "default payload wrong: $DEFAULT_PAYLOAD"
+fi
+
+# Explicit --delete-source-branch must also produce true
+_captured_data=""
+cmd_mr_merge oelite/helios/kortex 999 emma --delete-source-branch >/dev/null 2>&1 || true
+DELETE_PAYLOAD="$_captured_data"
+if [[ "$DELETE_PAYLOAD" == *'"should_remove_source_branch": true'* ]]; then
+  pass "--delete-source-branch payload has should_remove_source_branch=true (real cmd_mr_merge)"
+else
+  fail "--delete-source-branch payload wrong: $DELETE_PAYLOAD"
+fi
+
+# INFRA-288 TEST 12: mr-merge rejects unknown flags (argument parsing) —
+# exercises the REAL shipped cmd_mr_merge via a stubbed api_put (no network).
+print "\nTEST 12 (#288): mr-merge rejects unknown flags (real cmd_mr_merge)"
 RC=0
-OUT="$(mr_merge_arg_parse proj 15 emma --bogus-flag 2>&1)" || RC=$?
+OUT="$(cmd_mr_merge oelite/helios/kortex 999 emma --bogus-flag 2>&1)" || RC=$?
 if [[ $RC -eq 1 && "$OUT" == *"Unknown option"* ]]; then
-  pass "unknown flag rejected with clear error"
+  pass "unknown flag rejected with clear error (real cmd_mr_merge)"
 else
   fail "unknown flag not rejected (rc=$RC, out=$OUT)"
-fi
-RC=0
-OUT="$(mr_merge_arg_parse proj 15 emma --keep-source-branch 2>&1)" || RC=$?
-if [[ $RC -eq 0 ]]; then
-  pass "--keep-source-branch accepted by arg parser"
-else
-  fail "--keep-source-branch rejected (rc=$RC, out=$OUT)"
-fi
-OUT="$(mr_merge_arg_parse proj 15 emma --delete-source-branch 2>&1)"
-RC=$?
-if [[ $RC -eq 0 ]]; then
-  pass "--delete-source-branch accepted by arg parser"
-else
-  fail "--delete-source-branch rejected (rc=$RC, out=$OUT)"
 fi
 
 # INFRA-288 TEST 13: worktree-cleanup / worktree-remove code paths contain

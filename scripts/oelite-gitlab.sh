@@ -795,12 +795,16 @@ cmd_worktree_create() {
       # below matches whatever 'git worktree list --porcelain' returns.
       preflight_root_resolved=$(python3 -c "import os, sys; print(os.path.realpath(sys.argv[1]))" "$preflight_root" 2>/dev/null || echo "$preflight_root")
       local preflight_line preflight_wt_state
-      # Classify a matching worktree: "orphan" | "merged" | "closed" | "open" | "not_found"
+      # Classify a matching worktree: "orphan" | "merged" | "closed" | "open" | "not_found" | "api_error"
       _preflight_classify() {
         if $preflight_stale; then
           echo "orphan"
+        elif get_mr_state_for_branch "$preflight_gitlab_project" "$preflight_wt_branch" 2>/dev/null; then
+          :
         else
-          get_mr_state_for_branch "$preflight_gitlab_project" "$preflight_wt_branch"
+          # INFRA-288: API failure must never abort creation — classify as
+          # api_error and let the preflight treat it as advisory (never remove).
+          echo "api_error"
         fi
       }
       _preflight_report() {
@@ -1220,6 +1224,12 @@ except Exception:
         echo "$state"
         return 0
       fi
+    else
+      # INFRA-288 review fix (Grace, MR !91 warning #2): FAIL CLOSED on API
+      # error. Swallowing non-200 and returning "not_found" would allow a
+      # branch deletion when GitLab is unreachable. The guard must refuse.
+      echo "[ERROR] GitLab API query failed (status=$_API_STATUS) for project=$project_path branch=$source_branch state=$state" >&2
+      return 1
     fi
   done
 
@@ -1232,6 +1242,12 @@ except Exception:
 # request references the branch as its source — preventing the
 # merge-gate-integrity defect where remote source branches vanish while
 # downstream MRs are still open (stacked-MR scenario).
+# NOTE (Grace review, MR !91 warning #3): this guard currently has NO call
+# sites — there are genuinely no remote-branch-deletion paths in the wrapper
+# today (verified by Grace). It is DEFENSIVE for future paths: any code that
+# adds a remote deletion (`git push origin --delete <branch>`, `git push
+# origin :<refspec>`, or a GitLab API branch-delete call) MUST invoke this
+# helper first and abort on its failure. Fails CLOSED on API errors.
 # Usage: assert_no_open_mr_references_branch <project-path> <branch>
 assert_no_open_mr_references_branch() {
   local project_path="$1"
@@ -1243,7 +1259,12 @@ assert_no_open_mr_references_branch() {
   }
 
   local mr_state
-  mr_state=$(get_mr_state_for_branch "$project_path" "$branch")
+  if ! mr_state=$(get_mr_state_for_branch "$project_path" "$branch"); then
+    # Fail closed: if the API query failed (GitLab unreachable / non-200),
+    # refuse the deletion rather than assuming "no MR".
+    echo "[BLOCKED] Refusing remote branch deletion: cannot verify MR state for '$branch' in $project_path — GitLab API query failed (INFRA-288 fail-closed posture)." >&2
+    return 1
+  fi
   if [[ "$mr_state" == "opened" ]]; then
     echo "[BLOCKED] Refusing remote branch deletion: '$branch' has an OPEN merge request in $project_path (INFRA-288 merge-gate integrity)." >&2
     return 1
@@ -1414,7 +1435,7 @@ cmd_worktree_cleanup() {
               removed_count=$((removed_count + 1))
             else
               local mr_state
-              mr_state=$(get_mr_state_for_branch "$gitlab_project" "$branch")
+              mr_state=$(get_mr_state_for_branch "$gitlab_project" "$branch" 2>/dev/null) || mr_state="api_error"
               if [[ "$mr_state" == "merged" || "$mr_state" == "closed" || "$mr_state" == "not_found" ]]; then
                 echo "==> $agent_name ($branch) MR=$mr_state — removing..."
                 if [[ -d "$wt_path" ]]; then
@@ -1484,10 +1505,11 @@ cmd_worktree_cleanup() {
     fi
 
     # MR-state guard (per GIT-WORKFLOW-STANDARDS.md §1.8): never silently remove
-    # a worktree whose linked MR is still open.
+    # a worktree whose linked MR is still open. INFRA-288: an API failure
+    # (mr_state=api_error) also skips removal — fail closed.
     local mr_state=""
     if [[ -n "$branch" ]]; then
-      mr_state=$(get_mr_state_for_branch "$gitlab_project" "$branch")
+      mr_state=$(get_mr_state_for_branch "$gitlab_project" "$branch" 2>/dev/null) || mr_state="api_error"
     fi
     if [[ -n "$branch" && "$mr_state" != "merged" && "$mr_state" != "closed" && "$mr_state" != "not_found" ]]; then
       echo "[SKIP] $target_agent ($branch) MR=$mr_state — still open; not removing"
@@ -2192,8 +2214,13 @@ cmd_mr_merge() {
   # should_remove_source_branch is sent explicitly (caller's choice, default
   # true) rather than left to GitLab's project-level default, so the merge
   # payload is deterministic regardless of project settings.
+  # INFRA-288 review fix (Grace, MR !91 blocker #1): use STRING EQUALITY,
+  # not truthiness — `[[ $delete_source_branch ]]` is always true for a
+  # non-empty string, which silently made --keep-source-branch send
+  # should_remove_source_branch: true (the exact stacked-MR failure this
+  # guard exists to fix).
   local data
-  data=$(python3 -c "import json; print(json.dumps({'should_remove_source_branch': $( [[ $delete_source_branch ]] && echo True || echo False ), 'squash': False}))")
+  data=$(python3 -c "import json; print(json.dumps({'should_remove_source_branch': $( [[ "$delete_source_branch" == true ]] && echo True || echo False ), 'squash': False}))")
 
   api_put "/projects/$encoded_path/merge_requests/$mr_iid/merge" "$pat" "$data"
 
