@@ -795,12 +795,16 @@ cmd_worktree_create() {
       # below matches whatever 'git worktree list --porcelain' returns.
       preflight_root_resolved=$(python3 -c "import os, sys; print(os.path.realpath(sys.argv[1]))" "$preflight_root" 2>/dev/null || echo "$preflight_root")
       local preflight_line preflight_wt_state
-      # Classify a matching worktree: "orphan" | "merged" | "closed" | "open" | "not_found"
+      # Classify a matching worktree: "orphan" | "merged" | "closed" | "open" | "not_found" | "api_error"
       _preflight_classify() {
         if $preflight_stale; then
           echo "orphan"
+        elif get_mr_state_for_branch "$preflight_gitlab_project" "$preflight_wt_branch" 2>/dev/null; then
+          :
         else
-          get_mr_state_for_branch "$preflight_gitlab_project" "$preflight_wt_branch"
+          # INFRA-288: API failure must never abort creation — classify as
+          # api_error and let the preflight treat it as advisory (never remove).
+          echo "api_error"
         fi
       }
       _preflight_report() {
@@ -1220,6 +1224,12 @@ except Exception:
         echo "$state"
         return 0
       fi
+    else
+      # INFRA-288 review fix (Grace, MR !91 warning #2): FAIL CLOSED on API
+      # error. Swallowing non-200 and returning "not_found" would allow a
+      # branch deletion when GitLab is unreachable. The guard must refuse.
+      echo "[ERROR] GitLab API query failed (status=$_API_STATUS) for project=$project_path branch=$source_branch state=$state" >&2
+      return 1
     fi
   done
 
@@ -1227,9 +1237,52 @@ except Exception:
   return 0
 }
 
+# INFRA-288: guard helper for any code path that would delete a REMOTE
+# branch. Queries the GitLab API and fails (exit 1) if an OPEN merge
+# request references the branch as its source — preventing the
+# merge-gate-integrity defect where remote source branches vanish while
+# downstream MRs are still open (stacked-MR scenario).
+# NOTE (Grace review, MR !91 warning #3): this guard currently has NO call
+# sites — there are genuinely no remote-branch-deletion paths in the wrapper
+# today (verified by Grace). It is DEFENSIVE for future paths: any code that
+# adds a remote deletion (`git push origin --delete <branch>`, `git push
+# origin :<refspec>`, or a GitLab API branch-delete call) MUST invoke this
+# helper first and abort on its failure. Fails CLOSED on API errors.
+# Usage: assert_no_open_mr_references_branch <project-path> <branch>
+assert_no_open_mr_references_branch() {
+  local project_path="$1"
+  local branch="$2"
+
+  [[ -z "$project_path" || -z "$branch" ]] && {
+    echo "[ERROR] assert_no_open_mr_references_branch requires <project-path> <branch>" >&2
+    return 1
+  }
+
+  local mr_state
+  if ! mr_state=$(get_mr_state_for_branch "$project_path" "$branch"); then
+    # Fail closed: if the API query failed (GitLab unreachable / non-200),
+    # refuse the deletion rather than assuming "no MR".
+    echo "[BLOCKED] Refusing remote branch deletion: cannot verify MR state for '$branch' in $project_path — GitLab API query failed (INFRA-288 fail-closed posture)." >&2
+    return 1
+  fi
+  if [[ "$mr_state" == "opened" ]]; then
+    echo "[BLOCKED] Refusing remote branch deletion: '$branch' has an OPEN merge request in $project_path (INFRA-288 merge-gate integrity)." >&2
+    return 1
+  fi
+  return 0
+}
+
 cleanup_local_worktree_for_branch() {
   local root="$1" branch="$2"
   [[ -z "$branch" ]] && return 0
+
+  # INFRA-288 DEFENSIVE GUARD:
+  # This function ONLY performs LOCAL cleanup (worktree remove, branch -D).
+  # It NEVER issues `git push origin --delete <branch>` or equivalent.
+  # If any future code path attempts remote branch deletion, it MUST first
+  # call assert_no_open_mr_references_branch <project> <branch> to verify
+  # no open MRs depend on that branch. That helper queries the GitLab API
+  # and fails if an open MR references the branch as its source.
 
   local wt_path
   # FIX #49 (audit): avoid `| head -1` under pipefail; awk prints only the
@@ -1382,7 +1435,7 @@ cmd_worktree_cleanup() {
               removed_count=$((removed_count + 1))
             else
               local mr_state
-              mr_state=$(get_mr_state_for_branch "$gitlab_project" "$branch")
+              mr_state=$(get_mr_state_for_branch "$gitlab_project" "$branch" 2>/dev/null) || mr_state="api_error"
               if [[ "$mr_state" == "merged" || "$mr_state" == "closed" || "$mr_state" == "not_found" ]]; then
                 echo "==> $agent_name ($branch) MR=$mr_state — removing..."
                 if [[ -d "$wt_path" ]]; then
@@ -1452,10 +1505,11 @@ cmd_worktree_cleanup() {
     fi
 
     # MR-state guard (per GIT-WORKFLOW-STANDARDS.md §1.8): never silently remove
-    # a worktree whose linked MR is still open.
+    # a worktree whose linked MR is still open. INFRA-288: an API failure
+    # (mr_state=api_error) also skips removal — fail closed.
     local mr_state=""
     if [[ -n "$branch" ]]; then
-      mr_state=$(get_mr_state_for_branch "$gitlab_project" "$branch")
+      mr_state=$(get_mr_state_for_branch "$gitlab_project" "$branch" 2>/dev/null) || mr_state="api_error"
     fi
     if [[ -n "$branch" && "$mr_state" != "merged" && "$mr_state" != "closed" && "$mr_state" != "not_found" ]]; then
       echo "[SKIP] $target_agent ($branch) MR=$mr_state — still open; not removing"
@@ -2119,10 +2173,31 @@ print("  Web URL:   {}".format(pipeline.get("web_url", "")))
 '
 }
 
+# INFRA-288: `mr-merge` deletes the MR's source branch via GitLab's
+# should_remove_source_branch flag. This is normal post-merge hygiene for
+# single MRs, but for STACKED MRs (another open MR's source = this branch)
+# deleting the branch breaks those downstream MRs. The flag is therefore an
+# EXPLICIT caller choice: --delete-source-branch (default) or
+# --keep-source-branch to preserve the branch for stacked-MR scenarios.
+# Note: this function NEVER deletes remote branches itself — branch removal
+# is delegated to GitLab's merge handler, which only fires on a successful
+# merge. All local cleanup below is local-only (git branch -D / worktree
+# remove); no `git push --delete` / `origin :<refspec>` is issued anywhere.
 cmd_mr_merge() {
   local project_path="${1:-}"
   local mr_iid="${2:-}"
   local agent="${3:-emma}"
+  local delete_source_branch=true
+
+  # Optional flags AFTER the positional args (agent). Both flags are accepted
+  # for symmetry; --keep-source-branch is the opt-out for stacked MRs.
+  while [[ $# -gt 3 ]]; do
+    case "$4" in
+      --delete-source-branch) delete_source_branch=true;  shift ;;
+      --keep-source-branch)   delete_source_branch=false; shift ;;
+      *)               echo "[ERROR] Unknown option: $4" >&2; return 1 ;;
+    esac
+  done
 
   [[ -z "$project_path" ]] && { echo "[ERROR] Project path required" >&2; return 1; }
   [[ -z "$mr_iid" ]] && { echo "[ERROR] MR IID required" >&2; return 1; }
@@ -2135,9 +2210,17 @@ cmd_mr_merge() {
   local pat
   pat=$(get_pat "$agent")
 
-  # Accept the MR via POST /merge_requests/:iid/merge
+  # Accept the MR via POST /merge_requests/:iid/merge.
+  # should_remove_source_branch is sent explicitly (caller's choice, default
+  # true) rather than left to GitLab's project-level default, so the merge
+  # payload is deterministic regardless of project settings.
+  # INFRA-288 review fix (Grace, MR !91 blocker #1): use STRING EQUALITY,
+  # not truthiness — `[[ $delete_source_branch ]]` is always true for a
+  # non-empty string, which silently made --keep-source-branch send
+  # should_remove_source_branch: true (the exact stacked-MR failure this
+  # guard exists to fix).
   local data
-  data=$(python3 -c "import json; print(json.dumps({'should_remove_source_branch': True, 'squash': False}))")
+  data=$(python3 -c "import json; print(json.dumps({'should_remove_source_branch': $( [[ "$delete_source_branch" == true ]] && echo True || echo False ), 'squash': False}))")
 
   api_put "/projects/$encoded_path/merge_requests/$mr_iid/merge" "$pat" "$data"
 
@@ -3104,6 +3187,18 @@ COMMANDS:
     Use to remove a stray/approved-by-mistake approval (only the approving
     identity can revoke its own approval).
     Example: oelite-gitlab.sh mr-unapprove uranus/origin-auth 15 grace
+
+  mr-merge <project-path> <mr-iid> [agent] [--delete-source-branch|--keep-source-branch]
+    Merge a merge request as the specified agent (default emma).
+    INFRA-288: source-branch deletion on merge is an explicit caller choice:
+      --delete-source-branch  delete the source branch after merge (default)
+      --keep-source-branch    keep the source branch (stacked-MR scenarios:
+                              another open MR's source = this branch; deleting
+                              it would break those downstream MRs)
+    This command never issues remote branch deletions itself; branch removal
+    is delegated to GitLab's merge handler on a successful merge only.
+    Example: oelite-gitlab.sh mr-merge uranus/origin-auth 15 grace
+    Example: oelite-gitlab.sh mr-merge uranus/origin-auth 15 emma --keep-source-branch
 
   mr-update <project-path> <mr-iid> <agent> <title> [description]
     Update MR title and description. Pass empty quotes for title to keep current title.

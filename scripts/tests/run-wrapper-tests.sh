@@ -175,6 +175,165 @@ fi
 
 print ""
 print "════════════════════════════════════"
+print "INFRA-288 regression tests: remote-branch deletion guard + mr-merge flags"
+
+# ────────────────────────────────────────────────────────────────────
+# INFRA-288 TEST 8: assert_no_open_mr_references_branch blocks when an open
+# MR references the branch (stubbed MR state = opened).
+print "\nTEST 8 (#288): remote-delete guard BLOCKS branch with open MR"
+STUB_MR_STATE="opened"
+RC=0
+OUT="$(assert_no_open_mr_references_branch "oelite/test/project" "feature/stacked-src" 2>&1)" || RC=$?
+if [[ $RC -eq 1 && "$OUT" == *"[BLOCKED]"* && "$OUT" == *"OPEN merge request"* ]]; then
+  pass "guard refuses branch with open MR (exit 1, [BLOCKED] message)"
+else
+  fail "guard did not block open-MR branch (rc=$RC, out=$OUT)"
+fi
+
+# INFRA-288 TEST 9: guard allows deletion when MR is merged/closed/not_found.
+print "\nTEST 9 (#288): remote-delete guard ALLOWS branch without open MR"
+for state in merged closed not_found; do
+  STUB_MR_STATE="$state"
+  RC=0
+  OUT="$(assert_no_open_mr_references_branch "oelite/test/project" "feature/merged-branch" 2>&1)" || RC=$?
+  if [[ $RC -eq 0 ]]; then
+    pass "guard allows deletion when MR state=$state"
+  else
+    fail "guard wrongly blocked MR state=$state (rc=$RC, out=$OUT)"
+  fi
+done
+
+# INFRA-288 TEST 10: guard fails closed on missing arguments.
+print "\nTEST 10 (#288): remote-delete guard fails closed on missing args"
+STUB_MR_STATE="not_found"
+RC=0
+OUT="$(assert_no_open_mr_references_branch "oelite/test/project" "" 2>&1)" || RC=$?
+if [[ $RC -eq 1 ]]; then
+  pass "guard fails closed (exit 1) when branch arg is empty"
+else
+  fail "guard did not fail closed on empty branch arg (rc=$RC)"
+fi
+RC=0
+OUT="$(assert_no_open_mr_references_branch "" "some-branch" 2>&1)" || RC=$?
+if [[ $RC -eq 1 ]]; then
+  pass "guard fails closed (exit 1) when project arg is empty"
+else
+  fail "guard did not fail closed on empty project arg (rc=$RC)"
+fi
+
+# INFRA-288 TEST 10b (Grace review, MR !91 warning #2): guard FAILS CLOSED
+# when the GitLab API query fails (unreachable / non-200). The real
+# get_mr_state_for_branch now returns 1 on API error (it used to swallow
+# non-200 and return "not_found", wrongly allowing deletion); the guard
+# must propagate that failure. Re-source the wrapper to restore the REAL
+# functions (the harness stub overwrote them), then stub api_get + get_pat
+# to simulate a 500 — no network, no keychain.
+print "\nTEST 10b (#288): remote-delete guard FAILS CLOSED on API failure"
+source "$WRAPPER" help >/dev/null   # restore REAL get_mr_state_for_branch / assert
+api_get() { _API_STATUS=500; _API_RESPONSE='{"message":"500 Internal Server Error"}'; }
+get_pat() { print "testpat"; }
+RC=0
+OUT="$(assert_no_open_mr_references_branch "oelite/test/project" "feature/stacked-src" 2>&1)" || RC=$?
+if [[ $RC -eq 1 && "$OUT" == *"[BLOCKED]"* && "$OUT" == *"fail-closed"* ]]; then
+  pass "guard refuses deletion when GitLab API query fails (fail-closed)"
+else
+  fail "guard did NOT fail closed on API failure (rc=$RC, out=$OUT)"
+fi
+# And the real get_mr_state_for_branch itself must return 1 on API error.
+RC=0
+OUT="$(get_mr_state_for_branch "oelite/test/project" "feature/stacked-src" 2>&1)" || RC=$?
+if [[ $RC -eq 1 ]]; then
+  pass "get_mr_state_for_branch returns 1 on API error (no 'not_found' swallowed)"
+else
+  fail "get_mr_state_for_branch swallowed API error (rc=$RC, out=$OUT)"
+fi
+# Restore the harness stubs for any later tests.
+get_mr_state_for_branch() { print -r -- "$STUB_MR_STATE"; }
+api_get() { :; }  # neutralize the 500 stub (re-stubbed per-test as needed)
+
+# INFRA-288 TEST 11: mr-merge payload honors --keep-source-branch /
+# --delete-source-branch — exercises the REAL shipped cmd_mr_merge code
+# (Grace review, MR !91 blocker #1: the previous version of this test
+# rebuilt the payload with its OWN expression, testing a copy instead of
+# the shipped code). api_put is stubbed to capture the JSON payload and
+# get_pat is stubbed so no GitLab state is touched. The test FAILS if the
+# truthiness bug (`[[ $delete_source_branch ]]` — always true for a
+# non-empty string) is reintroduced, because --keep-source-branch would
+# then still emit should_remove_source_branch: true.
+print "\nTEST 11 (#288): mr-merge payload reflects source-branch flag (real cmd_mr_merge)"
+_captured_data=""
+api_put()   { _captured_data="$3"; _API_STATUS=200; _API_RESPONSE='{"state":"merged"}'; }
+get_pat()   { print "testpat"; }
+export OELITE_HUMAN=1  # skip post-merge local cleanup in cmd_mr_merge
+
+# --keep-source-branch must produce should_remove_source_branch: false
+_captured_data=""
+cmd_mr_merge oelite/helios/kortex 999 emma --keep-source-branch >/dev/null 2>&1 || true
+KEEP_PAYLOAD="$_captured_data"
+if [[ "$KEEP_PAYLOAD" == *'"should_remove_source_branch": false'* ]]; then
+  pass "--keep-source-branch payload has should_remove_source_branch=false (real cmd_mr_merge)"
+else
+  fail "--keep-source-branch payload wrong: $KEEP_PAYLOAD"
+fi
+if [[ "$KEEP_PAYLOAD" != *'"should_remove_source_branch": true'* ]]; then
+  pass "--keep-source-branch payload does NOT contain true (truthiness-bug regression guard)"
+else
+  fail "TRUTHINESS BUG reintroduced: --keep-source-branch still sends true"
+fi
+
+# Default (no flag) must produce should_remove_source_branch: true (unchanged)
+_captured_data=""
+cmd_mr_merge oelite/helios/kortex 999 emma >/dev/null 2>&1 || true
+DEFAULT_PAYLOAD="$_captured_data"
+if [[ "$DEFAULT_PAYLOAD" == *'"should_remove_source_branch": true'* ]]; then
+  pass "default payload has should_remove_source_branch=true (real cmd_mr_merge)"
+else
+  fail "default payload wrong: $DEFAULT_PAYLOAD"
+fi
+
+# Explicit --delete-source-branch must also produce true
+_captured_data=""
+cmd_mr_merge oelite/helios/kortex 999 emma --delete-source-branch >/dev/null 2>&1 || true
+DELETE_PAYLOAD="$_captured_data"
+if [[ "$DELETE_PAYLOAD" == *'"should_remove_source_branch": true'* ]]; then
+  pass "--delete-source-branch payload has should_remove_source_branch=true (real cmd_mr_merge)"
+else
+  fail "--delete-source-branch payload wrong: $DELETE_PAYLOAD"
+fi
+
+# INFRA-288 TEST 12: mr-merge rejects unknown flags (argument parsing) —
+# exercises the REAL shipped cmd_mr_merge via a stubbed api_put (no network).
+print "\nTEST 12 (#288): mr-merge rejects unknown flags (real cmd_mr_merge)"
+RC=0
+OUT="$(cmd_mr_merge oelite/helios/kortex 999 emma --bogus-flag 2>&1)" || RC=$?
+if [[ $RC -eq 1 && "$OUT" == *"Unknown option"* ]]; then
+  pass "unknown flag rejected with clear error (real cmd_mr_merge)"
+else
+  fail "unknown flag not rejected (rc=$RC, out=$OUT)"
+fi
+
+# INFRA-288 TEST 13: worktree-cleanup / worktree-remove code paths contain
+# no remote branch deletion (grep-level static assertion against
+# `git push --delete` / `git push origin :<ref>`).
+print "\nTEST 13 (#288): no remote branch deletion in cleanup code paths"
+for fn in cmd_worktree_cleanup cmd_worktree_remove cleanup_local_worktree_for_branch; do
+  BODY=$(typeset -f "$fn")
+  if print -r -- "$BODY" | grep -qE 'git (-C [^ ]+ )?push .*--delete|git (-C [^ ]+ )?push .*origin :|push .*:refs/heads/'; then
+    fail "$fn contains a remote branch deletion command"
+  else
+    pass "$fn has no remote branch deletion"
+  fi
+done
+# Also: the guard helper must be referenced in the cleanup doc-comment so
+# future contributors see it.
+if grep -q "assert_no_open_mr_references_branch" "$WRAPPER"; then
+  pass "guard helper defined and referenced in wrapper"
+else
+  fail "guard helper missing from wrapper"
+fi
+
+print ""
+print "════════════════════════════════════"
 print "Results: $PASS passed, $FAIL failed"
 if [[ $FAIL -gt 0 ]]; then exit 1; fi
 print "ALL TESTS PASSED"
