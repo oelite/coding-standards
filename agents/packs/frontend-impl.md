@@ -36,7 +36,7 @@ Sophia (primary), Jonathan (design spec reference), Felix (code review reference
 - Target repo `README.md`
 
 ## Skills to Load
-- `load_skills: ["design-system", "ui-usability"]` — design-system for canonical ecosystem design defaults (typography, color tokens, spacing, journeys, dashboard patterns); ui-usability for pre-design analysis (§1), playbooks (§3), and validation strategy (§4) — the forces behind every implementation rule below.
+- `load_skills: ["frontend-design", "design-system", "ui-usability", "ux-design", "security-design"]` — frontend-design for design tokens, Shadcn patterns, typography, responsive, animation, brand consistency, and consumer-media anatomy (§9.7); design-system for canonical ecosystem design defaults (typography, color tokens, spacing, journeys, dashboard patterns); ui-usability for pre-design analysis (§1), playbooks (§3), and validation strategy (§4) — the forces behind every implementation rule below; ux-design for WCAG/heuristic detail; security-design for auth/PII/payment patterns.
 
 ## Implementation Standards
 - Use the correct stack per app:

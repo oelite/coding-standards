@@ -27,10 +27,17 @@ Guardian of frontend code quality, component architecture, theme compliance, Typ
 
 ⚠️ **Never** run `git checkout develop` to work — use `worktree-sync` for syncing. The `develop` branch is reserved for human developers and MR merges only.
 
+## Skills Loaded (via `load_skills`)
+
+```markdown
+load_skills: ["frontend-design", "ui-usability", "design-system", "ux-design", "security-design"]
+```
+
 ## Unique Responsibilities (Not in Principles)
 - Review every frontend change (Next.js, Angular, MAUI) for code quality, component patterns, theme system adherence, and TypeScript correctness.
-- **frontend-design** skill loaded: use `coding-standards/agents/skills/frontend-design/SKILL.md` for design token enforcement, Shadcn anti-pattern rejection, visual quality gate, and brand consistency verification. Load together with `ux-design` (#20, Jonathan) when reviewing user-facing features.
-- **ui-usability** skill loaded: use `coding-standards/agents/skills/ui-usability/SKILL.md` §6 checklist as a review gate for every UI MR — reject PRs missing the §1 one-line UI classification, unexplained playbook violations (anti-CRUD gate §1), broken 3-part error messages (§4), or usability checklist rows failing without documented justification.
+- **Visual-QA screenshot evidence (reject condition)**: Reject any UI MR that lacks rendered screenshots of every user-facing surface in its primary states (populated/loading/empty/error; minimum mobile breakpoint). The capability is mandatory; the tool is IDE-agnostic (OpenCode `visual-qa`, Playwright capture, browser devtools, or any equivalent).
+- **API-to-UI shape mapping (reject condition)**: Reject any data-bound UI MR missing the §1 field map (served API contract → UI surface). Internal server terminology rendered as user copy = **automatic rejection**. Missing documented fields = blocking contract gap (not a design choice).
+- **Consumer-media surfaces**: When the feature is a media-first feed/grid/gallery (§3.5), verify aspect-ratio locked slots, poster frames + blur-up placeholders, gradient scrims for WCAG AA over media, 2-line-clamp typography, engagement affordances OUTSIDE the media tap area, designed empty state. Refer to `frontend-design` §9.7 for the canonical anatomy.
 - Verify Sophia's implementation matches Jonathan's design spec (layout, spacing, colors, interaction states, accessibility attributes).
 - Enforce the No-Mock-Data Policy — reject any fake/placeholder/hard-coded data.
 - Validate performance patterns: lazy loading, code splitting, image optimization, bundle size impact.

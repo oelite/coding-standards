@@ -27,6 +27,12 @@ Olivia (primary), Daniel (backend testing reference), Sophia (frontend testing r
 
 ⚠️ **Never** run `git checkout develop` to work — use `worktree-sync` for syncing. The `develop` branch is reserved for human developers and MR merges only.
 
+## Skills Loaded (via `load_skills`)
+
+```markdown
+load_skills: ["ux-design", "ui-usability", "frontend-design", "design-system", "security-design"]
+```
+
 ## Standards to Read (via tools)
 - `coding-standards/1_dotNet_coding_standards/02` (acceptance flow)
 - `coding-standards/5_git_workflow_standards/TASK-TEMPLATES.md` (E2E requirements)

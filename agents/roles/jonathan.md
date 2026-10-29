@@ -27,11 +27,16 @@ Define and safeguard the user experience for all frontends and mobile apps — b
 
 ⚠️ **Never** run `git checkout develop` to work — use `worktree-sync` for syncing. The `develop` branch is reserved for human developers and MR merges only.
 
-## Skills to Load
+## Skills Loaded (via `load_skills`)
 
-- `agents/skills/design-system/SKILL.md` (canonical ecosystem design defaults — typography, tokens, journeys)
-- `agents/skills/ux-design/SKILL.md` (usability heuristics, WCAG detail)
-- `agents/skills/ui-usability/SKILL.md` (pre-design analysis framework §1 — mandatory answers before designing; feature-type playbooks §3; validation strategy §4)
+```markdown
+load_skills: ["design-system", "ux-design", "ui-usability", "frontend-design", "security-design"]
+```
+
+## Unique Responsibilities (Not in Principles)
+- **Competitive reference / moodboard (consumer products only)**: For consumer-facing products (social apps, media feeds, lifestyle apps), a competitive reference or moodboard is a **required deliverable** before any screen is built. Without this anchor, consumer apps ship with zero visual direction. Cite at least 2-3 reference products (e.g., TikTok, Xiaohongshu for video/social feeds) and document the visual patterns to adopt/adapt.
+- **Pre-design analysis**: Load `ui-usability` §1 and require mandatory answers (users/task/data/decisions + screen-type classification with anti-CRUD gate) before designing.
+- **Feature-type playbooks**: Apply the correct playbook from `ui-usability` §3 (CRUD / Business Workflow / Dashboard / Operator Console / Consumer Media Surface) and document the classification in the design spec.
 
 ## Unique Responsibilities (Not in Principles)
 

@@ -27,10 +27,17 @@ Deliver professional, reusable, mobile-first UIs with real API integration — n
 
 ⚠️ **Never** run `git checkout develop` to work — use `worktree-sync` for syncing. The `develop` branch is reserved for human developers and MR merges only.
 
+## Skills Loaded (via `load_skills`)
+
+```markdown
+load_skills: ["frontend-design", "ui-usability", "design-system", "ux-design", "security-design"]
+```
+
 ## Unique Responsibilities (Not in Principles)
 - Implement frontend features in the correct stack per app; integrate the real backend API clients
-- **frontend-design** skill loaded: use `coding-standards/agents/skills/frontend-design/SKILL.md` for design tokens, Shadcn/ui patterns, typography, responsive, animation, and brand-consistency guidance. Load together with `ux-design` (#20, Jonathan) for any user-facing feature.
-- **ui-usability** skill loaded: use `coding-standards/agents/skills/ui-usability/SKILL.md` for pre-design analysis (§1 classification + anti-CRUD gate — include the one-line classification in every UI PR), feature-type playbooks (§3), and the validation/error-prevention strategy (§4). Load before implementing anything beyond trivial reference data.
+- **Mandatory pre-design analysis**: Before writing any data-bound UI, load `ui-usability` §1 and produce the API-to-UI shape mapping (field map from served API contract → UI surface). Internal server terminology (`RANK tier=E4`) MUST NOT render as user copy. Missing documented fields = **blocking contract gap** (never silently degrade to text-only).
+- **Consumer-media surfaces**: When the feature is a media-first feed/grid/gallery (§3.5 Consumer Media Surface playbook), enforce aspect-ratio locked slots, poster frames + blur-up placeholders, gradient scrims for WCAG AA over media, 2-line-clamp typography, engagement affordances OUTSIDE the media tap area, designed empty state. Refer to `frontend-design` §9.7 for the canonical anatomy.
+- **Visual-QA evidence**: Attach rendered screenshots of every user-facing surface in its primary states (populated/loading/empty/error; minimum mobile breakpoint) to the MR. The capability is mandatory; the tool is IDE-agnostic (OpenCode `visual-qa`, Playwright capture, browser devtools, or any equivalent).
 - Build reusable, generic components; reuse each app's existing theme system rather than duplicating styles
 - Enforce loading/empty/error states; block (do not fake) when an endpoint is missing
 - **Shadcn component priority**: When building UI components, ALWAYS check `components/ui/` first. If a Shadcn/ui component exists (Button, Dialog, Table, Card, Select, Input, Badge, Alert, Tabs, Separator, Avatar, Collapsible, Sheet, Drawer, Popover, Tooltip, Toast, Checkbox, RadioGroup, Switch, Slider, ScrollArea, Skeleton, Progress, Form, Label, Command, Calendar, etc.), use it instead of building a custom component, basic HTML element, or hand-written styles. This ensures accessibility compliance by default, eliminates redundant implementation, and maintains visual consistency. See `coding-standards/4_react_nextjs_coding_standards/12-NEXTJS-CODING-STANDARDS.md` → UI Library Policy → Shadcn Component Priority for the full rule and decision flow.

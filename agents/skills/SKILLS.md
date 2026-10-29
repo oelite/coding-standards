@@ -58,7 +58,7 @@
 - **Purpose:** UX design principles, Nielsen's usability heuristics, WCAG accessibility, interaction patterns, and user research guidance
 - **Trigger phrases:** "UX", "usability", "heuristics", "WCAG", "accessibility", "user flow", "interaction pattern"
 - **Default loaders:** Jonathan
-- **On-demand loaders:** Sophia, Felix, Isabella
+- **On-demand loaders:** Sophia, Olivia, Felix, Isabella
 - **Location:** `coding-standards/agents/skills/ux-design/SKILL.md`
 - **Status:** [x] active — see issue #20
 - **Owner:** Jonathan
@@ -70,8 +70,8 @@
 - **Purpose:** OElite design aesthetic, design tokens, Shadcn/ui patterns, typography scale, brand consistency, anti-pattern catalog, before/after examples
 - **Trigger phrases:** "frontend design", "design tokens", "Shadcn", "typography", "brand", "visual QA", "UI aesthetic", "styling", "component", "responsive", "animation", "spacing", "color"
 - **Cross-load:** for UI feature work, load `ui-usability` (#73) together — implementation patterns apply after pre-design analysis and playbook selection.
-- **Default loaders:** Sophia, Felix
-- **On-demand loaders:** Jonathan, Isabella
+- **Default loaders:** Sophia, Felix, Jonathan
+- **On-demand loaders:** Olivia, Isabella
 - **Location:** `coding-standards/agents/skills/frontend-design/SKILL.md`
 - **Status:** [x] active — see issue #21
 - **Owner:** Sophia
@@ -83,7 +83,7 @@
 
 - **Purpose:** Ecosystem-wide canonical design defaults — font stacks & type scale, semantic color tokens (light/dark), 4px spacing grid, component behavior, mandatory async state triad, user-journey practices, dashboard patterns (KPI cards, tabular numerals), motion, and the per-project override policy
 - **Trigger phrases:** "new UI", "dashboard design", "styling", "design tokens", "typography", "fonts", "color system", "user journey", "empty state", "KPI card", "spacing grid", "dark mode", "design principles"
-- **Default loaders:** Jonathan, Sophia, Felix
+- **Default loaders:** Jonathan, Sophia, Felix, Olivia
 - **On-demand loaders:** Emma, Isabella, any role touching UI/UX
 - **Cross-load:** for UI feature work, load `ui-usability` (#73) together — it supplies the pre-design thinking this skill's values are applied to.
 - **Location:** `coding-standards/agents/skills/design-system/SKILL.md`
