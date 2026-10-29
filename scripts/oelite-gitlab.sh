@@ -2048,7 +2048,7 @@ cmd_pipeline_jobs() {
   local pipeline_id="${2:-}"
 
   [[ -z "$project_path" ]] && { echo "[ERROR] Project path required" >&2; return 1; }
-  [[ -z "$pipeline_id" || ! "$pipeline_id" == <-> ]] && { echo "[ERROR] Numeric pipeline ID required" >&2; return 1; }
+  [[ -z "$pipeline_id" || ! "$pipeline_id" =~ ^[0-9]+$ ]] && { echo "[ERROR] Numeric pipeline ID required" >&2; return 1; }
 
   local encoded_path pat
   encoded_path=$(url_encode_path "$project_path")
@@ -2087,7 +2087,7 @@ cmd_pipeline_job_trace() {
   local job_id="${2:-}"
 
   [[ -z "$project_path" ]] && { echo "[ERROR] Project path required" >&2; return 1; }
-  [[ -z "$job_id" || ! "$job_id" == <-> ]] && { echo "[ERROR] Numeric job ID required" >&2; return 1; }
+  [[ -z "$job_id" || ! "$job_id" =~ ^[0-9]+$ ]] && { echo "[ERROR] Numeric job ID required" >&2; return 1; }
 
   local encoded_path pat
   encoded_path=$(url_encode_path "$project_path")
@@ -2110,7 +2110,7 @@ cmd_pipeline_job_retry() {
   local agent="${3:-emma}"
 
   [[ -z "$project_path" ]] && { echo "[ERROR] Project path required" >&2; return 1; }
-  [[ -z "$job_id" || ! "$job_id" == <-> ]] && { echo "[ERROR] Numeric job ID required" >&2; return 1; }
+  [[ -z "$job_id" || ! "$job_id" =~ ^[0-9]+$ ]] && { echo "[ERROR] Numeric job ID required" >&2; return 1; }
 
   validate_agent "$agent" || return 1
 
@@ -2144,7 +2144,7 @@ cmd_pipeline_cancel() {
   local agent="${3:-emma}"
 
   [[ -z "$project_path" ]] && { echo "[ERROR] Project path required" >&2; return 1; }
-  [[ -z "$pipeline_id" || ! "$pipeline_id" == <-> ]] && { echo "[ERROR] Numeric pipeline ID required" >&2; return 1; }
+  [[ -z "$pipeline_id" || ! "$pipeline_id" =~ ^[0-9]+$ ]] && { echo "[ERROR] Numeric pipeline ID required" >&2; return 1; }
 
   validate_agent "$agent" || return 1
 
