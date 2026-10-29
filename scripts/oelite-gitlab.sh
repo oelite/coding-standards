@@ -2173,6 +2173,77 @@ print("  Web URL:   {}".format(pipeline.get("web_url", "")))
 '
 }
 
+cmd_pipeline_retry() {
+  local project_path="${1:-}"
+  local pipeline_id="${2:-}"
+  local agent="${3:-emma}"
+
+  [[ -z "$project_path" ]] && { echo "[ERROR] Project path required" >&2; return 1; }
+  [[ -z "$pipeline_id" || ! "$pipeline_id" =~ ^[0-9]+$ ]] && { echo "[ERROR] Numeric pipeline ID required" >&2; return 1; }
+
+  validate_agent "$agent" || return 1
+
+  local encoded_path pat
+  encoded_path=$(url_encode_path "$project_path")
+  pat=$(get_pat "$agent")
+  api_post "/projects/$encoded_path/pipelines/$pipeline_id/retry" "$pat" ""
+
+  if [[ "$_API_STATUS" != "201" && "$_API_STATUS" != "200" ]]; then
+    echo "[ERROR] Failed to retry pipeline $pipeline_id (HTTP $_API_STATUS)" >&2
+    api_error_hint "$_API_STATUS" "$project_path"
+    echo "$_API_RESPONSE" >&2
+    return 1
+  fi
+
+  printf '%s\n' "$_API_RESPONSE" | python3 -c '
+import json, sys
+pipeline = json.load(sys.stdin)
+print("[OK] Pipeline retried")
+print("  ID:        {}".format(pipeline.get("id", "")))
+print("  Status:    {}".format(pipeline.get("status", "")))
+print("  Ref:       {}".format(pipeline.get("ref", "")))
+print("  SHA:       {}".format(pipeline.get("sha", "")))
+print("  Source:    {}".format(pipeline.get("source", "")))
+print("  Web URL:   {}".format(pipeline.get("web_url", "")))
+'
+}
+
+
+cmd_pipeline_run() {
+  local project_path="${1:-}"
+  local ref="${2:-}"
+  local agent="${3:-emma}"
+
+  [[ -z "$project_path" ]] && { echo "[ERROR] Project path required" >&2; return 1; }
+  [[ -z "$ref" ]] && { echo "[ERROR] Ref (branch or SHA) required" >&2; return 1; }
+
+  validate_agent "$agent" || return 1
+
+  local encoded_path pat
+  encoded_path=$(url_encode_path "$project_path")
+  pat=$(get_pat "$agent")
+  api_post "/projects/$encoded_path/pipeline?ref=$ref" "$pat" ""
+
+  if [[ "$_API_STATUS" != "201" && "$_API_STATUS" != "200" ]]; then
+    echo "[ERROR] Failed to run pipeline for ref $ref (HTTP $_API_STATUS)" >&2
+    api_error_hint "$_API_STATUS" "$project_path"
+    echo "$_API_RESPONSE" >&2
+    return 1
+  fi
+
+  printf '%s\n' "$_API_RESPONSE" | python3 -c '
+import json, sys
+pipeline = json.load(sys.stdin)
+print("[OK] Pipeline created")
+print("  ID:        {}".format(pipeline.get("id", "")))
+print("  Status:    {}".format(pipeline.get("status", "")))
+print("  Ref:       {}".format(pipeline.get("ref", "")))
+print("  SHA:       {}".format(pipeline.get("sha", "")))
+print("  Web URL:   {}".format(pipeline.get("web_url", "")))
+'
+}
+
+
 # INFRA-288: `mr-merge` deletes the MR's source branch via GitLab's
 # should_remove_source_branch flag. This is normal post-merge hygiene for
 # single MRs, but for STACKED MRs (another open MR's source = this branch)
@@ -3277,7 +3348,14 @@ COMMANDS:
       actually gates a merge.
       Example: oelite-gitlab.sh pipeline-cancel oelite/uranus/origin-auth 11034 ethan
 
+  pipeline-retry <project-path> <pipeline-id> [<agent>]
+      Retry a failed pipeline (all failed jobs) on its existing SHA, attributed to
+      <agent> (default emma). Preserves the reviewed head SHA.
+      Example: oelite-gitlab.sh pipeline-retry oelite/helios/kortex 84400 ethan
 
+  pipeline-run <project-path> <ref> [<agent>]
+      Create and run a new pipeline on <ref>, attributed to <agent> (default emma).
+      Example: oelite-gitlab.sh pipeline-run oelite/helios/kortex develop ethan
 
   mr-close <project-path> <mr-iid> <agent>
     Close a merge request without merging (e.g. superseded, obsolete).
@@ -3370,6 +3448,8 @@ case "$command" in
   pipeline-job-trace) cmd_pipeline_job_trace "$@" ;;
   pipeline-job-retry) cmd_pipeline_job_retry "$@" ;;
   pipeline-cancel) cmd_pipeline_cancel "$@" ;;
+  pipeline-retry) cmd_pipeline_retry "$@" ;;
+  pipeline-run) cmd_pipeline_run "$@" ;;
   mr-merge)       cmd_mr_merge "$@" ;;
   mr-close)       cmd_mr_close "$@" ;;
   mr-check-eligible) cmd_mr_check_eligible "$@" ;;
