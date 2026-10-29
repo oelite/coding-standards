@@ -2138,6 +2138,72 @@ print("  Web URL:  {}".format(job.get("web_url", "")))
 '
 }
 
+cmd_runner_list() {
+  local project_path="${1:-}"
+
+  [[ -z "$project_path" ]] && { echo "[ERROR] Project path required" >&2; return 1; }
+
+  local encoded_path pat
+  encoded_path=$(url_encode_path "$project_path")
+  pat=$(get_pat "emma")
+  api_get "/projects/$encoded_path/runners?per_page=100" "$pat"
+
+  if [[ "$_API_STATUS" != "200" ]]; then
+    echo "[ERROR] Failed to fetch runners for $project_path (HTTP $_API_STATUS)" >&2
+    api_error_hint "$_API_STATUS" "$project_path"
+    echo "$_API_RESPONSE" >&2
+    return 1
+  fi
+
+  printf '%s\n' "$_API_RESPONSE" | python3 -c '
+import json, sys
+
+runners = json.load(sys.stdin)
+if not isinstance(runners, list):
+    raise SystemExit("unexpected runners response")
+if not runners:
+    print("No runners registered to this project.")
+    raise SystemExit(0)
+
+print("ID     | NAME                    | STATUS     | ONLINE | SHARED | TAGS")
+print("-" * 100)
+for r in runners:
+    print("{:<6} | {:<23} | {:<10} | {:<6} | {:<6} | {}".format(
+        r.get("id", ""), r.get("name") or r.get("description") or "-",
+        r.get("status", ""), r.get("online", ""), r.get("is_shared", ""),
+        ",".join(r.get("tag_list") or []) or "-"))
+print("\nUse GET /projects/:id/runners/:runner_id for full details (via runner-show).")
+'
+}
+
+cmd_runner_show() {
+  local project_path="${1:-}"
+  local runner_id="${2:-}"
+
+  [[ -z "$project_path" || -z "$runner_id" ]] && { echo "[ERROR] Project path and runner ID required" >&2; return 1; }
+
+  local encoded_path pat
+  encoded_path=$(url_encode_path "$project_path")
+  pat=$(get_pat "emma")
+  api_get "/projects/$encoded_path/runners/$runner_id" "$pat"
+
+  if [[ "$_API_STATUS" != "200" ]]; then
+    echo "[ERROR] Failed to fetch runner $runner_id (HTTP $_API_STATUS)" >&2
+    echo "$_API_RESPONSE" >&2
+    return 1
+  fi
+
+  printf '%s\n' "$_API_RESPONSE" | python3 -c '
+import json, sys
+r = json.load(sys.stdin)
+for k in ["id","description","version","revision","platform","architecture","runner_type","status","online","contacted_at","ip_address","maximum_timeout","run_untagged","locked","paused","tag_list","projects_count"]:
+    if k in r:
+        v = r[k]
+        if k == "tag_list": v = ",".join(v) or "-"
+        print("{:<20} {}".format(k, v))
+'
+}
+
 cmd_pipeline_cancel() {
   local project_path="${1:-}"
   local pipeline_id="${2:-}"
@@ -3447,6 +3513,8 @@ case "$command" in
   pipeline-jobs)  cmd_pipeline_jobs "$@" ;;
   pipeline-job-trace) cmd_pipeline_job_trace "$@" ;;
   pipeline-job-retry) cmd_pipeline_job_retry "$@" ;;
+  runner-list) cmd_runner_list "$@" ;;
+  runner-show) cmd_runner_show "$@" ;;
   pipeline-cancel) cmd_pipeline_cancel "$@" ;;
   pipeline-retry) cmd_pipeline_retry "$@" ;;
   pipeline-run) cmd_pipeline_run "$@" ;;
