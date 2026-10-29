@@ -75,6 +75,30 @@ case "$cmd" in
     echo ""
     echo "Per-project databases/vhosts/buckets are created by each project during onboarding."
     echo "See scripts/init-per-project-dbs.sh, init-rabbitmq.sh, and init-minio.sh."
+    echo "If a project's RabbitMQ auth fails (ACCESS_REFUSED), repair it with:"
+    echo "  ./oelite-stack.sh repair-rabbitmq <project-slug>"
+    ;;
+
+  repair-rabbitmq)
+    if [ ! -f .env ] || [ ! -s .env ]; then
+      echo "ERROR: stack .env not found in $(pwd). Run './oelite-stack.sh up' first —" >&2
+      echo "the broker's superuser is seeded from it and the repair needs those credentials." >&2
+      exit 1
+    fi
+    shift
+    if [ -z "${1:-}" ]; then
+      echo "Usage: ./oelite-stack.sh repair-rabbitmq <project-slug>   e.g. ./oelite-stack.sh repair-rabbitmq hermes" >&2
+      exit 1
+    fi
+    echo "Repairing RabbitMQ vhost/user/permissions for project: $1"
+    echo "(Idempotent — recreates the vhost, re-syncs the per-project user password"
+    echo " to the canonical onboarding value, and re-grants vhost permissions.)"
+    echo ""
+    set -a
+    . ./.env
+    set +a
+    RABBIT_HOST="${RABBIT_HOST:-localhost}" ./scripts/init-rabbitmq.sh "$1"
+    echo "Repair complete. Re-authentication as oelite_$1 should now succeed."
     ;;
 
   down)
@@ -208,6 +232,9 @@ OElite Shared Local Infrastructure Manager
 Usage:
   ./oelite-stack.sh up        Start all services (generates .env if missing)
   ./oelite-stack.sh init      Initialize DBs, users, vhosts, buckets (read-only-safe)
+  ./oelite-stack.sh repair-rabbitmq <project-slug>
+                              Idempotently repair a project's RabbitMQ vhost, user,
+                              and permissions (fixes ACCESS_REFUSED after drift)
   ./oelite-stack.sh down      Stop all services (preserves volumes)
   ./oelite-stack.sh health    Run health checks against all services
   ./oelite-stack.sh status    Show running containers

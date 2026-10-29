@@ -111,6 +111,39 @@ Project credentials are stored in the project's own gitignored secrets
 (`appsettings.init.json`, `.env`, etc.) — **never** in the shared
 `infrastructure/oelite-stack/.env`.
 
+#### RabbitMQ credential mapping rule (avoid ACCESS_REFUSED)
+
+The only RabbitMQ credentials in the shared `.env` are the **superuser** pair
+(`RABBITMQ_DEFAULT_USER` / `RABBITMQ_DEFAULT_PASS`). They are for stack
+administration and the management UI only — **never** point an application at
+the superuser. Each project connects with its own per-project identity,
+provisioned by `init-rabbitmq.sh`:
+
+| Item | Value |
+|---|---|
+| Vhost | `/oelite/<project-slug>` |
+| User | `oelite_<project-slug>` |
+| Password | `oelite_<project-slug>_dev` (or `RABBITMQ_PROJECT_PASSWORD` at onboarding) |
+| Connection string | `amqp://oelite_<slug>:oelite_<slug>_dev@localhost:5672/oelite/<project-slug>` |
+
+If a project's app fails to connect with `ACCESS_REFUSED` (wrong password after
+broker re-provisioning, rotated credentials, or a superuser password wired into
+the app config), repair the project identity — never rotate the superuser for
+this purpose:
+
+```bash
+./oelite-stack.sh repair-rabbitmq <project-slug>
+# e.g. ./oelite-stack.sh repair-rabbitmq hermes
+```
+
+This is the idempotent repair path: it (re-)creates the vhost, re-syncs the
+`oelite_<slug>` user password to the canonical onboarding value, re-grants
+`configure/write/read` on the vhost, and prints the connection string. It is
+safe to re-run at any time and never touches other projects' vhosts. Then
+export the printed per-project credentials in the project's environment
+(`RABBITMQ_USERNAME` / `RABBITMQ_PASSWORD` / `RABBITMQ_VHOST` for OElite apps)
+— not the stack superuser values.
+
 ClickHouse is provisioned from `CLICKHOUSE_ADMIN_USER` and
 `CLICKHOUSE_ADMIN_PASSWORD` in the shared `.env`; the compose service maps these
 to the image's `CLICKHOUSE_USER` and `CLICKHOUSE_PASSWORD` variables. Run

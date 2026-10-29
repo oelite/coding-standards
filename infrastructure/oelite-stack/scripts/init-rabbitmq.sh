@@ -5,9 +5,13 @@
 # This is NOT run by `oelite-stack.sh init`. Each project invokes it during its
 # own onboarding, passing its project slug:
 #   ./scripts/init-rabbitmq.sh origin_auth
+# or via the stack manager repair path (same script, host-reachable by default):
+#   ./oelite-stack.sh repair-rabbitmq <project-slug>
 #
 # The shared stack exposes only the superuser (RABBITMQ_DEFAULT_USER/PASS).
 # Per-project credentials/namespaces are the project's responsibility.
+# Re-running this script repairs a project's vhost/user and re-syncs the
+# password to the canonical value below (or RABBITMQ_PROJECT_PASSWORD).
 set -eu
 
 PROJECT_NAME="${1:-}"
@@ -17,7 +21,7 @@ if [ -z "$PROJECT_NAME" ]; then
   exit 1
 fi
 
-RABBIT_HOST="${RABBIT_HOST:-oelite-rabbitmq}"
+RABBIT_HOST="${RABBIT_HOST:-localhost}"
 RABBIT_PORT="${RABBIT_PORT:-15672}"
 RABBIT_USER="${RABBITMQ_DEFAULT_USER:-oelite}"
 RABBIT_PASS="${RABBITMQ_DEFAULT_PASS:-oelite123}"
@@ -64,9 +68,12 @@ else
 fi
 
 # Grant permissions (configure/write/read) on the vhost
-curl -sf $AUTH -X PUT -H 'content-type:application/json' \
+if ! curl -sf $AUTH -X PUT -H 'content-type:application/json' \
   -d '{"configure":".*","write":".*","read":".*"}' \
-  "$BASE/permissions/$VHOST_ENC/$USER" >/dev/null 2>&1
+  "$BASE/permissions/$VHOST_ENC/$USER" >/dev/null 2>&1; then
+  echo "ERROR: failed to grant permissions on $VHOST for $USER" >&2
+  exit 1
+fi
 
 echo ""
 echo "Project RabbitMQ connection string (store in the project's own secrets):"
