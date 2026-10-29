@@ -97,6 +97,12 @@ onboarding. Run the project-level init scripts from the project's own
 ./scripts/init-per-project-dbs.sh origin_auth
 
 # RabbitMQ — vhost + dedicated user
+# ⚠️ From the HOST machine (outside Docker) you must ensure RABBIT_HOST is set
+#    to 'localhost' — the script now defaults to 'localhost' (MR !79), but if your
+#    host environment has a legacy config pointing to the Docker-internal
+#    'oelite-rabbitmq' hostname, override it explicitly:
+#      set -a; source .env; set +a
+#      RABBIT_HOST=localhost ./scripts/init-rabbitmq.sh <project-slug>
 ./scripts/init-rabbitmq.sh origin_auth
 
 # MinIO — project bucket + service-account key
@@ -143,6 +149,34 @@ safe to re-run at any time and never touches other projects' vhosts. Then
 export the printed per-project credentials in the project's environment
 (`RABBITMQ_USERNAME` / `RABBITMQ_PASSWORD` / `RABBITMQ_VHOST` for OElite apps)
 — not the stack superuser values.
+
+#### RabbitMQ post-provisioning health check
+
+`init-rabbitmq.sh <slug>` prints the project connection string, e.g.:
+
+```
+amqp://oelite_<slug>:oelite_<slug>_dev@localhost:5672/oelite/<slug>
+```
+
+Verify the vhost + user really exist before wiring them into app config
+(idempotent, safe to re-run):
+
+```bash
+set -a; source .env; set +a
+curl -sf -u "$RABBITMQ_DEFAULT_USER:$RABBITMQ_DEFAULT_PASS" \
+  "http://localhost:15672/api/vhosts" | grep '"name":"/oelite/<slug>"'
+curl -sf -u "$RABBITMQ_DEFAULT_USER:$RABBITMQ_DEFAULT_PASS" \
+  "http://localhost:15672/api/users"   | grep '"name":"oelite_<slug>"'
+```
+
+> **Detecting the guest:guest fallback in app logs**: if an app starts with
+> `queue.enabled` (or its project equivalent, e.g. `oelite:rabbitmq.enabled=true`)
+> but NO project connection string, it falls back to
+> `amqp://guest:guest@localhost:5672`. The shared broker rejects guest
+> credentials, the provider silently resolves to null, and fail-closed audit
+> paths (e.g. origin-auth BR-23-050) start throwing at runtime. Watch for the
+> app-specific startup warning (origin-auth emits `[TASK-1383]`) and for
+> `amqp://guest:guest` in connection logs.
 
 ClickHouse is provisioned from `CLICKHOUSE_ADMIN_USER` and
 `CLICKHOUSE_ADMIN_PASSWORD` in the shared `.env`; the compose service maps these
