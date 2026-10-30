@@ -141,8 +141,11 @@ services:
       - ./.mongo.key:/data/mongo.key:ro
     ports:
       - "27028:27018"
-    # 1g: same data set as primary, hit 67% of 512m under E2E load. See #52.
-    mem_limit: 1g
+    # 1.5g: same data set as primary, hit 67% of 512m under E2E load. See #52.
+    # 1.5g (2026-10-30, issue #1668): post-crash WiredTiger recovery spike OOM-killed
+    # the container at 1g repeatedly (OOMKilled=true, exit 137); recovery completes
+    # and the node rejoins at 1.5g. Primary is 2g for the same reason (#52).
+    mem_limit: 1536m
     healthcheck:
       test: ["CMD", "mongosh", "--quiet", "--host", "oelite-shard-1-arb", "--port", "27018", "--eval", "db.adminCommand('ping')"]
       interval: 10s
@@ -465,7 +468,8 @@ services:
       - "9001:9001"
     mem_limit: 512m
     healthcheck:
-      test: ["CMD-SHELL", "curl -f http://localhost:9000/minio/health/live || exit 1"]
+      # Chainguard minio ships no curl/wget; use mc (bundled) against the live endpoint.
+      test: ["CMD-SHELL", "mc ready local || exit 1"]
       interval: 15s
       timeout: 10s
       retries: 5
