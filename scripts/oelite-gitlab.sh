@@ -2132,8 +2132,7 @@ print("\n[Values intentionally NOT displayed — masked/secret material stays hi
 }
 
 cmd_ci_lint() {
-  # READ-ONLY: validate a project's CI config for a branch via GitLab CI Lint.
-  # Usage: ci-lint <project> <branch> [agent]
+  # READ-ONLY: validate a project's CI config for a branch via GitLab CI Lint.  # Usage: ci-lint <project> <branch> [agent]
   # GitLab returns the parsed pipeline (stages + jobs + rules evaluation), which
   # lets agents diagnose WHY a job was created/missing — mirroring ci-vars/runners
   # read-only ops (coding-standards #88).
@@ -2143,13 +2142,14 @@ cmd_ci_lint() {
 
   [[ -z "$project_path" ]] && { echo "[ERROR] Project path required" >&2; return 1; }
   [[ -z "$branch" ]] && branch="develop"
+  validate_agent "$agent" || return 1
 
   local encoded_path pat data
   encoded_path=$(url_encode_path "$project_path")
   pat=$(get_pat "$agent")
 
   # Fetch the raw .gitlab-ci.yml from the branch (read-only repo file access).
-  api_get "/projects/$encoded_path/repository/files/%2Egitlab%2Dci%2Eyml/raw?ref=$branch" "$pat"
+  api_get "/projects/$encoded_path/repository/files/%2Egitlab%2Dci%2Eyml/raw?ref=$(url_encode_query "$branch")" "$pat"
   if [[ "$_API_STATUS" != "200" ]]; then
     echo "[ERROR] Failed to fetch .gitlab-ci.yml from $branch (HTTP $_API_STATUS)" >&2
     api_error_hint "$_API_STATUS" "$project_path"
@@ -2184,7 +2184,9 @@ if data.get("messages"):
     for m in data["messages"]:
         print("  -", m)
 jobs = data.get("jobs") or []
-print(f"stages  :", data.get("stages"))
+stages_raw = data.get("stages")
+if stages_raw is not None:
+    print(f"stages  : {stages_raw}")
 print(f"jobs    : n={len(jobs)}")
 for j in jobs:
     name = j.get("name", "")
@@ -2199,12 +2201,13 @@ for j in jobs:
 cmd_project_clusters() {
   # READ-ONLY: list Kubernetes cluster integrations (legacy clusters + agents)
   # for the project — deploy jobs can be silently skipped when an inactive
-  # legacy cluster integration exists (GitLab deployment-skiplation rules) —
+  # legacy cluster integration exists (GitLab deploy-job skipping rules) —
   # coding-standards #88 diagnostic series.
   local project_path="${1:-}"
   local agent="${2:-emma}"
 
   [[ -z "$project_path" ]] && { echo "[ERROR] Project path required" >&2; return 1; }
+  validate_agent "$agent" || return 1
 
   local encoded_path pat
   encoded_path=$(url_encode_path "$project_path")
@@ -2285,43 +2288,6 @@ for e in envs:
 '
   else
     echo "[HTTP $_API_STATUS]"
-  fi
-}
-
-cmd_pipeline_cancel() {
-  # MUTATION (deliberate, guarded): cancel a redundant/stealing branch pipeline.
-  # Usage: pipeline-cancel <project> <pipeline-id> [agent]
-  # Guard: refuses on merge_request_event pipelines (those belong to MR flow).
-  local project_path="${1:-}"
-  local pipeline_id="${2:-}"
-  local agent="${3:-ethan}"
-
-  [[ -z "$project_path" ]] && { echo "[ERROR] Project path required" >&2; return 1; }
-  [[ -z "$pipeline_id" || ! "$pipeline_id" =~ ^[0-9]+$ ]] && { echo "[ERROR] Numeric pipeline ID required" >&2; return 1; }
-
-  local encoded_path pat
-  encoded_path=$(url_encode_path "$project_path")
-  pat=$(get_pat "$agent")
-
-  # Refuse to cancel MR pipelines — they are watchdogged by the merge flow.
-  api_get "/projects/$encoded_path/pipelines/$pipeline_id" "$pat"
-  if [[ "$_API_STATUS" != "200" ]]; then
-    echo "[ERROR] Cannot resolve pipeline $pipeline_id (HTTP $_API_STATUS)" >&2
-    return 1
-  fi
-  if printf '%s' "$_API_RESPONSE" | grep -q '"source":"merge_request_event"'; then
-    echo "[REFUSED] pipeline $pipeline_id is a merge_request_event pipeline — not cancelable by this op." >&2
-    return 1
-  fi
-  printf '%s' "$_API_RESPONSE" | grep -o "\"ref\":\"[^\"]*\"" | head -1
-
-  api_post "/projects/$encoded_path/pipelines/$pipeline_id/cancel" "$pat" ""
-  if [[ "$_API_STATUS" == "200" || "$_API_STATUS" == "201" ]]; then
-    echo "[OK] Pipeline $pipeline_id canceled"
-  else
-    echo "[ERROR] Cancel failed (HTTP $_API_STATUS)" >&2
-    echo "$_API_RESPONSE" | head -3 >&2
-    return 1
   fi
 }
 
@@ -2496,6 +2462,32 @@ cmd_pipeline_cancel() {
   local encoded_path pat
   encoded_path=$(url_encode_path "$project_path")
   pat=$(get_pat "$agent")
+
+  # GUARD (!101 review note 55358, fail-closed): refuse to cancel
+  # merge_request_event pipelines (they belong to the MR/merge flow) and
+  # any pipeline whose resolve payload is unparseable/empty — never fall
+  # through on a formatting change without the guard speaking.
+  api_get "/projects/$encoded_path/pipelines/$pipeline_id" "$pat"
+  if [[ "$_API_STATUS" != "200" ]]; then
+    echo "[ERROR] Cannot resolve pipeline $pipeline_id (HTTP $_API_STATUS)" >&2
+    api_error_hint "$_API_STATUS" "$project_path"
+    return 1
+  fi
+  local pipeline_json="$_API_RESPONSE"
+  local resolved_source=""
+  resolved_source=$(python3 -c '
+import json, sys
+try:
+    pipeline = json.load(sys.stdin)
+    print(str(pipeline.get("source") or ""))
+except Exception:
+    print("")
+' <<< "$pipeline_json" 2>/dev/null)
+  if [[ -z "$resolved_source" || "$resolved_source" == "merge_request_event" ]]; then
+    echo "[REFUSED] pipeline $pipeline_id (source=${resolved_source:-<unparseable>}) — refusing to cancel (fail-closed)." >&2
+    return 1
+  fi
+
   api_post "/projects/$encoded_path/pipelines/$pipeline_id/cancel" "$pat" ""
 
   if [[ "$_API_STATUS" != "201" && "$_API_STATUS" != "200" ]]; then
@@ -3696,12 +3688,6 @@ COMMANDS:
       deploy-job pipeline wiring (coding-standards #88 series).
       Example: oelite-gitlab.sh project-clusters oelite/helios/kortex
 
-  pipeline-cancel <project-path> <pipeline-id> [<agent>]
-      Cancel a redundant branch pipeline (e.g. a develop pipeline stealing
-      runner time from a release-branch pipeline). GUARDED: refuses
-      merge_request_event pipelines (those belong to the MR flow).
-      Example: oelite-gitlab.sh pipeline-cancel oelite/helios/kortex 13698
-
   pipeline-jobs <project-path> <pipeline-id>
       List pipeline job status and failure reasons WITHOUT printing job traces.
       Use this to diagnose a failed pipeline reported by mr-status / mr-show.
@@ -3720,7 +3706,8 @@ COMMANDS:
       Cancel a queued/running pipeline, attributed to <agent> (default emma). Use
       to clear redundant push pipelines (duplicates of MR pipelines) and superseded
       pipelines (merged branches) so the serialized runner is freed for work that
-      actually gates a merge.
+      actually gates a merge. GUARDED: refuses merge_request_event pipelines and
+      unparseable resolve payloads (fail-closed), per review note 55358.
       Example: oelite-gitlab.sh pipeline-cancel oelite/uranus/origin-auth 11034 ethan
 
   pipeline-retry <project-path> <pipeline-id> [<agent>]
@@ -3822,7 +3809,6 @@ case "$command" in
   ci-vars)        cmd_ci_vars "$@" ;;
   ci-lint)        cmd_ci_lint "$@" ;;
   project-clusters) cmd_project_clusters "$@" ;;
-  pipeline-cancel) cmd_pipeline_cancel "$@" ;;
   runners)        cmd_project_runners "$@" ;;
   pipeline-jobs)  cmd_pipeline_jobs "$@" ;;
   pipeline-job-trace) cmd_pipeline_job_trace "$@" ;;
