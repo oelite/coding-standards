@@ -2095,7 +2095,6 @@ cmd_ci_vars() {
 
   # /groups/ paths query group-inherited variables; otherwise project variables.
   if [[ "$project_path" == groups/* ]]; then
-    endpoint="/${project_path}/variables?per_page=100"
     encoded_path=$(url_encode_path "${project_path#groups/}")
     endpoint="/groups/$encoded_path/variables?per_page=100"
   else
@@ -3478,6 +3477,18 @@ COMMANDS:
       approvers/approver-groups, reset rules). Use to verify whether the project
       enforces named approvers. Defaults to the emma PAT.
       Example: oelite-gitlab.sh project-approvals oelite/helios/kortex emma
+
+  ci-vars <project-path> [<agent>]
+      List CI/CD variable KEYS with protected/masked/environment_scope flags for a
+      project (for groups, prefix the path with groups/). READ-ONLY: variable
+      VALUES are never printed.
+      Example: oelite-gitlab.sh ci-vars oelite/helios/kortex
+      Example: oelite-gitlab.sh ci-vars groups/oelite/helios
+
+  runners <project-path> [<agent>]
+      List runners visible to a project: id, status, shared flag, tags.
+      READ-ONLY diagnosis for runner tag wiring (e.g. the 'kubernetes' tag).
+      Example: oelite-gitlab.sh runners oelite/helios/kortex
 
   pipeline-jobs <project-path> <pipeline-id>
       List pipeline job status and failure reasons WITHOUT printing job traces.
