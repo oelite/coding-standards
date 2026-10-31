@@ -2082,6 +2082,92 @@ print("\nJob trace may contain sensitive build output; fetch it only when needed
 '
 }
 
+cmd_ci_vars() {
+  # READ-ONLY: list project OR group CI variable NAMES + flags. NEVER prints values.
+  local project_path="${1:-}"
+  local agent="${2:-emma}"
+
+  [[ -z "$project_path" ]] && { echo "[ERROR] Project or group path required" >&2; return 1; }
+  [[ -z "$agent" ]] && agent="emma"
+
+  local encoded_path pat endpoint
+  encoded_path=$(url_encode_path "$project_path")
+
+  # /groups/ paths query group-inherited variables; otherwise project variables.
+  if [[ "$project_path" == groups/* ]]; then
+    endpoint="/${project_path}/variables?per_page=100"
+    encoded_path=$(url_encode_path "${project_path#groups/}")
+    endpoint="/groups/$encoded_path/variables?per_page=100"
+  else
+    endpoint="/projects/$encoded_path/variables?per_page=100"
+  fi
+
+  pat=$(get_pat "$agent")
+  api_get "$endpoint" "$pat"
+
+  if [[ "$_API_STATUS" != "200" ]]; then
+    echo "[ERROR] Failed to fetch CI variables (HTTP $_API_STATUS) — note: a 403/404 may mean the PAT lacks read access to variables." >&2
+    api_error_hint "$_API_STATUS" "$project_path"
+    return 1
+  fi
+
+  printf '%s\n' "$_API_RESPONSE" | python3 -c '
+import json, sys
+
+data = json.load(sys.stdin)
+vars_list = data if isinstance(data, list) else data.get("variables", [])
+if not vars_list:
+    print("0 CI variables at this level.")
+    raise SystemExit(0)
+
+print("KEY                            | PROTECTED | MASKED | SCOPED-ENVIRONMENTS")
+print("-" * 85)
+for v in vars_list:
+    print("{:<30} | {:<9} | {:<6} | {}".format(
+        str(v.get("key", ""))[:30],
+        str(v.get("protected", False)),
+        str(v.get("masked", False)),
+        str(v.get("environment_scope", "*"))))
+print("\n[Values intentionally NOT displayed — masked/secret material stays hidden.]")
+'
+}
+
+cmd_project_runners() {
+  # READ-ONLY: list shared/project runners visible to the project (tags + status).
+  local project_path="${1:-}"
+  local agent="${2:-emma}"
+
+  [[ -z "$project_path" ]] && { echo "[ERROR] Project path required" >&2; return 1; }
+
+  local encoded_path pat
+  encoded_path=$(url_encode_path "$project_path")
+  pat=$(get_pat "$agent")
+  api_get "/projects/$encoded_path/runners?per_page=100" "$pat"
+
+  if [[ "$_API_STATUS" != "200" ]]; then
+    echo "[ERROR] Failed to fetch runners (HTTP $_API_STATUS)" >&2
+    api_error_hint "$_API_STATUS" "$project_path"
+    return 1
+  fi
+
+  printf '%s\n' "$_API_RESPONSE" | python3 -c '
+import json, sys
+
+data = json.load(sys.stdin)
+runners = data if isinstance(data, list) else data.get("runners", [])
+if not runners:
+    print("No runners visible to this project.")
+    raise SystemExit(0)
+
+print("ID     | STATUS        | SHARED | TAGS")
+print("-" * 70)
+for r in runners:
+    tags = ",".join(r.get("tag_list") or r.get("tags") or []) or "(untagged)"
+    print("{:<6} | {:<13} | {:<6} | {}".format(
+        r.get("id", ""), str(r.get("status", "")), str(r.get("is_shared", False)).lower(), tags))
+'
+}
+
 cmd_pipeline_job_trace() {
   local project_path="${1:-}"
   local job_id="${2:-}"
@@ -3510,6 +3596,8 @@ case "$command" in
   pipeline-must-succeed) cmd_pipeline_must_succeed "$@" ;;
   project-permissions) cmd_project_permissions "$@" ;;
   project-approvals)   cmd_project_approvals "$@" ;;
+  ci-vars)        cmd_ci_vars "$@" ;;
+  runners)        cmd_project_runners "$@" ;;
   pipeline-jobs)  cmd_pipeline_jobs "$@" ;;
   pipeline-job-trace) cmd_pipeline_job_trace "$@" ;;
   pipeline-job-retry) cmd_pipeline_job_retry "$@" ;;
