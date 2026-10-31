@@ -2131,6 +2131,200 @@ print("\n[Values intentionally NOT displayed — masked/secret material stays hi
 '
 }
 
+cmd_ci_lint() {
+  # READ-ONLY: validate a project's CI config for a branch via GitLab CI Lint.
+  # Usage: ci-lint <project> <branch> [agent]
+  # GitLab returns the parsed pipeline (stages + jobs + rules evaluation), which
+  # lets agents diagnose WHY a job was created/missing — mirroring ci-vars/runners
+  # read-only ops (coding-standards #88).
+  local project_path="${1:-}"
+  local branch="${2:-develop}"
+  local agent="${3:-emma}"
+
+  [[ -z "$project_path" ]] && { echo "[ERROR] Project path required" >&2; return 1; }
+  [[ -z "$branch" ]] && branch="develop"
+
+  local encoded_path pat data
+  encoded_path=$(url_encode_path "$project_path")
+  pat=$(get_pat "$agent")
+
+  # Fetch the raw .gitlab-ci.yml from the branch (read-only repo file access).
+  api_get "/projects/$encoded_path/repository/files/%2Egitlab%2Dci%2Eyml/raw?ref=$branch" "$pat"
+  if [[ "$_API_STATUS" != "200" ]]; then
+    echo "[ERROR] Failed to fetch .gitlab-ci.yml from $branch (HTTP $_API_STATUS)" >&2
+    api_error_hint "$_API_STATUS" "$project_path"
+    return 1
+  fi
+  local content="$_API_RESPONSE"
+
+  # JSON-encode the content via python3 (avoid embedding file into shell var).
+  local json_payload
+  json_payload=$(python3 -c '
+import json, sys
+content = sys.stdin.read()
+print(json.dumps({"content": content, "include_merged_yaml": True, "include_jobs": True}))
+' <<< "$content")
+
+  api_post "/projects/$encoded_path/ci/lint" "$pat" "$json_payload"
+
+  if [[ "$_API_STATUS" != "200" ]]; then
+    echo "[ERROR] CI lint request failed (HTTP $_API_STATUS)" >&2
+    echo "$_API_RESPONSE" | head -5 >&2
+    return 1
+  fi
+
+  printf '%s\n' "$_API_RESPONSE" | python3 -c '
+import json, sys
+
+data = json.load(sys.stdin)
+print("valid   :", data.get("valid"))
+print("top keys:", list(data.keys()))
+if data.get("messages"):
+    print("messages:")
+    for m in data["messages"]:
+        print("  -", m)
+jobs = data.get("jobs") or []
+print(f"stages  :", data.get("stages"))
+print(f"jobs    : n={len(jobs)}")
+for j in jobs:
+    name = j.get("name", "")
+    stage = j.get("stage", "")
+    when = j.get("when", "")
+    allowed = j.get("allow_failure")
+    tag = ",".join(j.get("tag_list", [])) or "(untagged)"
+    print(" {} | {} | allowed_failure={} | when={}".format(name, stage, allowed, when))
+'
+}
+
+cmd_project_clusters() {
+  # READ-ONLY: list Kubernetes cluster integrations (legacy clusters + agents)
+  # for the project — deploy jobs can be silently skipped when an inactive
+  # legacy cluster integration exists (GitLab deployment-skiplation rules) —
+  # coding-standards #88 diagnostic series.
+  local project_path="${1:-}"
+  local agent="${2:-emma}"
+
+  [[ -z "$project_path" ]] && { echo "[ERROR] Project path required" >&2; return 1; }
+
+  local encoded_path pat
+  encoded_path=$(url_encode_path "$project_path")
+  pat=$(get_pat "$agent")
+
+  echo "=== clusters (legacy integration) ==="
+  api_get "/projects/$encoded_path/clusters" "$pat"
+  if [[ "$_API_STATUS" == "200" ]]; then
+    printf '%s\n' "$_API_RESPONSE" | python3 -c '
+import json, sys
+try:
+    data = json.load(sys.stdin)
+except Exception:
+    print("(unparseable response)"); raise SystemExit(0)
+clusters = data if isinstance(data, list) else []
+if not clusters:
+    print("(none)")
+for c in clusters:
+    print("{:<28} | enabled={} | platform=({})".format(
+        c.get("name", ""), str(c.get("enabled", False)).lower(),
+        str(c.get("platform_kubernetes_attributes", {}).get("api_url", "n/a"))))
+'
+  else
+    echo "[HTTP $_API_STATUS] (404/400 may mean legacy clusters not exposed — old GitLab runs them via /projects/:id/cluster)"
+  fi
+
+  echo "=== cluster_agents ==="
+  api_get "/projects/$encoded_path/cluster_agents" "$pat"
+  if [[ "$_API_STATUS" == "200" ]]; then
+    printf '%s\n' "$_API_RESPONSE" | python3 -c '
+import json, sys
+try:
+    data = json.load(sys.stdin)
+except Exception:
+    print("(unparseable response)"); raise SystemExit(0)
+agents = data.get("agents", []) if isinstance(data, dict) else []
+if not agents:
+    print("(none)")
+for a in agents:
+    conn = a.get("connections") or a.get("active_connections") or []
+    print("{:<24} | connections={}".format(a.get("name", ""), len(conn)))
+'
+  else
+    echo "[HTTP $_API_STATUS]"
+  fi
+
+  echo "=== ci config path (project attrs) ==="
+  api_get "/projects/$encoded_path" "$pat"
+  if [[ "$_API_STATUS" == "200" ]]; then
+    printf '%s\n' "$_API_RESPONSE" | python3 -c '
+import json, sys
+try:
+    p = json.load(sys.stdin)
+except Exception:
+    print("(unparseable project response)"); raise SystemExit(0)
+print("ci_config_path:", p.get("ci_config_path", "(empty — default .gitlab-ci.yml)"))
+print("auto_devops   :", p.get("auto_devops_enabled"))
+print("archived      :", p.get("archived"))
+'
+  else
+    echo "[HTTP $_API_STATUS]"
+  fi
+
+  echo "=== environments (names/tiers, latest deploys) ==="
+  api_get "/projects/$encoded_path/environments?per_page=20" "$pat"
+  if [[ "$_API_STATUS" == "200" ]]; then
+    printf '%s\n' "$_API_RESPONSE" | python3 -c '
+import json, sys
+try:
+    envs = json.load(sys.stdin)
+except Exception:
+    print("(unparseable response)"); raise SystemExit(0)
+if not envs:
+    print("(none)")
+for e in envs:
+    print("{:<22} | tier={:<12} | enabled={}".format(
+        e.get("name", ""), str(e.get("tier")), str(e.get("enabled", False)).lower()))
+'
+  else
+    echo "[HTTP $_API_STATUS]"
+  fi
+}
+
+cmd_pipeline_cancel() {
+  # MUTATION (deliberate, guarded): cancel a redundant/stealing branch pipeline.
+  # Usage: pipeline-cancel <project> <pipeline-id> [agent]
+  # Guard: refuses on merge_request_event pipelines (those belong to MR flow).
+  local project_path="${1:-}"
+  local pipeline_id="${2:-}"
+  local agent="${3:-ethan}"
+
+  [[ -z "$project_path" ]] && { echo "[ERROR] Project path required" >&2; return 1; }
+  [[ -z "$pipeline_id" || ! "$pipeline_id" =~ ^[0-9]+$ ]] && { echo "[ERROR] Numeric pipeline ID required" >&2; return 1; }
+
+  local encoded_path pat
+  encoded_path=$(url_encode_path "$project_path")
+  pat=$(get_pat "$agent")
+
+  # Refuse to cancel MR pipelines — they are watchdogged by the merge flow.
+  api_get "/projects/$encoded_path/pipelines/$pipeline_id" "$pat"
+  if [[ "$_API_STATUS" != "200" ]]; then
+    echo "[ERROR] Cannot resolve pipeline $pipeline_id (HTTP $_API_STATUS)" >&2
+    return 1
+  fi
+  if printf '%s' "$_API_RESPONSE" | grep -q '"source":"merge_request_event"'; then
+    echo "[REFUSED] pipeline $pipeline_id is a merge_request_event pipeline — not cancelable by this op." >&2
+    return 1
+  fi
+  printf '%s' "$_API_RESPONSE" | grep -o "\"ref\":\"[^\"]*\"" | head -1
+
+  api_post "/projects/$encoded_path/pipelines/$pipeline_id/cancel" "$pat" ""
+  if [[ "$_API_STATUS" == "200" || "$_API_STATUS" == "201" ]]; then
+    echo "[OK] Pipeline $pipeline_id canceled"
+  else
+    echo "[ERROR] Cancel failed (HTTP $_API_STATUS)" >&2
+    echo "$_API_RESPONSE" | head -3 >&2
+    return 1
+  fi
+}
+
 cmd_project_runners() {
   # READ-ONLY: list shared/project runners visible to the project (tags + status).
   local project_path="${1:-}"
@@ -3490,6 +3684,24 @@ COMMANDS:
       READ-ONLY diagnosis for runner tag wiring (e.g. the 'kubernetes' tag).
       Example: oelite-gitlab.sh runners oelite/helios/kortex
 
+  ci-lint <project-path> <branch> [<agent>]
+      Ask GitLab to parse the branch's .gitlab-ci.yml and report valid/errors,
+      stages and the JOB TABLE incl. the deploy jobs it decides to create.
+      READ-ONLY (repo file read + project CI lint API).
+      Example: oelite-gitlab.sh ci-lint oelite/helios/kortex uat
+
+  project-clusters <project-path> [<agent>]
+      Report project cluster integrations (agents) and environments, plus the
+      ci_config_path / auto_devops attributes. READ-ONLY diagnostics for
+      deploy-job pipeline wiring (coding-standards #88 series).
+      Example: oelite-gitlab.sh project-clusters oelite/helios/kortex
+
+  pipeline-cancel <project-path> <pipeline-id> [<agent>]
+      Cancel a redundant branch pipeline (e.g. a develop pipeline stealing
+      runner time from a release-branch pipeline). GUARDED: refuses
+      merge_request_event pipelines (those belong to the MR flow).
+      Example: oelite-gitlab.sh pipeline-cancel oelite/helios/kortex 13698
+
   pipeline-jobs <project-path> <pipeline-id>
       List pipeline job status and failure reasons WITHOUT printing job traces.
       Use this to diagnose a failed pipeline reported by mr-status / mr-show.
@@ -3608,6 +3820,9 @@ case "$command" in
   project-permissions) cmd_project_permissions "$@" ;;
   project-approvals)   cmd_project_approvals "$@" ;;
   ci-vars)        cmd_ci_vars "$@" ;;
+  ci-lint)        cmd_ci_lint "$@" ;;
+  project-clusters) cmd_project_clusters "$@" ;;
+  pipeline-cancel) cmd_pipeline_cancel "$@" ;;
   runners)        cmd_project_runners "$@" ;;
   pipeline-jobs)  cmd_pipeline_jobs "$@" ;;
   pipeline-job-trace) cmd_pipeline_job_trace "$@" ;;
