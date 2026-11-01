@@ -185,6 +185,35 @@ class RequirementsAuthorityValidatorTests(unittest.TestCase):
         )
         self.assertEqual(result.returncode, 2)
 
+    def test_api_table_status_cell_is_not_delivery_status(self):
+        """A markdown table row documenting an API query parameter named
+        `status` is a requirement contract, not delivery lifecycle state.
+
+        Regression for the US-048 false positive:
+            status | string | No | Filter by status (completed, pending, ...)
+        The old detector separator `[:|]` matched the table pipe, then found
+        the delivery keyword `completed` inside the parameter's value list.
+        The separator is now `[;:]` so only a real `Status:` / `Status;`
+        field is treated as a delivery-status field.
+        """
+        api_table_diff = CLEAN_DIFF.replace(
+            "+Operators SHOULD review lockout events weekly as part of routine monitoring.",
+            "+| status | string | No | Filter by status (completed, pending, failed, refunded) |",
+        )
+        result = self.run_validator(api_table_diff)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertNotIn("story-delivery-status", result.stdout)
+
+    def test_real_status_field_still_detected(self):
+        """The narrowed detector must still catch a genuine delivery status."""
+        delivery_diff = CLEAN_DIFF.replace(
+            "+Operators SHOULD review lockout events weekly as part of routine monitoring.",
+            "+**Status**: Ready for Development",
+        )
+        result = self.run_validator(delivery_diff)
+        self.assertEqual(result.returncode, 1, result.stdout)
+        self.assertIn("story-delivery-status", result.stdout)
+
 
 if __name__ == "__main__":
     unittest.main()

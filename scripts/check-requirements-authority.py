@@ -144,7 +144,7 @@ DETECTORS = (
         "story-delivery-status",
         "delivery lifecycle state in a factual document status field",
         re.compile(
-            r"^\s*[-*>|]?\s*(?:\*\*)?status(?:\*\*)?\s*[:|].*"
+            r"^\s*[-*>|]?\s*(?:\*\*)?status(?:\*\*)?\s*[;:].*"
             r"\b(?:ready|in progress|done|verified|to do|blocked|pr review|"
             r"ready to merge|complete[ds]?)\b",
             re.IGNORECASE,
