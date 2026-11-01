@@ -2072,12 +2072,14 @@ if not jobs:
     print("No jobs found for pipeline.")
     raise SystemExit(0)
 
-print("ID     | STAGE        | STATUS     | NAME                           | FAILURE REASON")
-print("-" * 115)
+print("ID     | STAGE        | STATUS     | NAME                           | QUEUED (UTC)       | FAILURE REASON")
+print("-" * 135)
 for job in jobs:
-    print("{:<6} | {:<12} | {:<10} | {:<30} | {}".format(
+    queued = (job.get("queued_at", "") or job.get("created_at", "") or "")
+    queued = queued.replace("T", " ")[:16] if queued else "-"
+    print("{:<6} | {:<12} | {:<10} | {:<30} | {:<18} | {}".format(
         job.get("id", ""), job.get("stage", ""), job.get("status", ""),
-        job.get("name", ""), job.get("failure_reason") or "-"))
+        job.get("name", ""), queued, job.get("failure_reason") or "-"))
 print("\nJob trace may contain sensitive build output; fetch it only when needed.")
 '
 }
@@ -2179,6 +2181,14 @@ import json, sys
 data = json.load(sys.stdin)
 print("valid   :", data.get("valid"))
 print("top keys:", list(data.keys()))
+if data.get("errors"):
+    print("errors:")
+    for e in data["errors"]:
+        print("  -", e)
+if data.get("warnings"):
+    print("warnings:")
+    for w in data["warnings"]:
+        print("  -", w)
 if data.get("messages"):
     print("messages:")
     for m in data["messages"]:
@@ -2446,6 +2456,41 @@ for k in ["id","description","version","revision","platform","architecture","run
         v = r[k]
         if k == "tag_list": v = ",".join(v) or "-"
         print("{:<20} {}".format(k, v))
+'
+}
+
+cmd_pipelines() {
+  local project_path="${1:-}"
+  local ref="${2:-}"
+  local per_page="${3:-20}"
+
+  [[ -z "$project_path" ]] && { echo "[ERROR] Project path required" >&2; return 1; }
+
+  local encoded_path pat url
+  encoded_path=$(url_encode_path "$project_path")
+  pat=$(get_pat "emma")
+  url="/projects/$encoded_path/pipelines?per_page=$per_page&order_by=id&sort=desc"
+  if [[ -n "$ref" ]]; then url="$url&ref=$(printf '%s' "$ref" | sed -e 's/[^a-zA-Z0-9._~-]/\x0/g' | while IFS= read -rd '' seg; do printf '%s' "$seg"; done || true)";
+  fi
+
+  api_get "$url" "$pat"
+  if [[ "$_API_STATUS" != "200" ]]; then
+    echo "[ERROR] Failed to list pipelines (HTTP $_API_STATUS)" >&2
+    echo "$_API_RESPONSE" >&2
+    return 1
+  fi
+
+  printf '%s\n' "$_API_RESPONSE" | python3 -c '
+import json, sys
+rows = json.load(sys.stdin)
+if not isinstance(rows, list):
+    raise SystemExit("unexpected pipelines response")
+print("ID     | REF                                 | SHA      | STATUS     | SOURCE")
+print("-" * 118)
+for p in rows:
+    print("{:<6} | {:<35} | {:<8} | {:<10} | {}".format(
+        p.get("id",""), p.get("ref",""), (p.get("sha","") or "")[:7],
+        p.get("status",""), p.get("source","")))
 '
 }
 
@@ -3856,6 +3901,7 @@ case "$command" in
   pipeline-job-play) cmd_pipeline_job_play "$@" ;;
   runner-list) cmd_runner_list "$@" ;;
   runner-show) cmd_runner_show "$@" ;;
+  pipelines) cmd_pipelines "$@" ;;
   pipeline-cancel) cmd_pipeline_cancel "$@" ;;
   pipeline-retry) cmd_pipeline_retry "$@" ;;
   pipeline-run) cmd_pipeline_run "$@" ;;
