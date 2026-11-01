@@ -2546,6 +2546,41 @@ print("  Web URL:   {}".format(pipeline.get("web_url", "")))
 }
 
 
+cmd_pipeline_job_play() {
+  local project_path="${1:-}"
+  local job_id="${2:-}"
+  local agent="${3:-emma}"
+
+  [[ -z "$project_path" ]] && { echo "[ERROR] Project path required" >&2; return 1; }
+  [[ -z "$job_id" || ! "$job_id" =~ ^[0-9]+$ ]] && { echo "[ERROR] Numeric job ID required" >&2; return 1; }
+
+  validate_agent "$agent" || return 1
+
+  local encoded_path pat
+  encoded_path=$(url_encode_path "$project_path")
+  pat=$(get_pat "$agent")
+  api_post "/projects/$encoded_path/jobs/$job_id/play" "$pat" ""
+
+  if [[ "$_API_STATUS" != "201" && "$_API_STATUS" != "200" ]]; then
+    echo "[ERROR] Failed to play job $job_id (HTTP $_API_STATUS)" >&2
+    api_error_hint "$_API_STATUS" "$project_path"
+    echo "$_API_RESPONSE" >&2
+    return 1
+  fi
+
+  printf '%s\n' "$_API_RESPONSE" | python3 -c '
+import json, sys
+job = json.load(sys.stdin)
+print("[OK] Manual job played")
+print("  ID:        {}".format(job.get("id", "")))
+print("  Name:      {}".format(job.get("name", "")))
+print("  Status:    {}".format(job.get("status", "")))
+print("  Stage:     {}".format(job.get("stage", "")))
+print("  Pipeline:  {}".format((job.get("pipeline") or {}).get("id", "")))
+print("  Web URL:   {}".format(job.get("web_url", "")))
+'
+}
+
 cmd_pipeline_run() {
   local project_path="${1:-}"
   local ref="${2:-}"
@@ -3697,6 +3732,11 @@ COMMANDS:
       Print one job's trace for diagnosis. Treat the output as sensitive build data.
       Example: oelite-gitlab.sh pipeline-job-trace venus/mellow 12345
 
+   pipeline-job-play <project-path> <job-id> [<agent>]
+      Play (trigger) a manual job on its existing pipeline, attributed to
+      <agent> (default emma). Use to run deploy jobs that wait on manual action.
+      Example: oelite-gitlab.sh pipeline-job-play oelite/uranus/evitale 115406 emma
+
    pipeline-job-retry <project-path> <job-id> [<agent>]
       Retry a single failed job on its existing pipeline (same SHA), attributed to
       <agent> (default emma). Use for known-flaky failures so the reviewed head SHA
@@ -3813,6 +3853,7 @@ case "$command" in
   pipeline-jobs)  cmd_pipeline_jobs "$@" ;;
   pipeline-job-trace) cmd_pipeline_job_trace "$@" ;;
   pipeline-job-retry) cmd_pipeline_job_retry "$@" ;;
+  pipeline-job-play) cmd_pipeline_job_play "$@" ;;
   runner-list) cmd_runner_list "$@" ;;
   runner-show) cmd_runner_show "$@" ;;
   pipeline-cancel) cmd_pipeline_cancel "$@" ;;
