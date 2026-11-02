@@ -3,8 +3,17 @@
 > **Repository**: coding-standards
 > **Last Updated**: 2026-11-02
 > **Maintained by**: Isabella (Business Analyst)
-> **Status**: Active — index of authoritative business docs; § 5 numeric SLOs ratified (2026-11-02); § 7.1 Release Management is Draft pending approval; § 8 Platform-Wide Developer Experience is Draft pending approval
+> **Status**: Active — index of authoritative business docs; § 5 numeric SLOs ratified (2026-11-02); § 7.1 Release Management is Draft pending approval; § 8 Platform-Wide Developer Experience is Active (stakeholder-endorsed via #97/#99 delivery; ratified per retrospective audit 2026-11-02)
 > **Version**: 1.3.0
+
+## Document Change History
+
+| Version | Date | Change | Provenance |
+|---------|------|--------|------------|
+| 1.0.0 | TBD | Initial publication | — |
+| 1.1.0 | 2026-11-02 | Added § 7.1 Release Management (BR-REL rules) | MR !109 |
+| 1.2.0 | 2026-11-02 | Added § 8 Platform-Wide Developer Experience + BR-DEV rule file | MR !110 |
+| 1.3.0 | 2026-11-02 | Ratified numeric SLOs in § 5 (resolved DOS §7 pending note) | MR !113 |
 
 ---
 
@@ -22,6 +31,8 @@ Rules of authority:
 ---
 
 ## 1. Business Features — By Repo
+
+> TODO matrix tracked in issue #68.
 
 | Repo | Document | Status |
 |------|----------|--------|
@@ -44,6 +55,8 @@ FF (API/reference): `uranus/restpdf` user stories reference API behavior directl
 
 ## 2. Business Logic & Rules
 
+> TODO matrix tracked in issue #68.
+
 Per-repo rule files follow (or should follow) `6_documentation_standards/REQUIREMENTS-AUTHORITY.md`: location `docs/business/rules/BR-XX-<topic>.md` with stable IDs.
 
 | Repo | Rules directory | Notes |
@@ -56,6 +69,8 @@ Per-repo rule files follow (or should follow) `6_documentation_standards/REQUIRE
 
 ## 3. Workflows
 
+> TODO matrix tracked in issue #68.
+
 | Repo | Source |
 |------|--------|
 | helios/kortex | `docs/business/process-flows/` |
@@ -63,6 +78,8 @@ Per-repo rule files follow (or should follow) `6_documentation_standards/REQUIRE
 | All others | TODO(owner): document end-to-end workflows in `docs/business/process-flows/` |
 
 ## 4. UI User Journeys
+
+> TODO matrix tracked in issue #68.
 
 | Repo | Source | Notes |
 |------|--------|-------|
@@ -141,7 +158,7 @@ Promotion MRs MUST respect fixed source-branch rules: an MR targeting `uat` MUST
 
 ### BR-REL-003: UAT Soak Gate
 
-An MR promoting code to Production (`uat → main`) MUST NOT merge until: (a) the UAT deployment pipeline is green, (b) the UAT health check passed, and (c) both **Olivia (quality validation)** and **Isabella (business validation)** sign-offs are recorded on the release issue.
+An MR promoting code to Production (`uat → main`) MUST NOT merge until: (a) the UAT deployment pipeline is green, (b) the UAT health check passed, (c) both **Olivia (quality validation)** and **Isabella (business validation)** sign-offs are recorded on the release issue, and (d) a minimum of one business day of UAT residency has elapsed, unless compressed per BR-REL-006.
 
 - **Applies when**: a `uat → main` release MR is prepared for merge.
 - **Outcome**: two independent UAT validations (quality + business) gate every production release.
@@ -248,6 +265,7 @@ Full normative text: `0_project_planning_standards/rules/BR-DEV-001-local-peer-i
 | BR-DEV-004 | **Credential Isolation** — UAT peer credentials live in per-machine Keychain or gitignored secret files; never committed. Developers hold read-only or tenant-scoped UAT credentials only — no admin/service-root credentials on dev machines. |
 | BR-DEV-005 | **UAT Data Respect** — local dev treats UAT peer data as shared acceptance data: reads permitted; writes only via the reserved test patterns (Origin Auth: dedicated `dev-<username>-local` IAM client; peer records: `dev-<username>-` identifier prefix). Any other mutation is prohibited. |
 | BR-DEV-006 | **Fail Fast on Peer Unavailability** — when a required UAT peer is unavailable under the `uat-peers` profile, local dev FAILS FAST with a clear error naming the peer and the `peers-health` command. No mock/local fallback, no silent degradation. `peers-health` pre-flight is the prevention mechanism. |
+| BR-DEV-007 | **CI Credential Scoping** — integration-category CI jobs that touch UAT peers use pipeline-scoped per-project IAM clients; credentials are minted per job run and never cached across jobs; hermetic jobs never mint. |
 
 ### 8.2 Operational Expectations
 
@@ -262,7 +280,7 @@ Full normative text: `0_project_planning_standards/rules/BR-DEV-001-local-peer-i
 
 - **Rotation shift**: in dynamic mode, peers carry **no long-lived per-peer app secrets** — the 90-day app-credential rotation no longer applies to them. The rotation obligation moves to the **bootstrap IAM client** (`dev-<username>-local`, one per developer machine), which keeps the existing 90-day Keychain-held rotation cadence. Infra credentials (shared-stack data stores) are explicitly out of scope and stay on their own SLAs (cf. #37).
 - **UAT realm monitoring (Ethan-owned)**: token-issuance rate and UAT realm audit-log volume are monitored as an operational expectation. Expected load is ~1 token request per developer per peer per ~12 min of active UAT work; a sustained anomaly (issuance spikes, unexpected client attribution) is treated as a security signal and escalated to Maya. Audit logs gain per-developer attribution via `dev-<username>-local`.
-- **CI pipeline-scoped clients**: hermetic CI (`mock-peers`) **never mints tokens**. Integration-category jobs touching UAT peers use a **pipeline-scoped per-project IAM client** (never a developer client), same registry-declared scopes, same ≤ 15 min TTL, **minted per job run and never cached across jobs**. `uat-peers` keeps `allowedInCi: false` for developer configuration; CI UAT access is a separate explicit per-pipeline opt-in.
+- **CI pipeline-scoped clients**: hermetic CI (`mock-peers`) **never mints tokens** (normative rule: BR-DEV-007). Integration-category jobs touching UAT peers use a **pipeline-scoped per-project IAM client** (never a developer client), same registry-declared scopes, same ≤ 15 min TTL, **minted per job run and never cached across jobs**. `uat-peers` keeps `allowedInCi: false` for developer configuration; CI UAT access is a separate explicit per-pipeline opt-in.
 - **Staged rollout**: migration is per-peer via the registry `credentials.mode` field (`static` | `dynamic`), **default `static`** — no forced migration. `peers-health --auth` validates the mint path (and reports TTL remaining) for dynamic peers, keeping `peers-health` the single diagnostic surface. Mint/refresh failure fails fast per BR-DEV-006.
 
 ### 8.3 Business Features (BF-DEV)

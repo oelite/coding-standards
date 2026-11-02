@@ -6,7 +6,9 @@
 > **Change request**: TASK-97 / issue #97 — UAT peer-integration profile for local dev environments
 > **Rulebook anchor**: `BUSINESS-RULEBOOK.md` § 8 (Platform-Wide Developer Experience)
 > **Change History**:
-> - 1.0.0 — Approved on merge of the TASK-97 MR; status set to Active (per retrospective audit corrections).
+> | Version | Date | Decision | Factual change | Approved by |
+> |---------|------|----------|----------------|-------------|
+> | 1.0.0 | 2026-11-02 | TASK-97 / issue #97 | Initial rule file establishing local peer integration business rules (BR-DEV-001..006) | Isabella (per REQUIREMENTS-AUTHORITY amendment process) |
 
 ---
 
@@ -75,7 +77,7 @@ UAT peer credentials MUST live in **per-machine Keychain storage** or gitignored
 - **Applies when**: any local dev session uses the `uat-peers` profile.
 - **Outcome**: a compromised developer machine cannot escalate to UAT administration; no credential ever reaches git history.
 - **Exceptions**: none. (`peers-health --auth` validates credentials, not just reachability.)
-- **Forward path (V2 — approved, joint Emma + Ethan sign-off on #99, note 58524)**: short-lived dynamic UAT peer credentials are the approved V2 mechanism. **When `credentials.mode: dynamic` is set in `peer-registry.yml`** for a peer, UAT peer credentials for that peer are obtained via **Origin Auth client-credentials token minting** (per-developer IAM client `dev-<username>-local`, scopes limited to registry-declared `credentials.scopes`), with **TTL ≤ 15 min**, **refresh at 80% of TTL**, and tokens **cached in the OS credential store under `oelite/peer/<peerName>/uat-token`**. In dynamic mode no long-lived per-peer app secret exists on the machine; the static Keychain path remains the default (`credentials.mode: static`) and the 90-day rotation SLA applies to the **bootstrap IAM client only**. Mint/refresh failure fails fast per BR-DEV-006. See `1_dotNet_coding_standards/SECURITY-PATTERNS.md` § 4 (normative pattern) and BUSINESS-RULEBOOK § 8.2 (operational expectations).
+- **Forward path (V2 — approved, joint Emma + Ethan sign-off on #99, note 58524)**: short-lived dynamic UAT peer credentials are the approved V2 mechanism. **When `credentials.mode: dynamic` is set in `peer-registry.yml`** for a peer, UAT peer credentials for that peer are obtained via **Origin Auth client-credentials token minting** (per-developer IAM client `dev-<username>-local`, scopes limited to registry-declared `credentials.scopes`), with **TTL ≤ 15 min**, **refresh at 80% of TTL**, and tokens **cached in the OS credential store under `oelite/peer/<peerName>/uat-token`**. Where the token endpoint returns a longer lifetime, the client MUST treat 15 minutes as the effective TTL (fail-safe cap). In dynamic mode no long-lived per-peer app secret exists on the machine; the static Keychain path remains the default (`credentials.mode: static`) and the 90-day rotation SLA applies to the **bootstrap IAM client only**. Mint/refresh failure fails fast per BR-DEV-006. See `1_dotNet_coding_standards/SECURITY-PATTERNS.md` § 4 (normative pattern) and BUSINESS-RULEBOOK § 8.2 (operational expectations).
 
 ### BR-DEV-005: UAT Data Respect (Test-Write Patterns)
 
@@ -92,13 +94,21 @@ Any other mutation of UAT peer data from local development is **prohibited**.
 
 ### BR-DEV-006: Fail Fast on Peer Unavailability
 
-When a required UAT peer is unavailable under the `uat-peers` profile, local development **FAILS FAST** with a clear error naming the peer and the `peers-health` command to diagnose. There is **no mock fallback and no silent degradation** (stakeholder decision 1 on #97, superseding the earlier degraded-mode recommendation).
+When a required UAT peer is unavailable under the `uat-peers` profile, local development **FAILS FAST** with a clear error naming the peer and the `peers-health` command to diagnose. There is **no mock fallback and no silent degradation** (stakeholder decision 1 on #97, superseding the earlier degraded-mode recommendation). Bounded retry of transient transport failures (≤ 3 attempts) does not constitute degradation.
 
 - **Applies when**: `peers-health` reports a peer down/mismatched, or a startup connection to a `uat-peers` endpoint fails.
 - **Rationale**: production would never degrade this way; mock fallback on writes creates data divergence and false confidence.
 - **Mechanics**: `peers-health` pre-flight is the prevention mechanism; `--strict` / `OELITE_STRICT_PEERS=1` fails fast on any peer problem; a registry entry declaring `critical: true` (e.g. Origin Auth when the task is auth integration) fails startup even without `--strict`.
 - **Outcome**: developers notice peer problems before work begins, and data consistency is never sacrificed for convenience.
 - **Exceptions**: none.
+
+### BR-DEV-007: CI Credential Scoping
+
+Integration-category CI jobs that touch UAT peers use **pipeline-scoped per-project IAM clients** — never a developer client. Credentials are **minted per job run and never cached across jobs**; hermetic jobs (`mock-peers` profile) **never mint**.
+
+- **Applies when**: any CI pipeline of the integration category runs against `uat` peers; any hermetic CI job (any category) is configured.
+- **Outcome**: CI credentials are single-use and unattributable to any developer machine; a cached/cross-job credential reuse is a violation. Hermetic pipelines have no UAT credential surface at all.
+- **Exceptions**: none. CI UAT access is an explicit per-pipeline opt-in distinct from the developer `uat-peers` profile (`allowedInCi: false` remains the developer-side default).
 
 ---
 
