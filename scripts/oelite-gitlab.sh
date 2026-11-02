@@ -20,34 +20,100 @@ _API_RESPONSE=""
 _API_STATUS=""
 
 json_get() {
+  # Robust extraction of a top-level key from a GitLab API JSON response.
+  # Fixes the cosmetic JSONDecodeError from issue #78: the previous
+  # character-loop escape handler compared against a DOUBLE backslash
+  # ("\\\\") so single-backslash escapes (e.g. \" in titles/descriptions)
+  # desynchronized the string-state machine and raised a traceback even
+  # though the calling operation succeeded. Strategy: try plain
+  # json.loads first (GitLab normally returns valid JSON); fall back to a
+  # correct repair pass that escapes raw control characters INSIDE string
+  # literals only; on any remaining failure print the default silently.
   python3 -c '
 import sys, json
 raw = sys.stdin.read()
-out = []
-in_str = False
-esc = False
-for c in raw:
-    if esc:
-        out.append(c)
-        esc = False
-    elif c == "\\\\":
-        out.append(c)
-        esc = True
-    elif c == "\"":
-        in_str = not in_str
-        out.append(c)
-    elif c in ("\n","\r") and in_str:
-        out.append("\\\\n")
+key = sys.argv[1] if len(sys.argv) > 1 else ""
+default = sys.argv[2] if len(sys.argv) > 2 else ""
+
+def emit(value):
+    if value is None:
+        print(default)
+    elif isinstance(value, (dict, list)):
+        print(json.dumps(value))
     else:
-        out.append(c)
-d = json.loads("".join(out))
-v = d.get(sys.argv[1])
-print(v if v is not None else sys.argv[2])
+        print(value)
+    sys.exit(0)
+
+if not raw or not raw.strip():
+    emit(None)
+
+def repair(s):
+    # Escape raw control chars (newline/tab/CR) that appear inside JSON
+    # string literals; leave everything outside strings untouched.
+    out = []
+    in_str = False
+    esc = False
+    for ch in s:
+        if esc:
+            out.append(ch)
+            esc = False
+        elif ch == chr(92):  # backslash
+            out.append(ch)
+            esc = True
+        elif ch == chr(34):  # double quote
+            in_str = not in_str
+            out.append(ch)
+        elif in_str and ch in (chr(10), chr(13), chr(9)):
+            out.append(json.dumps(ch)[1:-1])
+        else:
+            out.append(ch)
+    return "".join(out)
+
+data = None
+for candidate in (raw, repair(raw)):
+    try:
+        data = json.loads(candidate)
+        break
+    except (ValueError, TypeError):
+        continue
+
+if not isinstance(data, dict):
+    emit(None)
+emit(data.get(key))
 ' "$1" "$2"
 }
 
 json_encode_value() {
   printf '%s' "$1" | python3 -c "import json,sys; print(json.dumps(sys.stdin.read()))"
+}
+
+# Defensive scalar extraction from a JSON object response (issue #78 AC-6).
+# Reads stdin, prints <key>'s value (or <default> if absent). Any parse
+# failure (empty body, non-JSON, array/null payload) prints the default
+# instead of emitting a cosmetic JSONDecodeError traceback.
+json_scalar() {
+  python3 -c '
+import sys, json
+raw = sys.stdin.read()
+key = sys.argv[1] if len(sys.argv) > 1 else ""
+default = sys.argv[2] if len(sys.argv) > 2 else ""
+try:
+    data = json.loads(raw) if raw and raw.strip() else None
+    if isinstance(data, dict):
+        value = data.get(key)
+        if value is None:
+            print(default)
+        elif isinstance(value, (dict, list)):
+            print(json.dumps(value))
+        elif isinstance(value, bool):
+            print(str(value).lower())
+        else:
+            print(value)
+    else:
+        print(default)
+except (ValueError, TypeError):
+    print(default)
+' "$1" "$2"
 }
 
 url_encode_path() {
@@ -166,7 +232,12 @@ resolve_project_id() {
     api_error_hint "$_API_STATUS" "$project_path"
     return 1
   fi
-  python3 -c 'import json,sys; value=json.load(sys.stdin).get("id"); print(value if value is not None else "")' <<< "$_API_RESPONSE"
+  python3 -c 'import json,sys
+data = json.loads(sys.stdin.read() or "{}")
+if not isinstance(data, dict):
+    sys.exit(1)
+value = data.get("id")
+print(value if value is not None else "")' <<< "$_API_RESPONSE"
 }
 
 api_error_hint() {
@@ -1831,7 +1902,18 @@ fetch_mr_details() {
     api_error_hint "$_API_STATUS" "$project_path"
     return 1
   fi
-  iids=$(printf '%s' "$_API_RESPONSE" | python3 -c 'import json,sys; [print(m.get("iid", "")) for m in json.load(sys.stdin)]') || return 1
+  iids=$(printf '%s' "$_API_RESPONSE" | python3 -c '
+import json, sys
+try:
+    rows = json.loads(sys.stdin.read() or "[]")
+except (ValueError, TypeError):
+    sys.exit(1)
+if not isinstance(rows, list):
+    sys.exit(1)
+for m in rows:
+    if isinstance(m, dict):
+        print(m.get("iid", ""))
+') || { echo "[ERROR] Unparseable MR list response — failing closed." >&2; return 1; }
 
   for iid in ${(f)iids}; do
     [[ -z "$iid" ]] && continue
@@ -3147,7 +3229,7 @@ cmd_job_token_allowlist_add() {
   fi
 
   local confirmed_target
-  confirmed_target=$(printf '%s\n' "$_API_RESPONSE" | python3 -c 'import json,sys; print(json.load(sys.stdin).get("target_project_id", ""))')
+  confirmed_target=$(json_scalar "target_project_id" "" <<< "$_API_RESPONSE")
   if [[ "$confirmed_target" != "$target_id" ]]; then
     echo "[ERROR] Allowlist response did not confirm target project $target_project" >&2
     return 1
@@ -3192,7 +3274,7 @@ protected_branch_read_code_owner() {
     api_error_hint "$_API_STATUS" "$project_path"
     return 1
   fi
-  printf '%s\n' "$_API_RESPONSE" | python3 -c 'import json,sys; print(str(json.load(sys.stdin).get("code_owner_approval_required")).lower())'
+  json_scalar "code_owner_approval_required" "" <<< "$_API_RESPONSE"
 }
 
 cmd_protected_branch_code_owner() {
@@ -3241,7 +3323,7 @@ print(json.dumps(match) if match is not None else "")
 
   if [[ -n "$existing" ]]; then
     local existing_code_owner
-    existing_code_owner=$(printf '%s\n' "$existing" | python3 -c 'import json,sys; print(str(json.load(sys.stdin).get("code_owner_approval_required")).lower())')
+    existing_code_owner=$(json_scalar "code_owner_approval_required" "" <<< "$existing")
     if [[ "$existing_code_owner" == "$value" ]]; then
       echo "[OK] code_owner_approval_required=$state already set on $project_path protected branch $branch (no change)"
       return 0
@@ -3400,7 +3482,7 @@ cmd_pipeline_must_succeed() {
   fi
 
   local confirmed
-  confirmed=$(printf '%s\n' "$_API_RESPONSE" | python3 -c 'import json,sys; print(str(json.load(sys.stdin).get("only_allow_merge_if_pipeline_succeeds")).lower())')
+  confirmed=$(json_scalar "only_allow_merge_if_pipeline_succeeds" "" <<< "$_API_RESPONSE")
   if [[ "$confirmed" != "$value" ]]; then
     echo "[ERROR] Project response did not confirm only_allow_merge_if_pipeline_succeeds=$state" >&2
     return 1
