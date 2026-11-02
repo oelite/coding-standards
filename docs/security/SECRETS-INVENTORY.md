@@ -55,3 +55,11 @@ kubectl -n cert-manager create secret generic cloudflare-api-token-secret \
 
 - Add gitleaks scanning (`.gitleaks.toml` + CI job) to `oelite/coding-standards` covering Cloudflare/SendGrid/Twilio/generic token rules, so the `clusters/` file class can never silently land in git.
 - Apply the same out-of-band pattern to any other cluster Secret manifests found under `clusters/<ENV>/` during the next ops review.
+- Rotate the shared-stack RabbitMQ superuser password (from the gitignored `oelite-stack/.env`) in the next scheduled rotation window — its value was exposed in a local agent session log on 2026-11-02 during the cs#86/#362-#365 execution (self-reported on cs#67 note 57924); treat as compromised pending rotation. `generate-secrets.sh` supports rotation; coordinate with all stack consumers before rolling.
+
+## Rotation Log
+
+| Date | Credential (prefix only) | Action | Executed by | Consumers |
+|------|--------------------------|--------|-------------|-----------|
+| 2026-11-02 | Cloudflare API token `i001j73…` (cs#86) | Operator-local manifests redacted in BOTH clusters; rotation (console + in-cluster Secret + DNS-01 proof) handed to owner ethan/ops | maya | cert-manager letsencrypt-prod DNS-01 solver, UAT + Production (all TLS certs) |
+| 2026-11-02 | RabbitMQ shared-stack superuser (prefix `7BsU…`) | FLAGGED for rotation (session-log exposure, self-reported cs#67 note 57924) | maya | all oelite-stack services |
