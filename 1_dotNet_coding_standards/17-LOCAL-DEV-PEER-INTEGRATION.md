@@ -2,7 +2,7 @@
 
 **Status**: Active (since 2026-11-02)
 **Owner**: Daniel (backend implementation), Marcus (architecture), Ethan (registry + peers-health)
-**Related**: `0_project_planning_standards/BUSINESS-RULEBOOK.md` § 7 (BR-DEV-001..006), `16-SHARED-LOCAL-INFRASTRUCTURE.md`, `CONFIGURATION-VALIDATION.md`, `SECURITY-PATTERNS.md`, Issue #97
+**Related**: `0_project_planning_standards/BUSINESS-RULEBOOK.md` § 8 (BR-DEV-001..006), `16-SHARED-LOCAL-INFRASTRUCTURE.md`, `CONFIGURATION-VALIDATION.md`, `SECURITY-PATTERNS.md`, Issue #97
 
 ## Overview
 
