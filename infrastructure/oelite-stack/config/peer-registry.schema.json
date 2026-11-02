@@ -89,7 +89,7 @@
             "mode": {
               "enum": ["static", "dynamic"],
               "default": "static",
-              "description": "V2 (TASK-99): static = per-machine Keychain secret (default, 90-day rotation). dynamic = Origin Auth client-credentials minting (TTL <= 15 min, registry scopes, no long-lived per-peer secret)."
+              "description": "static (default): per-machine Keychain entries on the 90-day rotation SLA. dynamic (V2, TASK-99): short-lived tokens minted via Origin Auth client-credentials (TTL <= 15 min, refresh at 80% TTL) — see 1_dotNet_coding_standards/18-DYNAMIC-PEER-CREDENTIALS.md"
             },
             "keychainService": {
               "type": "string",

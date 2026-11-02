@@ -243,6 +243,15 @@ Full normative text: `0_project_planning_standards/rules/BR-DEV-001-local-peer-i
 - **Rotation cadence**: registry endpoint/version changes are sprint-aligned; credential rotation follows the secrets-handling rules in `agents/core/principles.md` (§ Security & Best Practices — no committed secrets, Keychain/K8s-secrets storage) with `peers-health --auth` validation.
 - **Recovery**: a failed UAT peer deployment is recovered within 4 hours during business hours, 1 business day otherwise (Ethan-owned runbook); local developers are notified via the standard UAT availability channel.
 
+#### V2 Short-Lived Dynamic Credentials — Operational Expectations
+
+*Added per TASK-99 (issue #99, joint Emma + Ethan design sign-off, note 58524). Applies when a peer's registry entry sets `credentials.mode: dynamic`; the static Keychain path remains the platform default.*
+
+- **Rotation shift**: in dynamic mode, peers carry **no long-lived per-peer app secrets** — the 90-day app-credential rotation no longer applies to them. The rotation obligation moves to the **bootstrap IAM client** (`dev-<username>-local`, one per developer machine), which keeps the existing 90-day Keychain-held rotation cadence. Infra credentials (shared-stack data stores) are explicitly out of scope and stay on their own SLAs (cf. #37).
+- **UAT realm monitoring (Ethan-owned)**: token-issuance rate and UAT realm audit-log volume are monitored as an operational expectation. Expected load is ~1 token request per developer per peer per ~12 min of active UAT work; a sustained anomaly (issuance spikes, unexpected client attribution) is treated as a security signal and escalated to Maya. Audit logs gain per-developer attribution via `dev-<username>-local`.
+- **CI pipeline-scoped clients**: hermetic CI (`mock-peers`) **never mints tokens**. Integration-category jobs touching UAT peers use a **pipeline-scoped per-project IAM client** (never a developer client), same registry-declared scopes, same ≤ 15 min TTL, **minted per job run and never cached across jobs**. `uat-peers` keeps `allowedInCi: false` for developer configuration; CI UAT access is a separate explicit per-pipeline opt-in.
+- **Staged rollout**: migration is per-peer via the registry `credentials.mode` field (`static` | `dynamic`), **default `static`** — no forced migration. `peers-health --auth` validates the mint path (and reports TTL remaining) for dynamic peers, keeping `peers-health` the single diagnostic surface. Mint/refresh failure fails fast per BR-DEV-006.
+
 ### 8.3 Business Features (BF-DEV)
 
 | ID | Feature | Outcome |

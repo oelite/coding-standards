@@ -14,6 +14,11 @@
 # `credentials.source` names a per-machine Keychain service (or gitignored
 # secret file). Developers hold read-only or tenant-scoped-write UAT
 # credentials only — no admin/service-root UAT credentials on dev machines.
+# `credentials.mode` (V2, TASK-99): `static` (default) = Keychain entries on
+# the 90-day rotation SLA; `dynamic` = short-lived tokens minted via the
+# Origin Auth client-credentials flow using the per-developer
+# `dev-<username>-local` IAM client (TTL <= 15 min, refresh at 80% TTL;
+# see 1_dotNet_coding_standards/18-DYNAMIC-PEER-CREDENTIALS.md).
 #
 # Profile semantics (Marcus Flag 2 + Emma stakeholder decision 1):
 #   - mock-peers  : hermetic mocks for unit tests and CI (AC-004)
@@ -77,6 +82,7 @@ peers:
     resetPolicy: weekly
     credentials:
       source: keychain
+      mode: static
       keychainService: oelite-uat-origin-auth
       scopes:
         - openid
@@ -102,6 +108,7 @@ peers:
     resetPolicy: weekly
     credentials:
       source: keychain
+      mode: static
       keychainService: oelite-uat-kortex
       scopes:
         - kortex.object.read
@@ -126,6 +133,7 @@ peers:
     resetPolicy: weekly
     credentials:
       source: keychain
+      mode: static
       keychainService: oelite-uat-nexus
       scopes:
         - nexus.api.read
@@ -150,6 +158,7 @@ peers:
     resetPolicy: weekly
     credentials:
       source: keychain
+      mode: static
       keychainService: oelite-uat-oesterling
       scopes:
         - oesterling.wallet.read
@@ -174,6 +183,7 @@ peers:
     resetPolicy: monthly
     credentials:
       source: keychain
+      mode: static
       keychainService: oelite-uat-apex
       scopes:
         - apex.billing.read
@@ -198,6 +208,7 @@ peers:
     resetPolicy: weekly
     credentials:
       source: keychain
+      mode: static
       keychainService: oelite-uat-synapse
       scopes:
         - synapse.assistant.invoke
@@ -221,6 +232,7 @@ peers:
     resetPolicy: weekly
     credentials:
       source: keychain
+      mode: static
       keychainService: oelite-uat-obelisk
       scopes:
         - obelisk.mail.send
@@ -245,6 +257,7 @@ peers:
     resetPolicy: manual
     credentials:
       source: keychain
+      mode: static
       keychainService: oelite-uat-hermes
       scopes:
         - hermes.inference.invoke
@@ -268,6 +281,7 @@ peers:
     resetPolicy: manual
     credentials:
       source: keychain
+      mode: static
       keychainService: oelite-uat-orion
       scopes:
         - orion.logs.read
