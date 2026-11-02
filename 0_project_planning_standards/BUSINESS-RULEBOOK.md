@@ -238,7 +238,7 @@ Full normative text: `0_project_planning_standards/rules/BR-DEV-001-local-peer-i
 
 ### 8.2 Operational Expectations
 
-- **UAT peer uptime**: UAT peers target 99% availability (best-effort, shared); availability is Ethan-owned, monitored via Orion. Local dev is NOT a availability SLO consumer of last resort — a down peer fails fast (BR-DEV-006) rather than degrading.
+- **UAT peer uptime**: UAT peers target 99% availability (best-effort, shared); availability is Ethan-owned, monitored via Orion. Local dev is NOT an availability SLO consumer of last resort — a down peer fails fast (BR-DEV-006) rather than degrading.
 - **Stability window**: UAT peer endpoints MUST be stable for at least 5 consecutive business days per deploy cycle (aligns with the UAT soak gate, BR-REL-003) — no silent endpoint churn; changes go through the versioned registry via reviewed MR.
 - **Rotation cadence**: registry endpoint/version changes are sprint-aligned; credential rotation follows the secrets-handling rules in `agents/core/principles.md` (§ Security & Best Practices — no committed secrets, Keychain/K8s-secrets storage) with `peers-health --auth` validation.
 - **Recovery**: a failed UAT peer deployment is recovered within 4 hours during business hours, 1 business day otherwise (Ethan-owned runbook); local developers are notified via the standard UAT availability channel.
@@ -311,5 +311,5 @@ Full normative text: `0_project_planning_standards/rules/BR-DEV-001-local-peer-i
 | 1 | No BRD/SRS/docs at all in: helios/nexus, helios/compass, helios/oesterling, jupiter/ec-nx-01, jupiter/ec-std-01, jupiter/bizsmart, jupiter/apps-ec-store, jupiter/apps-biz-suite, mercury/runners/*, venus/sip, venus/stela | Entire feature scope of those repos is un-governable — highest priority for Isabella/Emma authoring sprints |
 | 2 | Two repos with incomplete story decomposition (synapse, mellow) | worktree-level e2e test matrices |
 | 3 | User journeys missing in above 7+ repos | journey-based e2e testing, user-guide accuracy gates |
-| 4 | No per-repo SLO / operation expectations | "complete" cannot be defined for feaures relying on availability/perf rules |
+| 4 | No per-repo SLO / operation expectations | "complete" cannot be defined for features relying on availability/perf rules |
 | 5 | Mixed factual+delivery content in 3 doc sets (kortex, obelisk, arc-cli rulebook status) | trustworthy audit / REQUIREMENTS-AUTHORITY compliance |

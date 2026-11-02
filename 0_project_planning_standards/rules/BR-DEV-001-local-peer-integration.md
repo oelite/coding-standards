@@ -1,10 +1,12 @@
 # BR-DEV-001 — Local Peer Integration (UAT Peer-Integration Profile)
 
 > **Maintained by**: Isabella (Business Analyst)
-> **Status**: Draft — pending approval per `6_documentation_standards/REQUIREMENTS-AUTHORITY.md` amendment process (Approved on merge of the TASK-97 MR)
+> **Status**: Active
 > **Version**: 1.0.0
 > **Change request**: TASK-97 / issue #97 — UAT peer-integration profile for local dev environments
 > **Rulebook anchor**: `BUSINESS-RULEBOOK.md` § 8 (Platform-Wide Developer Experience)
+> **Change History**:
+> - 1.0.0 — Approved on merge of the TASK-97 MR; status set to Active (per retrospective audit corrections).
 
 ---
 
@@ -54,7 +56,7 @@ Local development reaches **UAT peer services** ONLY through the explicit `uat-p
 
 Peer endpoints MUST resolve from the **central versioned registry** (`peer-registry.yml`, reviewed via MR; one review point, one drift source). Profile resolution follows this fixed precedence:
 
-1. Per-peer environment variable: `OELITE_PEERS__<PEERNAME>__PROFILE` (e.g. `OELITE_PEERS__NEXUS=local` while `OELITE_PEERS__ORIGINAUTH=uat`)
+1. Per-peer environment variable: `OELITE_PEERS__<PEERNAME>__PROFILE` (e.g. `OELITE_PEERS__NEXUS=local` — shorthand form; resolves to `local-peers` — while `OELITE_PEERS__ORIGINAUTH=uat`)
 2. Per-app appsettings: `integrationProfile.peers.<peerName>.profile`
 3. Global environment variable: `OELITE_PROFILE`
 4. App default: `integrationProfile.defaultProfile`

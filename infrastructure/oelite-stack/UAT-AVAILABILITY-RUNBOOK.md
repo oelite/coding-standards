@@ -155,8 +155,9 @@ This pattern ensures zero long-lived secrets in CI, per-job attribution, and
 # Verify my machine's UAT credentials are provisioned
 #   static peers: Keychain lookup
 #   dynamic peers (V2): full client-credentials mint vs UAT token endpoint,
-#   reporting TTL remaining. Requires OELITE_UAT_IAM_CLIENT_ID /
-#   OELITE_UAT_IAM_CLIENT_SECRET in the environment (bootstrap IAM client).
+#   reporting TTL remaining. Bootstrap IAM client secret is stored in the OS
+#   credential store under `oelite/iam/dev-<username>-local`; CI uses
+#   pipeline-scoped variables; local dev uses Keychain.
 ./infrastructure/oelite-stack/scripts/peers-health.sh --profile uat-peers --auth
 
 # Only the peer I actually depend on

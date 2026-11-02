@@ -13,3 +13,5 @@ scripts/tools/**/obj/
 # High-privilege operators place per-environment clusters under infrastructure/oelite-stack/clusters/<ENV>/
 infrastructure/oelite-stack/clusters/
 
+
+.git-worktree-owner

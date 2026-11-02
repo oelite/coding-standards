@@ -96,7 +96,7 @@ Rules:
 - Missing credential for a UAT peer → **fail fast** with a message naming the peer and the Keychain item (no silent degradation — Emma's stakeholder decision supersedes any mock-fallback behavior).
 - Rotation SLA: ≤ 90 days. `peers-health --auth` validates credentials, not just reachability (Ethan's utility).
 - `dev-<username>-local` UAT IAM clients only; never the shared UAT acceptance client (BR-DEV-005).
-- Short-lived dynamic credentials (token minting via Origin Auth) are **V2 — TBD, pending Emma + Ethan joint sign-off**. Do not implement in v1.
+- Short-lived dynamic credentials (token minting via Origin Auth) are **approved per #99 (note 58524)** — normative spec in `18-DYNAMIC-PEER-CREDENTIALS.md`.
 
 ## Dynamic Peer Credentials (V2 — Cross-Reference)
 
