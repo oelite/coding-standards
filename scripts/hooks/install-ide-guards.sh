@@ -47,7 +47,7 @@ done
 
 # Active repos list — keep in sync with coding-standards/AGENTS.md.
 ACTIVE_REPOS=(
-  helios/core helios/kortex helios/oesterling helios/compass helios/k8s
+  helios/core helios/nexus helios/kortex helios/oesterling helios/compass helios/k8s
   jupiter/ec-std-01 jupiter/ec-nx-01 jupiter/occ jupiter/bizsmart jupiter/apex
   jupiter/apps-ec-store jupiter/apps-biz-suite
   uranus/origin-auth uranus/restme uranus/restme-dapper uranus/orion
