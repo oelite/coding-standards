@@ -158,6 +158,19 @@
 
 ---
 
+### `cross-service-integration-pattern` — XIP-1: OElite Cross-Service Integration Pattern
+
+- **Purpose:** Standardized pattern for provisioning/identity integration between two OElite services (bidirectional service-provision ring): Provisioning Tokens, minimal provisioning endpoint contract with mandatory idempotency, cross-reference ID store + source-of-truth matrix, webhook sync with safe reconciliation (never-delete drift handling), and security controls
+- **Trigger phrases:** "cross-service integration", "XIP-1", "provisioning between services", "billing-link", "service-provision ring", "cross-reference ID", "reconciliation job", "drift detection", "Provisioning Token", "integrate with Origin Auth / Apex Billing"
+- **Default loaders:** Marcus, Daniel, Ethan
+- **On-demand loaders:** Emma, Isabella, Maya, Grace (when a new service pair is planned, documented, or reviewed)
+- **Location:** `coding-standards/agents/skills/cross-service-integration-pattern/SKILL.md`
+- **Status:** [x] active — origin-auth issue #1693 (owner-approved 2026-11-02; reference implementation = Origin Auth Provisioning API v1)
+- **Owner:** Marcus (pattern authority), Isabella (documentation)
+- **Related skills:** `security-design` (#22) — load together for token-scope/anti-abuse review; `architecture-design` (#19) — for the pair's ADR
+
+---
+
 ## 🔧 Built-in OpenCode Skills (Available via `skill` Tool)
 
 These skills are built into the OpenCode CLI and accessible via the `skill` tool or
