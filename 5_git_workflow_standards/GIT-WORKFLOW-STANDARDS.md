@@ -807,6 +807,31 @@ All project management happens in GitLab at https://code.phanes.ltd. The CLI too
 - The MR description should reference the issue it addresses.
 - Reviewers are assigned based on the workflow chain defined in `AGENTS.md`.
 
+### 7.2.1 Citation Placement — Head-Commit Superset (BR-24-003 Support Pattern)
+
+> **Citation placement — head-commit superset (BR-24-003 support pattern).** Because GitLab truncates `CI_MERGE_REQUEST_DESCRIPTION` at approximately 2048 characters, citation content read from the MR description is not reliable. For any MR whose pipeline validates cited rule IDs (e.g. the `validate-cited-rules` BR-24-003 gate), the MR **head commit message MUST carry the complete superset of rule citations required for the change** — every `BR-NN-NNN` ID and any required markers (e.g., the BR-24-049 "Maya review" marker). Additionally, the "Rulebook references" section of the MR description SHOULD list the same citations within the first ~2000 characters so they remain human-readable. Authors MUST NOT rely on citations placed deeper in the description; the gate computes `cited = head-commit-message ∪ MR description`, and only the head-commit component is deterministic. Applies to all MR pipelines in repos with citation gates; failure case: a fresh pipeline passes locally but fails (or silently omits citations) because the description was truncated.
+
+**Root cause (proven 2026-10-26, origin-auth BR-24-003 wave):** GitLab truncates `CI_MERGE_REQUEST_DESCRIPTION` at ~2048 characters. The `validate-cited-rules` gate reads `cited = head_commit_message ∪ MR_description`, so citations placed deeper in the description are invisible to CI even when the snapshot is fresh (MR updated_at 12:57:14 → pipeline created 12:57:20 = fresh, just truncated). Reproduction: truncating the description at 2000/2048/2500 chars reproduces the pipeline's cited set exactly; 1024/4096 do not.
+
+**Example head-commit trailer:**
+
+```
+Implement token introspection hardening
+
+- Add tenant scoping to introspection endpoint
+- Add revocation blacklist tests
+
+Cited-Rules: BR-24-003, BR-24-049
+```
+
+**Enforcement:**
+
+| Scenario | Action |
+|----------|--------|
+| MR citations appear only after character ~2048 of the description | Head commit MUST carry the full citation set (`Cited-Rules:` trailer) — the gate still passes |
+| Head commit carries no citations and description is truncated | Gate silently omits citations — reviewer MUST reject the MR and require a `Cited-Rules:` head-commit trailer |
+| Repo has no citation-validation CI gate | Pattern is recommended hygiene but not enforced |
+
 ### 7.3 Approvals
 
 - Reviewers approve via `scripts/oelite-gitlab.sh mr-approve` using their own PAT.
@@ -1753,6 +1778,7 @@ GitLab will re-evaluate mergeability automatically.
 | Sep 30 2026 | **Readiness & sync accuracy correction (BUG-045 / !57 review)**: §10.1 CI criterion now requires a matching head-SHA `head_pipeline` with `status == "success"` and fails closed — `merge_status == "can_be_merged"` is explicitly NOT CI evidence. §8.2.1 documents the three-axis `mr-status` report. §10.3 corrects auto-approval attribution (recorded under Emma's identity via the `emma` PAT). §1 Key Principles and §11 sync wording now match `worktree-sync`'s real behavior: refresh `origin/develop`, fast-forward local `develop` only when unchecked-out and non-divergent, preserve dirty/divergent checkouts. §9.5 adds the read-only `mr-show`, `pipeline-jobs`, and `pipeline-job-trace` commands. |
 | Nov 02 2026 | **Environment promotion chain (TASK-91)**: Added §2.1.2 Branch Promotion & Deployment Gates hard gate — codified `develop → uat → main` promotion MRs with source-branch restrictions, CI-enforced deploy-job branch `rules:` + `environment:` declarations, UAT soak gate before `uat → main` merges, SHA-tagged artifact continuity (prod deploys only images previously deployed to UAT), promotion MR ownership (Ethan/Emma), and Release Promotion MR template reference. §2.1/§2.1.1 updated to include `uat` as a protected permanent branch. §8.4 Definition of Done extended with release promotion checklist. |
 | Nov 02 2026 | **Promotion-gate propagation (TASK-92)**: Propagated §2.1.2 across the corpus per Isabella's documentation audit — §2.1.1 protected-branch setup runbook (per-branch merge roles, pipelines-must-succeed, approvals, verification); §2.1.2 hotfix path (rule 6a: `hotfix/*` from develop, same-chain promotion, soak compression only with recorded human authorization); new §2.1.3 Rollback Standard (immutable SHA tags, `kubectl rollout undo`, migration compensation, rollback authority, incident comms); new §8.7 Release Issue Lifecycle (REL-XXX transitions, canonical sign-off location, Emma closure rule); new §14.1 Pre-Promotion-MR checklist. Companion updates: `agents/core/principles.md` branch strategy, root `AGENTS.md` hard gates, `agents/packs/infrastructure.md` CI/CD requirements, `ISSUE-MR-TEMPLATES.md` §4.5 Release issue template + §6 `Release` label, role files (ethan/olivia/emma), oelite-stack README dedup. |
+| Nov 02 2026 | **Citation placement — head-commit superset (TASK-78)**: Added §7.2.1 — because GitLab truncates `CI_MERGE_REQUEST_DESCRIPTION` at ~2048 chars, the MR head commit message MUST carry the complete superset of cited rule IDs (e.g. `Cited-Rules: BR-24-003, BR-24-049`) for MRs running citation gates such as origin-auth's `validate-cited-rules`; MR descriptions SHOULD repeat citations within the first ~2000 chars for readability. Root-cause evidence (2026-10-26) recorded. Companion update: comment in `uranus/origin-auth/.gitlab-ci.yml` `validate-cited-rules` job referencing this section. |
 
 ---
 
