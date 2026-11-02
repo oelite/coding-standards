@@ -388,9 +388,9 @@ cmd_setup() {
     api_get "/user" "$pat"
 
     if [[ "$_API_STATUS" == "200" ]]; then
-      username=$(echo "$_API_RESPONSE" | json_get "username" "")
-      id=$(echo "$_API_RESPONSE" | json_get "id" "")
-      email=$(echo "$_API_RESPONSE" | json_get "email" "")
+      username=$(printf '%s' "$_API_RESPONSE" | json_get "username" "")
+      id=$(printf '%s' "$_API_RESPONSE" | json_get "id" "")
+      email=$(printf '%s' "$_API_RESPONSE" | json_get "email" "")
       printf "%-12s │ %-20s │ %-4s │ %-24s │ %s\n" "$agent" "$username" "$id" "$email" "OK"
     else
       printf "%-12s │ %-20s │ %-4s │ %-24s │ %s\n" "$agent" "—" "—" "—" "FAIL (HTTP $_API_STATUS)"
@@ -612,9 +612,9 @@ print(json.dumps(payload))
 
   if [[ "$_API_STATUS" == "201" ]]; then
     local iid issue_url issue_title
-    iid=$(echo "$_API_RESPONSE" | json_get "iid" "")
-    issue_url=$(echo "$_API_RESPONSE" | json_get "web_url" "")
-    issue_title=$(echo "$_API_RESPONSE" | json_get "title" "")
+    iid=$(printf '%s' "$_API_RESPONSE" | json_get "iid" "")
+    issue_url=$(printf '%s' "$_API_RESPONSE" | json_get "web_url" "")
+    issue_title=$(printf '%s' "$_API_RESPONSE" | json_get "title" "")
     echo "[OK] Issue created by $agent"
     echo "  IID:    #$iid"
     echo "  URL:    $issue_url"
@@ -648,7 +648,7 @@ cmd_issue_assign() {
 
   if [[ "$_API_STATUS" == "200" ]]; then
     local title
-    title=$(echo "$_API_RESPONSE" | json_get "title" "")
+    title=$(printf '%s' "$_API_RESPONSE" | json_get "title" "")
     echo "[OK] Issue #$iid assigned to $agent (${AGENT_USERNAMES[$agent]})"
     echo "  Title: $title"
   else
@@ -679,7 +679,7 @@ cmd_issue_comment() {
 
   if [[ "$_API_STATUS" == "201" ]]; then
     local note_id
-    note_id=$(echo "$_API_RESPONSE" | json_get "id" "")
+    note_id=$(printf '%s' "$_API_RESPONSE" | json_get "id" "")
     echo "[OK] Comment posted on issue #$iid by $agent (note_id: $note_id)"
   else
     echo "[ERROR] Failed to post comment (HTTP $_API_STATUS)" >&2
@@ -1666,8 +1666,8 @@ print(json.dumps(mr))
 
   if [[ "$_API_STATUS" == "201" ]]; then
     local mr_iid mr_url
-    mr_iid=$(echo "$_API_RESPONSE" | json_get "iid" "")
-    mr_url=$(echo "$_API_RESPONSE" | json_get "web_url" "")
+    mr_iid=$(printf '%s' "$_API_RESPONSE" | json_get "iid" "")
+    mr_url=$(printf '%s' "$_API_RESPONSE" | json_get "web_url" "")
     echo "[OK] Merge request created"
     echo "  IID:    !$mr_iid"
     echo "  URL:    $mr_url"
@@ -1742,7 +1742,7 @@ cmd_mr_comment() {
 
   if [[ "$_API_STATUS" == "201" ]]; then
     local note_id
-    note_id=$(echo "$_API_RESPONSE" | json_get "id" "")
+    note_id=$(printf '%s' "$_API_RESPONSE" | json_get "id" "")
     echo "[OK] Comment posted on MR !$mr_iid by $agent (note_id: $note_id)"
   else
     echo "[ERROR] Failed to post comment (HTTP $_API_STATUS)" >&2
@@ -2796,9 +2796,9 @@ cmd_mr_merge() {
 
   if [[ "$_API_STATUS" == "200" ]] || [[ "$_API_STATUS" == "201" ]]; then
     local state merged_at source_branch
-    state=$(echo "$_API_RESPONSE" | json_get "state" "")
-    merged_at=$(echo "$_API_RESPONSE" | json_get "merged_at" "")
-    source_branch=$(echo "$_API_RESPONSE" | json_get "source_branch" "")
+    state=$(printf '%s' "$_API_RESPONSE" | json_get "state" "")
+    merged_at=$(printf '%s' "$_API_RESPONSE" | json_get "merged_at" "")
+    source_branch=$(printf '%s' "$_API_RESPONSE" | json_get "source_branch" "")
     echo "[OK] MR !$mr_iid merged by $agent"
     echo "  State:      $state"
     echo "  Merged At:  $merged_at"
@@ -2848,7 +2848,7 @@ cmd_mr_close() {
 
   if [[ "$_API_STATUS" == "200" ]] || [[ "$_API_STATUS" == "201" ]]; then
     local state
-    state=$(echo "$_API_RESPONSE" | json_get "state" "")
+    state=$(printf '%s' "$_API_RESPONSE" | json_get "state" "")
     echo "[OK] MR !$mr_iid closed by $agent"
     echo "  State: $state"
   else
