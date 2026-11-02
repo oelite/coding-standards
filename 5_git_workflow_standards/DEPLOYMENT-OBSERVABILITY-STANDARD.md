@@ -3,7 +3,7 @@
 > **Owner**: Ethan (DevOps & Reliability)
 > **Companion standards**: `GIT-WORKFLOW-STANDARDS.md` §2.1.2 (promotion gates), §2.1.3 (rollback standard), §8.7 (release issue lifecycle)
 > **Companion runbook**: `infrastructure/oelite-stack/UAT-AVAILABILITY-RUNBOOK.md` (UAT peer availability SLAs)
-> **Status**: §7 SLOs are **proposed and pending BUSINESS-RULEBOOK §5 ratification** — treat the values as targets, not commitments, until ratified.
+> **Status**: §7 SLOs **ratified — see BUSINESS-RULEBOOK § 5**.
 
 This standard defines how deployments are **observed** after CI/CD ships them: how we watch rollouts, detect failure, page humans, verify health, and record evidence. It complements — does not replace — the promotion gates (§2.1.2) and rollback standard (§2.1.3) in `GIT-WORKFLOW-STANDARDS.md`.
 
@@ -169,9 +169,9 @@ A release issue MUST NOT be closed (`issue-status closed`) without this comment 
 
 ---
 
-## 7. Service-Level Objectives (SLOs) — PROPOSED, PENDING RATIFICATION
+## 7. Service-Level Objectives (SLOs) — ratified — see BUSINESS-RULEBOOK § 5
 
-> ⚠️ **These SLOs are proposals pending BUSINESS-RULEBOOK §5 ratification.** They are targets for planning, not commitments. Do not reference them as contractual until ratified.
+> ✅ **These SLOs are ratified (BUSINESS-RULEBOOK § 5).**
 
 | SLO | Proposed target | Scope |
 |-----|-----------------|-------|
