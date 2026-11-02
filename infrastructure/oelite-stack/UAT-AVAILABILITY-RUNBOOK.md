@@ -2,7 +2,7 @@
 
 > **Owner**: Ethan (DevOps & Reliability) · **Registry**: `infrastructure/oelite-stack/config/peer-registry.yml`
 > **Companion standard**: `1_dotNet_coding_standards/17-LOCAL-DEV-PEER-INTEGRATION.md`
-> **Business rules**: BR-DEV-001..006 (BUSINESS-RULEBOOK § 7)
+> **Business rules**: BR-DEV-001..006 (BUSINESS-RULEBOOK § 8)
 
 This runbook defines how the shared **UAT peer environment** is kept available
 and version-consistent for local development integration (`uat-peers` profile),
