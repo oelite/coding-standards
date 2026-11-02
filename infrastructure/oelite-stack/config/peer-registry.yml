@@ -1,0 +1,270 @@
+# =============================================================================
+# OElite Peer Service Registry — v1 (TASK-97, issue #97)
+# =============================================================================
+# Single source of truth for peer OElite platform service endpoints used by
+# local development integration profiles. Owned by Ethan (DevOps); changes
+# require an MR + Marcus architecture review (per Marcus's arbitration, #97).
+#
+# STRUCTURAL PROD-PREVENTION (Marcus Flag 3, fail-closed):
+#   There is NO prod endpoint field in this schema. Production deploys read
+#   peer endpoints from CI variables, never from this registry. Consumers must
+#   only ever resolve `mock-peers`, `local-peers`, or `uat-peers` profiles.
+#
+# Credential rule (AC-003 / BR-DEV-005): credentials are NEVER committed.
+# `credentials.source` names a per-machine Keychain service (or gitignored
+# secret file). Developers hold read-only or tenant-scoped-write UAT
+# credentials only — no admin/service-root UAT credentials on dev machines.
+#
+# Profile semantics (Marcus Flag 2 + Emma stakeholder decision 1):
+#   - mock-peers  : hermetic mocks for unit tests and CI (AC-004)
+#   - local-peers : platform default — peers resolve to localhost shared stack
+#   - uat-peers   : EXPLICIT opt-in; peers resolve to UAT endpoints
+#   Local dev FAILS FAST when a required peer is down (no degraded fallback).
+#   `critical: true` peers hard-fail; others fail with a clear error naming
+#   the peer + the health-check command to run.
+# =============================================================================
+
+schemaVersion: 1
+registryVersion: 1
+
+profiles:
+  mock-peers:
+    description: Hermetic in-process mocks; used by unit tests and CI pipelines.
+    endpointPattern: mock://
+    allowedInCi: true
+  local-peers:
+    description: Platform default. Peers resolve to the local shared stack (localhost).
+    endpointPattern: http://localhost
+    allowedInCi: false
+  uat-peers:
+    description: Explicit opt-in. Peers resolve to shared UAT endpoints (*.uat.phanes.ltd).
+    endpointPattern: "*.uat.phanes.ltd"
+    allowedInCi: false
+
+# -----------------------------------------------------------------------------
+# Peers — all endpoint hostnames MUST match *.uat.phanes.ltd for uat channel.
+# Fields per Marcus's final spec (#97 note 58413 §5):
+#   contractVersion : version of the peer's API contract this registry pins
+#   minVersion      : minimum peer version consumers may integrate against
+#   channel         : release channel consumed (stable only, v1)
+#   critical        : when true, peers-health/startup hard-fails if peer is down
+#   mutability      : read-only | tenant-scoped | mutable
+#   testTenantId    : reserved UAT test tenant for dev writes (BR-DEV-005)
+#   resetPolicy     : weekly | monthly | manual — tenant data reset cadence
+#   credentials     : where credentials live (Keychain source; never committed)
+# -----------------------------------------------------------------------------
+peers:
+  - name: origin-auth
+    displayName: Origin Auth (IAM)
+    description: Central identity provider — JWT RS256 issuance/validation/revocation.
+    repository: oelite/uranus/origin-auth
+    endpoints:
+      uat: https://origin-auth.uat.phanes.ltd
+      local: http://localhost:50010
+    contractUrl: https://origin-auth.uat.phanes.ltd/openapi/v1.json
+    contractVersion: "1.4"
+    minVersion: "1.2"
+    channel: stable
+    critical: true
+    mutability: tenant-scoped
+    testTenantId: uat-dev-tenant
+    resetPolicy: weekly
+    credentials:
+      source: keychain
+      keychainService: oelite-uat-origin-auth
+      scopes:
+        - openid
+        - profile
+        - oelite.api.read
+    healthEndpoint: /health
+    versionEndpoint: /version
+
+  - name: kortex
+    displayName: Kortex (Edge / DNS / Object Storage / CDN / Proxy)
+    description: Edge auth proxy, versioned routes, object storage and CDN.
+    repository: oelite/helios/kortex
+    endpoints:
+      uat: https://kortex.uat.phanes.ltd
+      local: http://localhost:50011
+    contractUrl: https://kortex.uat.phanes.ltd/openapi/v1.json
+    contractVersion: "2.1"
+    minVersion: "2.0"
+    channel: stable
+    critical: false
+    mutability: tenant-scoped
+    testTenantId: uat-dev-tenant
+    resetPolicy: weekly
+    credentials:
+      source: keychain
+      keychainService: oelite-uat-kortex
+      scopes:
+        - kortex.object.read
+        - kortex.object.write
+    healthEndpoint: /health
+    versionEndpoint: /version
+
+  - name: nexus
+    displayName: Nexus (Commerce)
+    description: Commerce platform services — catalog, orders, pricing.
+    repository: oelite/helios/nexus
+    endpoints:
+      uat: https://nexus.uat.phanes.ltd
+      local: http://localhost:50018
+    contractUrl: https://nexus.uat.phanes.ltd/openapi/v1.json
+    contractVersion: "3.2"
+    minVersion: "3.0"
+    channel: stable
+    critical: false
+    mutability: tenant-scoped
+    testTenantId: uat-dev-tenant
+    resetPolicy: weekly
+    credentials:
+      source: keychain
+      keychainService: oelite-uat-nexus
+      scopes:
+        - nexus.api.read
+        - nexus.api.write
+    healthEndpoint: /health
+    versionEndpoint: /version
+
+  - name: oesterling
+    displayName: OeSterling (Blockchain)
+    description: Blockchain ledger, wallets, token operations.
+    repository: oelite/helios/oesterling
+    endpoints:
+      uat: https://oesterling.uat.phanes.ltd
+      local: http://localhost:50012
+    contractUrl: https://oesterling.uat.phanes.ltd/openapi/v1.json
+    contractVersion: "1.7"
+    minVersion: "1.5"
+    channel: stable
+    critical: false
+    mutability: tenant-scoped
+    testTenantId: uat-dev-wallet
+    resetPolicy: weekly
+    credentials:
+      source: keychain
+      keychainService: oelite-uat-oesterling
+      scopes:
+        - oesterling.wallet.read
+        - oesterling.wallet.testnet
+    healthEndpoint: /health
+    versionEndpoint: /version
+
+  - name: apex
+    displayName: Apex (Billing)
+    description: Billing, subscriptions, invoicing.
+    repository: oelite/jupiter/apex
+    endpoints:
+      uat: https://apex.uat.phanes.ltd
+      local: http://localhost:50013
+    contractUrl: https://apex.uat.phanes.ltd/openapi/v1.json
+    contractVersion: "2.4"
+    minVersion: "2.2"
+    channel: stable
+    critical: false
+    mutability: tenant-scoped
+    testTenantId: uat-dev-tenant
+    resetPolicy: monthly
+    credentials:
+      source: keychain
+      keychainService: oelite-uat-apex
+      scopes:
+        - apex.billing.read
+        - apex.billing.testdata
+    healthEndpoint: /health
+    versionEndpoint: /version
+
+  - name: synapse
+    displayName: Synapse (AI Assistant)
+    description: AI assistant orchestration services.
+    repository: oelite/mercury/synapse
+    endpoints:
+      uat: https://synapse.uat.phanes.ltd
+      local: http://localhost:50014
+    contractUrl: https://synapse.uat.phanes.ltd/openapi/v1.json
+    contractVersion: "1.3"
+    minVersion: "1.1"
+    channel: stable
+    critical: false
+    mutability: tenant-scoped
+    testTenantId: uat-dev-tenant
+    resetPolicy: weekly
+    credentials:
+      source: keychain
+      keychainService: oelite-uat-synapse
+      scopes:
+        - synapse.assistant.invoke
+    healthEndpoint: /health
+    versionEndpoint: /version
+
+  - name: obelisk
+    displayName: Obelisk (Mail)
+    description: Transactional mail delivery and mailbox services.
+    repository: oelite/venus/obelisk
+    endpoints:
+      uat: https://obelisk.uat.phanes.ltd
+      local: http://localhost:50015
+    contractUrl: https://obelisk.uat.phanes.ltd/openapi/v1.json
+    contractVersion: "1.6"
+    minVersion: "1.4"
+    channel: stable
+    critical: false
+    mutability: mutable
+    testTenantId: uat-dev-mailbox
+    resetPolicy: weekly
+    credentials:
+      source: keychain
+      keychainService: oelite-uat-obelisk
+      scopes:
+        - obelisk.mail.send
+        - obelisk.mail.read
+    healthEndpoint: /health
+    versionEndpoint: /version
+
+  - name: hermes
+    displayName: Hermes (AI Inference)
+    description: AI inference gateway — model routing and completion endpoints.
+    repository: oelite/uranus/hermes
+    endpoints:
+      uat: https://hermes.uat.phanes.ltd
+      local: http://localhost:50016
+    contractUrl: https://hermes.uat.phanes.ltd/openapi/v1.json
+    contractVersion: "2.0"
+    minVersion: "1.9"
+    channel: stable
+    critical: false
+    mutability: read-only
+    testTenantId: uat-dev-tenant
+    resetPolicy: manual
+    credentials:
+      source: keychain
+      keychainService: oelite-uat-hermes
+      scopes:
+        - hermes.inference.invoke
+    healthEndpoint: /health
+    versionEndpoint: /version
+
+  - name: orion
+    displayName: Orion (Monitoring / Logging / Orchestration)
+    description: Platform monitoring, logging aggregation, and orchestration.
+    repository: oelite/uranus/orion
+    endpoints:
+      uat: https://orion.uat.phanes.ltd
+      local: http://localhost:50017
+    contractUrl: https://orion.uat.phanes.ltd/openapi/v1.json
+    contractVersion: "1.2"
+    minVersion: "1.0"
+    channel: stable
+    critical: false
+    mutability: read-only
+    testTenantId: uat-dev-tenant
+    resetPolicy: manual
+    credentials:
+      source: keychain
+      keychainService: oelite-uat-orion
+      scopes:
+        - orion.logs.read
+        - orion.metrics.read
+    healthEndpoint: /health
+    versionEndpoint: /version

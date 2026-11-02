@@ -4,6 +4,34 @@
 stages:
   - test
 
+validate-peer-registry:
+  stage: test
+  image: python:3.12-alpine
+  before_script:
+    - pip install --no-cache-dir pyyaml jsonschema
+  script:
+    - python3 -c "import yaml, jsonschema, json; data=yaml.safe_load(open('infrastructure/oelite-stack/config/peer-registry.yml')); schema=json.load(open('infrastructure/oelite-stack/config/peer-registry.schema.json')); jsonschema.validate(instance=data, schema=schema); print('peer-registry.yml validates against peer-registry.schema.json')"
+  rules:
+    - changes:
+        - infrastructure/oelite-stack/config/peer-registry.yml
+        - infrastructure/oelite-stack/config/peer-registry.schema.json
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
+    - if: '$CI_COMMIT_BRANCH == "develop"'
+  timeout: 5m
+
+peers-health-check:
+  stage: test
+  image: mcr.microsoft.com/dotnet/sdk:8.0-alpine
+  script:
+    # Run against UAT peers — non-blocking warning so UAT outages don't block standards merges.
+    # Registry validation above is the blocking gate; this job provides visibility.
+    - dotnet run --project scripts/tools/peers-health/peers-health.csproj --configuration Release -- --profile uat-peers || true
+  allow_failure: true
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
+    - if: '$CI_COMMIT_BRANCH == "develop"'
+  timeout: 5m
+
 scripts-regression:
   stage: test
   image: alpine:3.20

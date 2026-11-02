@@ -1,0 +1,111 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://code.phanes.ltd/oelite/coding-standards/-/raw/develop/infrastructure/oelite-stack/config/peer-registry.schema.json",
+  "title": "OElite Peer Service Registry",
+  "description": "Schema for infrastructure/oelite-stack/config/peer-registry.yml (TASK-97). Prod endpoints are structurally absent — there is no field that could hold one.",
+  "type": "object",
+  "required": ["schemaVersion", "registryVersion", "profiles", "peers"],
+  "additionalProperties": false,
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "registryVersion": { "type": "integer", "minimum": 1 },
+    "profiles": {
+      "type": "object",
+      "required": ["mock-peers", "local-peers", "uat-peers"],
+      "additionalProperties": false,
+      "properties": {
+        "mock-peers": { "$ref": "#/$defs/profile" },
+        "local-peers": { "$ref": "#/$defs/profile" },
+        "uat-peers": { "$ref": "#/$defs/profile" }
+      }
+    },
+    "peers": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/$defs/peer" }
+    }
+  },
+  "$defs": {
+    "profile": {
+      "type": "object",
+      "required": ["description", "endpointPattern", "allowedInCi"],
+      "additionalProperties": false,
+      "properties": {
+        "description": { "type": "string", "minLength": 1 },
+        "endpointPattern": { "type": "string", "minLength": 1 },
+        "allowedInCi": { "type": "boolean" }
+      }
+    },
+    "peer": {
+      "type": "object",
+      "required": [
+        "name", "displayName", "description", "repository", "endpoints",
+        "contractUrl", "contractVersion", "minVersion", "channel", "critical",
+        "mutability", "testTenantId", "resetPolicy", "credentials",
+        "healthEndpoint", "versionEndpoint"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9-]*$",
+          "description": "kebab-case peer identifier"
+        },
+        "displayName": { "type": "string", "minLength": 1 },
+        "description": { "type": "string", "minLength": 1 },
+        "repository": { "type": "string", "pattern": "^oelite/[a-z0-9-]+/[a-z0-9-]+$" },
+        "endpoints": {
+          "type": "object",
+          "required": ["uat", "local"],
+          "additionalProperties": false,
+          "description": "PROD IS NOT A FIELD, BY CONSTRUCTION (Marcus Flag 3).",
+          "properties": {
+            "uat": {
+              "type": "string",
+              "pattern": "^https://[a-z0-9.-]+\\.uat\\.phanes\\.ltd$",
+              "description": "Fail-closed: must be a *.uat.phanes.ltd host"
+            },
+            "local": {
+              "type": "string",
+              "pattern": "^http://localhost:[0-9]{4,5}$",
+              "description": "Must be a localhost URL with fixed canonical port"
+            }
+          }
+        },
+        "contractUrl": { "type": "string", "format": "uri" },
+        "contractVersion": { "$ref": "#/$defs/semver" },
+        "minVersion": { "$ref": "#/$defs/semver" },
+        "channel": { "const": "stable" },
+        "critical": { "type": "boolean" },
+        "mutability": { "enum": ["read-only", "tenant-scoped", "mutable"] },
+        "testTenantId": { "type": "string", "minLength": 1 },
+        "resetPolicy": { "enum": ["weekly", "monthly", "manual"] },
+        "credentials": {
+          "type": "object",
+          "required": ["source"],
+          "additionalProperties": false,
+          "properties": {
+            "source": { "enum": ["keychain"] },
+            "keychainService": {
+              "type": "string",
+              "pattern": "^oelite-uat-[a-z0-9-]+$",
+              "description": "macOS Keychain service name — credentials are never committed (AC-003)"
+            },
+            "scopes": {
+              "type": "array",
+              "items": { "type": "string", "minLength": 1 },
+              "minItems": 1,
+              "description": "Least-privilege scopes; tenant-scoped write only (BR-DEV-005)"
+            }
+          }
+        },
+        "healthEndpoint": { "type": "string", "pattern": "^/" },
+        "versionEndpoint": { "type": "string", "pattern": "^/" }
+      }
+    },
+    "semver": {
+      "type": "string",
+      "pattern": "^[0-9]+\\.[0-9]+(\\.[0-9]+)?$"
+    }
+  }
+}
