@@ -332,6 +332,68 @@ else
   fail "guard helper missing from wrapper"
 fi
 
+# ────────────────────────────────────────────────────────────────────
+# TASK-STD (#67 watch item 3): mr-create printed empty IID/URL despite a
+# successful server-side create. Root cause: `echo "$_API_RESPONSE"` in zsh
+# interprets backslash escapes, mangling JSON whose strings contain escaped
+# quotes/newlines (standard for MR payloads with titles/descriptions), so
+# json_get failed and printed the empty default. All 16 json_get call sites
+# now pipe via `printf '%s'` (escape-safe). Tests:
+#   — TEST 14: json_get extracts iid/web_url from an escape-laden MR payload
+#     via BOTH transports (echo shows the bug, printf is the fix)
+#   — TEST 15: cmd_mr_create success path prints real IID/URL (api_post
+#     stubbed with the exact GitLab 201 response shape)
+# ────────────────────────────────────────────────────────────────────
+
+MR_PAYLOAD='{"iid": 999, "web_url": "https://code.phanes.ltd/oelite/x/-/merge_requests/999", "title": "fix: don'\''t \\\"break\\\"", "description": "line1\nline2 C:\\path"}'
+
+print "\nTEST 14 (#67): json_get on escape-laden MR payload — printf vs echo"
+VIA_PRINTF=$(printf '%s' "$MR_PAYLOAD" | json_get iid "")
+VIA_PRINTF_URL=$(printf '%s' "$MR_PAYLOAD" | json_get web_url "")
+if [[ "$VIA_PRINTF" == "999" ]]; then
+  pass "printf transport: iid extracted (got: $VIA_PRINTF)"
+else
+  fail "printf transport: iid expected 999, got: [$VIA_PRINTF]"
+fi
+if [[ "$VIA_PRINTF_URL" == "https://code.phanes.ltd/oelite/x/-/merge_requests/999" ]]; then
+  pass "printf transport: web_url extracted"
+else
+  fail "printf transport: web_url mangled, got: [$VIA_PRINTF_URL]"
+fi
+VIA_ECHO=$(echo "$MR_PAYLOAD" | json_get iid "")
+if [[ -z "$VIA_ECHO" ]]; then
+  pass "echo transport reproduces the bug (empty output) — confirms root cause"
+else
+  # Not fatal: escape interpretation differs by zsh option (BSD_ECHO). The
+  # printf path above is the invariant that matters.
+  pass "echo transport parsed on this host (BSD_ECHO mode) — printf still canonical"
+fi
+# Call-site invariant: no `echo "$_API_RESPONSE" | json_get` remains anywhere.
+if grep -q 'echo "$_API_RESPONSE" | json_get' "$WRAPPER"; then
+  fail "wrapper still pipes _API_RESPONSE through echo into json_get"
+else
+  pass "all json_get call sites use printf '%s' transport"
+fi
+
+print "\nTEST 15 (#67): cmd_mr_create prints real IID/URL on 201 (api_post stubbed)"
+MR_IID_OUT=""
+MR_URL_OUT=""
+api_post() { _API_STATUS="201"; _API_RESPONSE="$MR_PAYLOAD"; }
+OUT="$(cmd_mr_create oelite/x ethan feature/a develop "t" "d" 2>&1)"
+MR_IID_OUT="${OUT[(r)IID:*]#IID:    !}"
+MR_URL_OUT="${OUT[(r)URL:*]#URL:    }"
+if [[ "$OUT" == *"IID:    !999"* ]]; then
+  pass "output shows real IID !999"
+else
+  fail "output missing IID !999, got: [$OUT]"
+fi
+if [[ "$OUT" == *"https://code.phanes.ltd/oelite/x/-/merge_requests/999"* ]]; then
+  pass "output shows real web_url"
+else
+  fail "output missing web_url, got: [$OUT]"
+fi
+unset -f api_post
+
 print ""
 print "════════════════════════════════════"
 print "Results: $PASS passed, $FAIL failed"
