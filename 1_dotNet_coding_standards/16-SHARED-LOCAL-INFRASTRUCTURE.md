@@ -135,7 +135,7 @@ No application code changes are required — connection string is the only edit.
 
 ## What This Standard Does NOT Cover
 
-- **Production infrastructure** (Kubernetes, CI/CD, cloud deployments) — see `agents/packs/infrastructure.md`
+- **Production infrastructure** (Kubernetes, CI/CD, cloud deployments) — see `agents/packs/infrastructure.md` for CI/CD pipeline requirements, and `5_git_workflow_standards/GIT-WORKFLOW-STANDARDS.md` §2.1.2 ("Branch Promotion & Deployment Gates") for the promotion-gate standard governing develop → uat → main deployments
 - **Application-level sharding decisions** (which collections to shard, which shard keys) — owned by each app
 - **Cross-region replication** — not needed in local dev
 

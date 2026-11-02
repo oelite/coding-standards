@@ -358,10 +358,6 @@ mechanism. That is the only supported path for a new local-dev dependency.
 
 CI/CD pipelines **must not** spin up these services. Use `Category!=Integration` filter on `dotnet test`. See `coding-standards/1_dotNet_coding_standards/14-TESTING-STANDARDS.md` for the full test categorization rules.
 
-## CI/CD
-
-CI/CD pipelines **must not** spin up these services. Use `Category!=Integration` filter on `dotnet test`. See `coding-standards/1_dotNet_coding_standards/14-TESTING-STANDARDS.md` for the full test categorization rules.
-
 ## Remote K8s Clusters (UAT / Production)
 
 Per-environment remote cluster configs live under `clusters/` and are **gitignored** (they contain kubeconfigs and credentials). Only high-privilege operators place these files locally; they are **never committed**.

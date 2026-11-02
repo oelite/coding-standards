@@ -240,6 +240,18 @@ Every team member has a unique GitLab identity. AI agents commit under the team 
 
 This prevents accidental direct commits even if an agent bypasses the pre-commit hook. Configure in GitLab: **Settings > Repository > Protected Branches**.
 
+#### Protected-branch setup runbook (per repo — owner: Ethan, at repo provisioning)
+
+| Setting | `develop` | `uat` | `main` |
+|---------|-----------|-------|--------|
+| Allowed to merge | Reviewers/Maintainers | Ethan, Emma | Ethan or human owner |
+| Allowed to push and merge | No one (MR only) | No one (MR only) | No one (MR only) |
+| Allowed to force push | No | No | No |
+| Pipelines must succeed | Yes | Yes | Yes |
+| Approvals required | Per change type (§7.3) | ≥1 | ≥1 |
+
+**Verification** (after configuration): read back the settings via `scripts/oelite-gitlab.sh project-approvals <project>`, and confirm a direct push to each protected branch is rejected (`git push origin <branch>` from a scratch commit must fail server-side).
+
 ### 2.1.2 Branch Promotion & Deployment Gates (Hard Gate)
 
 **This is a non-negotiable gate. No environment is deployed from the wrong branch, and no environment is skipped.**
@@ -258,7 +270,29 @@ feature/* ──MR──▶ develop ──promotion MR──▶ uat ──releas
 3. **UAT soak gate.** A `uat → main` release MR MUST NOT be merged until: (a) the UAT deployment pipeline on the `uat` branch is green, (b) the UAT health check passed (`./oelite-stack.sh cluster UAT health` or the service health endpoint), and (c) Olivia/Isabella validation is recorded on the release issue. This is the deployment analogue of the Olivia-before-`Ready to Merge` chain (§8.3).
 4. **Artifact continuity.** Docker images are built ONCE (tagged with the commit SHA) when the MR merges into `develop`. `deploy_uat` and `deploy_prod` deploy that exact SHA tag — never rebuild per environment. `deploy_prod` MUST fail if the image SHA was not previously deployed to UAT. This makes it structurally impossible for code to reach Production that never passed UAT.
 5. **Traceability.** Promotion MRs MUST reference a release issue (e.g., `[REL-00X] Promote to UAT — sprint N release`) created via `issue-create`. Use the Release Promotion MR template (`ISSUE-MR-TEMPLATES.md` §5.1).
-6. **Ownership.** Promotion MRs are created by **Ethan** (or Emma) via `scripts/oelite-gitlab.sh mr-create <project> ethan develop uat "..."`. Implementing agents never create promotion MRs. Hotfix exception: for a Critical production incident, a hotfix branch MAY be merged to `develop` first, then promoted through the same chain — never directly to `uat`/`main`.
+6. **Ownership.** Promotion MRs are created by **Ethan** (or Emma) via `scripts/oelite-gitlab.sh mr-create <project> ethan develop uat "..."`. Implementing agents never create promotion MRs.
+
+#### Hotfix path (rule 6a)
+
+For a Critical production incident, the hotfix path is:
+
+1. Branch `hotfix/<BUG-XXX>-<short-description>` **from `develop`** (never from `main` or `uat`).
+2. Fix in a worktree per the standard protocol (§4); the fix MR targets `develop` and passes the normal review chain.
+3. After the fix merges to `develop`, promote through the **same chain** — `develop → uat → main` via promotion MRs. Hotfixes never target `uat`/`main` directly.
+4. **UAT soak compression**: the UAT soak gate (rule 3) MAY be compressed only with **explicit human business-owner authorization recorded on the release issue**. It is never skipped silently; an unauthorized skip is a workflow violation.
+5. If Production is already affected, execute the rollback standard (§2.1.3) in parallel with the hotfix chain.
+
+### 2.1.3 Rollback Standard
+
+Every deployable service MUST support rollback to the last known-good release:
+
+| Rule | Detail |
+|------|--------|
+| **Immutable tags** | Deploy by immutable SHA-tagged image only (§2.1.2 rule 4). Never deploy `latest` or mutable tags to `uat`/`main` environments. |
+| **Rollback procedure** | `kubectl --kubeconfig <env-kubeconfig> -n <namespace> rollout undo deploy/<name>` — restores the previous ReplicaSet. Verify with `kubectl rollout status`. |
+| **DB migrations** | Forward-only migrations REQUIRE a compensating migration before the release MR merges; the release issue (§8.7) records the migration + compensation pair. Never roll back an app past an unreversed breaking migration. |
+| **Rollback authority** | Ethan executes rollbacks; the human business owner (or Emma's delegate) authorizes Production rollbacks. UAT rollbacks are at Ethan's discretion. |
+| **Incident comms** | The release issue (§8.7) records what was rolled back, why, and the follow-up plan — this is the incident log of record. |
 
 #### CI/CD deploy job requirements (machine enforcement)
 
@@ -991,6 +1025,24 @@ Blocked by: [specific dependency or issue]
 
 **Note:** Label changes (In Progress, PR Review, Ready to Merge, Blocked) are managed via GitLab UI or API. The CLI `issue-status` command handles the binary open/close state.
 
+### 8.7 Release Issue Lifecycle (REL-XXX)
+
+Release issues (REL-XXX, created from the Release issue template — `ISSUE-MR-TEMPLATES.md` §4.5) bundle merged feature/bug issues into a single deployable release and follow the promotion chain in §2.1.2. This subsection defines their lifecycle; bundled feature issues follow the standard §8 lifecycle independently — the release issue does NOT replace or gate their individual transitions.
+
+**Creation:** Ethan or Emma creates the REL issue at promotion time (§2.1.2 rule 5), via `issue-create` with the Release template.
+
+**Transitions:**
+
+| Transition | Trigger | Who |
+|------------|---------|-----|
+| → `In Progress` | `develop → uat` promotion MR created | Ethan (promotion MR owner) |
+| → `Ready to Merge` | UAT soak gate satisfied (§2.1.2 rule 3): UAT pipeline green, UAT health passed, Olivia + Isabella sign-offs recorded ON THE RELEASE ISSUE | Reviewer (Ethan or Emma), after verifying sign-offs |
+| → `Done` + **Closed** | Production deploy verified (`mr-status` confirms the `uat → main` MR merged) AND post-deploy health check passed | Emma |
+
+**Sign-offs:** Olivia's and Isabella's UAT validations are recorded as comments **on the release issue** — this is the canonical location. The Release Promotion MR template (§5.1) checkboxes reference these comments; they are evidence pointers, not alternative record locations.
+
+**Closure:** Emma closes the REL issue via `issue-status closed` after prod verification, applying the same-session closure rule (§8.2.2): verification and closure happen in the same session.
+
 ---
 
 ## 9. CLI Tool Reference
@@ -1551,6 +1603,25 @@ Before creating an MR, the agent **MUST** verify every item below. No MR should 
 - [ ] Local develop synced: `scripts/oelite-gitlab.sh worktree-sync`
 - [ ] **Post-merge audit**: `issue-audit <project>` run to confirm no orphaned open issues
 
+## 14.1 Pre-Promotion-MR Checklist (Promotion MRs only — §2.1.2)
+
+For `develop → uat` and `uat → main` promotion MRs, Ethan or Emma MUST verify:
+
+- [ ] Source branch is correct: `uat` ← `develop` only, `main` ← `uat` only (§2.1.2 rule 1)
+- [ ] Release issue (REL-XXX) exists and is referenced in the MR (`Closes #<rel-iid>`)
+- [ ] For `develop → uat`: `develop` CI pipeline green on the merge SHA, image tagged with commit SHA in registry
+- [ ] For `uat → main`: UAT soak gate satisfied (§2.1.2 rule 3) — UAT pipeline green, UAT health check passed (`./oelite-stack.sh cluster UAT health`), Olivia sign-off recorded **on the release issue**, Isabella sign-off recorded **on the release issue**
+- [ ] `deploy_uat`/`deploy_prod` jobs exist with branch `rules:` and `environment:` declarations (§2.1.2 rule 2)
+- [ ] Docker image SHA tag is the exact same one deployed to UAT — never rebuild per environment (§2.1.2 rule 4)
+
+### Post-Promotion-MR Actions
+
+- [ ] **Merge verified**: `mr-status <project> <mr-iid>` confirms `merged` state
+- [ ] UAT deployment pipeline succeeded on `uat` branch (for develop→uat)
+- [ ] Production deploy triggered manually and succeeded (for uat→main)
+- [ ] Release issue closed via `issue-status closed` (per §8.7)
+- [ ] Post-deploy health check passed on the target environment
+
 ---
 
 ## 15. Commit Message Convention
@@ -1681,6 +1752,7 @@ GitLab will re-evaluate mergeability automatically.
 | Jul 21 2026 | **Issue-First & Closure Enforcement**: Added §1.7 Issue-First hard gate — no work begins without a GitLab issue with full elaboration. Added §8.2.1 Merge Verification (mandatory `mr-status` check before labeling `Done`). Added §8.2.2 Issue Closure Enforcement (`issue-status closed` in same session as merge verification). Added §8.2.3 Post-Merge Issue Audit (`issue-audit` CLI). Updated §8.3 role responsibilities (Emma verifies merge + closes; Reviewer verifies merge; Isabella runs audit). Updated §8.4 Definition of Done with closure + audit checkboxes. Updated §14 Post-MR checklist with merge verification + closure steps. Added `mr-status` and `issue-audit` CLI commands. |
 | Sep 30 2026 | **Readiness & sync accuracy correction (BUG-045 / !57 review)**: §10.1 CI criterion now requires a matching head-SHA `head_pipeline` with `status == "success"` and fails closed — `merge_status == "can_be_merged"` is explicitly NOT CI evidence. §8.2.1 documents the three-axis `mr-status` report. §10.3 corrects auto-approval attribution (recorded under Emma's identity via the `emma` PAT). §1 Key Principles and §11 sync wording now match `worktree-sync`'s real behavior: refresh `origin/develop`, fast-forward local `develop` only when unchecked-out and non-divergent, preserve dirty/divergent checkouts. §9.5 adds the read-only `mr-show`, `pipeline-jobs`, and `pipeline-job-trace` commands. |
 | Nov 02 2026 | **Environment promotion chain (TASK-91)**: Added §2.1.2 Branch Promotion & Deployment Gates hard gate — codified `develop → uat → main` promotion MRs with source-branch restrictions, CI-enforced deploy-job branch `rules:` + `environment:` declarations, UAT soak gate before `uat → main` merges, SHA-tagged artifact continuity (prod deploys only images previously deployed to UAT), promotion MR ownership (Ethan/Emma), and Release Promotion MR template reference. §2.1/§2.1.1 updated to include `uat` as a protected permanent branch. §8.4 Definition of Done extended with release promotion checklist. |
+| Nov 02 2026 | **Promotion-gate propagation (TASK-92)**: Propagated §2.1.2 across the corpus per Isabella's documentation audit — §2.1.1 protected-branch setup runbook (per-branch merge roles, pipelines-must-succeed, approvals, verification); §2.1.2 hotfix path (rule 6a: `hotfix/*` from develop, same-chain promotion, soak compression only with recorded human authorization); new §2.1.3 Rollback Standard (immutable SHA tags, `kubectl rollout undo`, migration compensation, rollback authority, incident comms); new §8.7 Release Issue Lifecycle (REL-XXX transitions, canonical sign-off location, Emma closure rule); new §14.1 Pre-Promotion-MR checklist. Companion updates: `agents/core/principles.md` branch strategy, root `AGENTS.md` hard gates, `agents/packs/infrastructure.md` CI/CD requirements, `ISSUE-MR-TEMPLATES.md` §4.5 Release issue template + §6 `Release` label, role files (ethan/olivia/emma), oelite-stack README dedup. |
 
 ---
 

@@ -120,6 +120,8 @@ Every completed task MUST include the sections below. **Reviewers MUST reject an
 | External blocker encountered | `In Progress` → `Blocked` | Assignee |
 | External blocker resolved | `Blocked` → `In Progress` | Assignee |
 
+**Release-issue (REL-XXX) triggers** (per `GIT-WORKFLOW-STANDARDS.md` §8.7): `develop → uat` promotion MR created → `In Progress` (Ethan); UAT soak gate satisfied with Olivia + Isabella sign-offs recorded on the release issue → `Ready to Merge`; production deploy verified + health check passed → `Done` + closed by Emma (same session). Bundled feature issues follow the standard lifecycle above independently.
+
 **Closure rule:** Only Emma may close an issue, and only after:
 1. MR merge is **verified** via `mr-status` (not assumed)
 2. **Isabella's pre-development documentation gate** passed (documentation updated BEFORE development)
