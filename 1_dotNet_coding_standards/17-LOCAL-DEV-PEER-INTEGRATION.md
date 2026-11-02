@@ -98,6 +98,12 @@ Rules:
 - `dev-<username>-local` UAT IAM clients only; never the shared UAT acceptance client (BR-DEV-005).
 - Short-lived dynamic credentials (token minting via Origin Auth) are **V2 — TBD, pending Emma + Ethan joint sign-off**. Do not implement in v1.
 
+## Dynamic Peer Credentials (V2 — Cross-Reference)
+
+When a peer's registry entry sets `credentials.mode: dynamic`, UAT peer credentials are **minted** (not loaded): the `DynamicPeerCredentialProvider` performs an Origin Auth **client-credentials** grant with the per-developer `dev-<username>-local` IAM client, requesting exactly the registry-declared `credentials.scopes`, with a **TTL ≤ 15 min** and proactive refresh at **80% of TTL**, cached under `oelite/peer/<peerName>/uat-token`.
+
+This document remains the source of truth for the **static** path (registry resolution, profile rules, Keychain loading, `peers-health` pre-flight). The **normative spec for the dynamic path** — provider selection by registry `credentials.mode`, minting flow, caching/refresh semantics, fail-closed behavior per BR-DEV-006, clock-skew and retry policy, and unit-test guidance — lives in **`18-DYNAMIC-PEER-CREDENTIALS.md`**. Read both before implementing dynamic-mode peer integration.
+
 ## Restart Required (No Hot-Swap in v1)
 
 Changing any value in the resolution chain (env vars, appsettings) requires an **application restart**. The profile snapshot is resolved once at startup and frozen into the DI container. There is no hot-reload of peer profiles in v1; on-profile-change detection is a V2 candidate. Document this in developer onboarding — a "changed env var but nothing happened" session is almost always a stale process.
@@ -173,3 +179,4 @@ Unit tests and CI pipelines run hermetically under `mock-peers` only. CI must ne
 | Date | Author | Change |
 |---|---|---|
 | 2026-11-02 | Daniel | Initial creation — implements Marcus's final arbitration spec on #97 (Flags 1–3), amended by Emma's stakeholder decisions (fail-fast over degraded mode; per-developer IAM clients; V2 short-lived creds pending sign-off). Issue #97. |
+| 2026-11-02 | Daniel | Added § Dynamic Peer Credentials (V2) cross-reference to `18-DYNAMIC-PEER-CREDENTIALS.md` per the approved joint sign-off on #99. Issue #99. |

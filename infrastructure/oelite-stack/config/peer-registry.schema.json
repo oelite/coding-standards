@@ -86,6 +86,11 @@
           "additionalProperties": false,
           "properties": {
             "source": { "enum": ["keychain"] },
+            "mode": {
+              "enum": ["static", "dynamic"],
+              "default": "static",
+              "description": "static (default): per-machine Keychain entries on the 90-day rotation SLA. dynamic (V2, TASK-99): short-lived tokens minted via Origin Auth client-credentials (TTL <= 15 min, refresh at 80% TTL) — see 1_dotNet_coding_standards/18-DYNAMIC-PEER-CREDENTIALS.md"
+            },
             "keychainService": {
               "type": "string",
               "pattern": "^oelite-uat-[a-z0-9-]+$",
