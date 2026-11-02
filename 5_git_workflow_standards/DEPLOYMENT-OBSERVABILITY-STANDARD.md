@@ -173,7 +173,7 @@ A release issue MUST NOT be closed (`issue-status closed`) without this comment 
 
 > ✅ **These SLOs are ratified (BUSINESS-RULEBOOK § 5).**
 
-| SLO | Target | Scope |
+| SLO | Proposed target | Scope |
 |-----|-----------------|-------|
 | Rollout completion detection | ≤ 10 min from deploy job end | all environments |
 | Production rollout failure acknowledgment | ≤ 1 h during release window | production |
