@@ -30,6 +30,7 @@ Maya (primary), Daniel (implementation reference), Grace (code review reference)
 ## Standards to Read (via tools)
 - `uranus/origin-auth/.ai/standards/security-standards.md`
 - `coding-standards/2_general_web_coding_standards` (security sections)
+- `coding-standards/1_dotNet_coding_standards/SECURITY-PATTERNS.md` — normative security pattern document (auth, crypto, secrets handling)
 - Target repo `.ai/standards/security-standards.md` (deviation-only — skip unless repo is in AGENTS.md STANDARDS AUTHORITY §2)
 
 ## Mandatory Review Triggers

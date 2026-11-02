@@ -16,6 +16,8 @@ The three profiles are engineering names (the business rules are BR-DEV-001..006
 | `local-peers` | Peers run locally (you are developing a peer itself, or a peer runs in the shared stack) | `localhost:*` |
 | `uat-peers` | Explicit opt-in to shared UAT | `*.uat.phanes.ltd` (from the central registry) |
 
+**Alias note**: the bare form `OELITE_PEERS__<PEERNAME>` is a documented alias for `OELITE_PEERS__<PEERNAME>__PROFILE` — both are honored and resolve identically.
+
 **There is no `prod` profile.** Production endpoints are not a field in the peer registry schema and not a value in the resolver's vocabulary — production deploys read prod endpoints from CI/CD variables, never from this configuration chain (see `CONFIGURATION-VALIDATION.md` § Fail-Closed Prod Guard).
 
 The central registry is `infrastructure/oelite-stack/config/peer-registry.yml` — platform-owned, versioned, one review point (Marcus arch review required for registry MRs). Consumers target the `stable` channel only; registry entries pin `minVersion`, `contractUrl`, `contractVersion`, `mutability`, `critical`, `testTenantId`, `resetPolicy`.
@@ -24,7 +26,7 @@ The central registry is `infrastructure/oelite-stack/config/peer-registry.yml` �
 
 Resolution is **most-specific wins**, evaluated top-down; the first hit wins:
 
-1. **Per-peer env var**: `OELITE_PEERS__<PEERNAME>__PROFILE` (e.g. `OELITE_PEERS__ORIGINAUTH=local`, `OELITE_PEERS__NEXUS=uat`) — supports hybrid composition (app is a UAT consumer for one peer and a local provider for another).
+1. **Per-peer env var**: `OELITE_PEERS__<PEERNAME>__PROFILE` (e.g. `OELITE_PEERS__ORIGINAUTH=local-peers`, `OELITE_PEERS__NEXUS=uat-peers`) — supports hybrid composition (app is a UAT consumer for one peer and a local provider for another).
 2. **Per-app appsettings override**: `integrationProfile.peers.<peerName>.profile`
 3. **Global env var**: `OELITE_PROFILE`
 4. **App default**: `integrationProfile.defaultProfile`

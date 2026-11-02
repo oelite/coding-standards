@@ -254,7 +254,7 @@ Full normative text: `0_project_planning_standards/rules/BR-DEV-001-local-peer-i
 - **UAT peer uptime**: UAT peers target 99% availability (best-effort, shared); availability is Ethan-owned, monitored via Orion. Local dev is NOT an availability SLO consumer of last resort — a down peer fails fast (BR-DEV-006) rather than degrading.
 - **Stability window**: UAT peer endpoints MUST be stable for at least 5 consecutive business days per deploy cycle (aligns with the UAT soak gate, BR-REL-003) — no silent endpoint churn; changes go through the versioned registry via reviewed MR.
 - **Rotation cadence**: registry endpoint/version changes are sprint-aligned; credential rotation follows the secrets-handling rules in `agents/core/principles.md` (§ Security & Best Practices — no committed secrets, Keychain/K8s-secrets storage) with `peers-health --auth` validation.
-- **Recovery**: a failed UAT peer deployment is recovered within 4 hours during business hours, 1 business day otherwise (Ethan-owned runbook); local developers are notified via the standard UAT availability channel.
+- **Recovery**: a failed UAT peer deployment is recovered within 4 business hours during business hours, 1 business day otherwise (Ethan-owned runbook); local developers are notified via the standard UAT availability channel.
 
 #### V2 Short-Lived Dynamic Credentials — Operational Expectations
 

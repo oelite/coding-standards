@@ -18,7 +18,7 @@ Resolution order (most-specific wins; defined in Marcus's final spec on #97):
 
 | Level | Source | Example |
 |---|---|---|
-| 1 | Per-peer env var | `OELITE_PEERS__ORIGINAUTH__PROFILE=uat-peers` (shorthand `OELITE_PEERS__ORIGINAUTH=local` is also honored) |
+| 1 | Per-peer env var | `OELITE_PEERS__ORIGINAUTH__PROFILE=uat-peers` (shorthand `OELITE_PEERS__ORIGINAUTH=uat-peers` is also honored) |
 | 2 | Per-app appsettings override | `integrationProfile.peers.<peerName>.profile` |
 | 3 | Global env var | `OELITE_PROFILE` |
 | 4 | App default | `integrationProfile.defaultProfile` |

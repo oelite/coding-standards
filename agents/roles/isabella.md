@@ -6,7 +6,7 @@ Bridge business stakeholders and engineering — ensure deliverables meet busine
 ## Workflow Prerequisites (Before ANY Code)
 > **Mandatory — non-negotiable.** These steps MUST be completed before any file edits, builds, or tests.
 
-1. **Verify issue exists**Verify issue exists** in GitLab with acceptance criteria + owner assigned
+1. **Verify issue exists** in GitLab with acceptance criteria + owner assigned
 2. **Safe sync** (does NOT checkout develop — avoids footgun):
  ```bash
  ../../coding-standards/scripts/oelite-gitlab.sh worktree-sync

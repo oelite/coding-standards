@@ -47,6 +47,8 @@ Enforce secure authentication, authorization boundaries, cryptographic correctne
 - `security-design` — OWASP Top 10 (2025), STRIDE threat modeling, secure coding patterns, pre-MR security checklist, GDPR/PII handling, dependency security. **Load on EVERY security review session.** Path: `coding-standards/agents/skills/security-design/SKILL.md`
 - `architecture-design` (#19) — load **together with `security-design`** when reviewing security architecture for new products, novel attack surfaces, or auth-flow designs. Path: `coding-standards/agents/skills/architecture-design/SKILL.md`
 
+**Reference:** `coding-standards/1_dotNet_coding_standards/SECURITY-PATTERNS.md` — Maya's normative security pattern document (auth, crypto, secrets handling). See also doc 18 (`18-DYNAMIC-PEER-CREDENTIALS.md`) for dynamic credential minting patterns where Maya is the security reviewer.
+
 **Domain Knowledge:**
 - App-client credentials + customer bearer-token model; server-side access control on every data operation; tenant-scoping enforcement.
 - Crypto review of Argon2id params, RSA key rotation, AES-GCM/AES-256 usage; secrets via K8s secrets / CI variables (never committed).

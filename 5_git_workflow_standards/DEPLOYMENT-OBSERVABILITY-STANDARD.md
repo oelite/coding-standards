@@ -75,7 +75,7 @@ After each deployment completes (rollout status = complete), the deploying agent
 
 1. **Rollout completion**: `kubectl rollout status deployment/<name> -n oelite-{uat,prod}` — must reach "successfully rolled out".
 2. **Service health endpoint**: `./oelite-stack.sh cluster UAT health` (UAT) or the service's own health endpoint (prod) — must return healthy/200.
-3. **Peer consistency (UAT)**: `./infrastructure/oelite-stack/scripts/peers-health.sh --profile uat-peers` — confirms no peer was degraded by this deploy (BR-DEV-006: no silent degradation; peer-down handling stays fail-fast per the runbook — this check observes, it does not gate differently).
+3. **Peer consistency (UAT)**: `peers-health --profile uat-peers` — confirms no peer was degraded by this deploy (BR-DEV-006: no silent degradation; peer-down handling stays fail-fast per the runbook — this check observes, it does not gate differently).
 
 ### 3.2 Soak-gate definition (explicit)
 
@@ -173,7 +173,7 @@ A release issue MUST NOT be closed (`issue-status closed`) without this comment 
 
 > ✅ **These SLOs are ratified (BUSINESS-RULEBOOK § 5).**
 
-| SLO | Proposed target | Scope |
+| SLO | Target | Scope |
 |-----|-----------------|-------|
 | Rollout completion detection | ≤ 10 min from deploy job end | all environments |
 | Production rollout failure acknowledgment | ≤ 1 h during release window | production |

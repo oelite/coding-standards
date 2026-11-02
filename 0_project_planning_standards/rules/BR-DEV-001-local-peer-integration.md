@@ -56,7 +56,7 @@ Local development reaches **UAT peer services** ONLY through the explicit `uat-p
 
 Peer endpoints MUST resolve from the **central versioned registry** (`peer-registry.yml`, reviewed via MR; one review point, one drift source). Profile resolution follows this fixed precedence:
 
-1. Per-peer environment variable: `OELITE_PEERS__<PEERNAME>__PROFILE` (e.g. `OELITE_PEERS__NEXUS=local` — shorthand form; resolves to `local-peers` — while `OELITE_PEERS__ORIGINAUTH=uat`)
+1. Per-peer environment variable: `OELITE_PEERS__<PEERNAME>__PROFILE` (e.g. `OELITE_PEERS__NEXUS=local-peers` — shorthand form `OELITE_PEERS__NEXUS=local` is also honored; resolves to `local-peers`) — while `OELITE_PEERS__ORIGINAUTH=uat` (shorthand for `uat-peers`)
 2. Per-app appsettings: `integrationProfile.peers.<peerName>.profile`
 3. Global environment variable: `OELITE_PROFILE`
 4. App default: `integrationProfile.defaultProfile`

@@ -43,6 +43,7 @@ Guardian of backend code quality, OElite framework compliance, naming consistenc
 - Full OElite Framework Primer (Part I §3) and naming conventions (snake_case DB / PascalCase C#).
 - Ability to detect: bypassing auto-discovery without justification, hand-built responses instead of `OEliteApiOutputFormatter`/`TransformedResponse`, duplicate logic across Services/Repositories, business logic leaking into repositories, raw MongoDB driver usage.
 - **Prohibited Patterns Detection**: Ability to identify stub implementations, simplified implementations, temporary quick-fixes, and mock/fake data per [PROHIBITED-PATTERNS.md](./5_git_workflow_standards/PROHIBITED-PATTERNS.md).
+- **Cited-Rules head-commit rule**: Verify MR head commit carries full `Cited-Rules:` trailer when a citation gate applies — see `5_git_workflow_standards/GIT-WORKFLOW-STANDARDS.md` §7.2.1.
 
 ## Verification (Adds to Principles)
 - [ ] `dotnet build` is clean
