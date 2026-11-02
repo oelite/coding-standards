@@ -73,7 +73,7 @@ UAT peer credentials MUST live in **per-machine Keychain storage** or gitignored
 - **Applies when**: any local dev session uses the `uat-peers` profile.
 - **Outcome**: a compromised developer machine cannot escalate to UAT administration; no credential ever reaches git history.
 - **Exceptions**: none. (`peers-health --auth` validates credentials, not just reachability.)
-- **Forward path**: short-lived dynamic UAT credentials minted via Origin Auth are approved conditionally as a **V2 child issue** (stakeholder decision 2 on #97: Emma + Ethan joint design review of token minting, TTL, caching, rotation; if either objects, it returns to the stakeholder).
+- **Forward path (V2 — approved, joint Emma + Ethan sign-off on #99, note 58524)**: short-lived dynamic UAT peer credentials are the approved V2 mechanism. **When `credentials.mode: dynamic` is set in `peer-registry.yml`** for a peer, UAT peer credentials for that peer are obtained via **Origin Auth client-credentials token minting** (per-developer IAM client `dev-<username>-local`, scopes limited to registry-declared `credentials.scopes`), with **TTL ≤ 15 min**, **refresh at 80% of TTL**, and tokens **cached in the OS credential store under `oelite/peer/<peerName>/uat-token`**. In dynamic mode no long-lived per-peer app secret exists on the machine; the static Keychain path remains the default (`credentials.mode: static`) and the 90-day rotation SLA applies to the **bootstrap IAM client only**. Mint/refresh failure fails fast per BR-DEV-006. See `1_dotNet_coding_standards/SECURITY-PATTERNS.md` § 4 (normative pattern) and BUSINESS-RULEBOOK § 8.2 (operational expectations).
 
 ### BR-DEV-005: UAT Data Respect (Test-Write Patterns)
 

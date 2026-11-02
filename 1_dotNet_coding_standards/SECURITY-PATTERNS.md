@@ -48,14 +48,22 @@ public interface IPeerCredentialProvider
 - The CI lint for prod host patterns (see `CONFIGURATION-VALIDATION.md` § 4.2) additionally greps committed configs for secret-shaped values (`password=`, `secret=`, `apiKey=` with literal values) — findings block the pipeline with no exception path.
 - If a credential ever lands in a commit: treat as **incident-level** — rotate the credential immediately, then purge history. Rotation first, history rewrite second.
 
-## 4. Short-Lived Dynamic Credentials (V2 — Placeholder)
+## 4. Short-Lived Dynamic Credentials (V2 — Normative)
 
-**TBD — pending Emma+Ethan sign-off.**
+**Status: approved — joint Emma + Ethan design sign-off on #99 (note 58524).**
 
-V2 direction (approved conditionally by the stakeholder on #97): short-lived UAT peer tokens minted via Origin Auth (token endpoint, TTL, caching, and rotation mechanics to be designed jointly by Emma + Ethan; if either objects, the decision returns to the stakeholder). Do **not** implement token minting in v1 — v1 ships Keychain loading + the 90-day rotation SLA + `peers-health --auth` only.
+When a peer's `peer-registry.yml` entry sets `credentials.mode: dynamic`, UAT peer credentials are obtained by **minting short-lived tokens via the Origin Auth client-credentials flow**, using the existing per-developer IAM client `dev-<username>-local` (BR-DEV-005) — no new client type. Scopes are limited to the registry-declared `credentials.scopes`; the registry MR is the only path to widen token reach.
+
+- **TTL**: ≤ 15 minutes, minted lazily at startup for peers resolved under the `uat-peers` profile, refreshed on demand at **80% of TTL (~12 min)**.
+- **Caching**: tokens are cached in the OS credential store under `oelite/peer/<peerName>/uat-token` with TTL metadata; no cross-run or cross-job caching.
+- **Fail-closed (BR-DEV-006)**: mint/refresh failure **fails fast at startup**, naming the peer, token endpoint, and `peers-health`. No stale-token fallback, no degraded mode; `critical: true` peers hard-fail as today. In dynamic mode no long-lived per-peer app secret exists on the machine.
+- **Rotation**: the 90-day rotation SLA applies to the **bootstrap IAM client only**; dynamic-mode peers drop per-peer app-credential rotation. Infra credentials are out of scope (stay on their own SLAs, cf. #37).
+- **CI boundary**: hermetic CI (`mock-peers`) never mints. Integration jobs hitting UAT peers use pipeline-scoped per-project IAM clients, minted per run, never cached.
+- **Staged rollout**: `credentials.mode: static` is the platform default; dynamic mode is enabled per-peer via the registry. Static Keychain entries (v1) remain valid. `peers-health --auth` validates the mint path and reports TTL remaining.
 
 ## Change History
 
 | Date | Author | Change |
 |---|---|---|
 | 2026-11-02 | Daniel | Initial creation — OS credential-store loading pattern, rotation SLA, no-commit rules, V2 short-lived-credential placeholder. Issue #97. |
+| 2026-11-02 | Isabella | § 4 placeholder replaced with normative V2 dynamic-credential pattern (minting, TTL, caching, fail-closed, staged rollout) per joint Emma+Ethan sign-off on #99. |
