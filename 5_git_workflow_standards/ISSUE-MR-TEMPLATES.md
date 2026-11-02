@@ -23,9 +23,9 @@ The templates enforce consistent, detailed, and verifiable task information so t
 2. [Issue Template: Feature](#2-issue-template-feature)
 3. [Issue Template: Bug](#3-issue-template-bug)
 4. [Issue Template: Task](#4-issue-template-task)
-5. [Issue Template: Release](#45-issue-template-release-rel-xxx)
-6. [Merge Request Template](#5-merge-request-template)
-7. [Required Labels Reference](#6-required-labels-reference)
+   - [4.5 Issue Template: Release (REL-XXX)](#45-issue-template-release-rel-xxx)
+5. [Merge Request Template](#5-merge-request-template)
+6. [Required Labels Reference](#6-required-labels-reference)
 
 ---
 
