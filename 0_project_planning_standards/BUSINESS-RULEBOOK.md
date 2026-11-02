@@ -3,8 +3,8 @@
 > **Repository**: coding-standards
 > **Last Updated**: 2026-11-02
 > **Maintained by**: Isabella (Business Analyst)
-> **Status**: Active — index of authoritative business docs; § 6.1 Release Management is Draft pending approval
-> **Version**: 1.1.0
+> **Status**: Active — index of authoritative business docs; § 7.1 Release Management is Draft pending approval; § 8 Platform-Wide Developer Experience is Draft pending approval
+> **Version**: 1.2.0
 
 ---
 
@@ -17,7 +17,7 @@ Rules of authority:
 1. **Factual documents** (BRD, SRD/SRS, user stories, journeys, process flows, business rules `BR-XX-NNN`) are the authority for what features ARE and how they MUST behave. They change only via the amendment process in `6_documentation_standards/REQUIREMENTS-AUTHORITY.md`.
 2. **Implementation state** (shipped? evidence? MR numbers?) must NOT live in factual docs. Where a repo document currently mixes them (e.g. `uranus/arc-cli/docs/business/RULEBOOK.md` ships-status columns), the factual content (features, rules, ACs) is authoritative and the status columns must migrate to GitLab (issue #68 audit finding).
 3. If a repo has **no** `docs/business/` material, the platform templates in this folder (`0.1`–`0.5`) are the requirement for Isabella/Emma to author before development.
-4. **Platform-wide capabilities** (not owned by any single product repo) are documented directly in this file — see § 6 (currently: Release Management, § 6.1 / BR-REL).
+4. **Platform-wide capabilities** (not owned by any single product repo) are documented directly in this file — see § 7 (Platform-Wide Release Management, § 7.1 / BR-REL) and § 8 (Platform-Wide Developer Experience, § 8.1 / BR-DEV).
 
 ---
 
@@ -76,7 +76,8 @@ Per-repo rule files follow (or should follow) `6_documentation_standards/REQUIRE
 
 Platform-wide baselines come from `agents/core/principles.md` (security: origin-auth RS256 JWT, Argon2id, AES-256 field encryption; e2e quality gates; integration testing on shared stack).
 Per-repo operational SLO tables: **TODO(owner)** — none of the audited repos currently carries a dedicated SLO section in `docs/business/`. Audit logging requirements exist in cadence within origin-auth BR-12 and each repo's SRS where written.
-Release-specific operational expectations (cadence, rollback time, deploy reliability) are stated in § 6.1 BR-REL; the numeric SLOs remain part of the platform SLO TODO above.
+Release-specific operational expectations (cadence, rollback time, deploy reliability) are stated in § 7.1 BR-REL; the numeric SLOs remain part of the platform SLO TODO above.
+UAT peer availability for local development: see § 8.2 Operational Expectations (`rules/BR-DEV-001-local-peer-integration.md`).
 
 ## 6. Traceability Matrix — Platform
 
@@ -89,11 +90,13 @@ Traceability is per-repo (the matrix maps stories ↔ ACs ↔ journeys ↔ tests
 | venus/obelisk-runtime | story/e2e-linked (verified via docs structure) | Medium |
 | All others | — | TODO(owner): build matrix from BRD + USER-STORIES.md |
 
-## 6. Platform-Wide Business Capabilities
+## 7. Platform-Wide Release Management
 
 The rulebook's primary role is an index of per-repo business documents. Some capabilities, however, are **platform-wide by nature** — they are not features of any single product repo but govern how the platform itself operates and delivers. These are documented here directly as normative business rules, with stable `BR-REL-NNN` IDs. The engineering counterpart (branch mechanics, CI job syntax, CLI commands) lives in `5_git_workflow_standards/GIT-WORKFLOW-STANDARDS.md` (§2.1.2 Promotion Gates, §2.1.3 Rollback Standard, §8.7 Release Issue Lifecycle); where this section and that document could appear to differ, both agree by construction — this section states the business rule, that document its engineering enforcement.
 
-## 6.1 Release Management (BR-REL)
+> **Numbering note (issue #98)**: this section was introduced by MR !109 as a second `## 6.` heading, duplicating § 6 Traceability Matrix. It is renumbered to § 7 (and its subsection § 7.1) so section numbers are unique and sequential. § 8 (Platform-Wide Developer Experience) is appended after it.
+
+## 7.1 Release Management (BR-REL)
 
 > **Maintained by**: Isabella (Business Analyst)
 > **Status**: Draft — pending approval per REQUIREMENTS-AUTHORITY.md amendment process
@@ -202,6 +205,71 @@ Per-repo operational SLO tables are a known platform gap (§ 5 above). Release-s
 - **Release cadence**: releases are sprint-aligned (sprint-N releases per §2.1.2 traceability rule); ad-hoc releases are permitted for hotfixes following the same chain.
 - **Rollback time**: rollback MUST be executable via `kubectl rollout undo` within minutes of a confirmed Production incident; the target SLO is to be authored with the platform SLO table (TODO: § 5).
 - **Deploy reliability**: a production deploy of a SHA not previously deployed to UAT MUST fail closed, by construction (BR-REL-004), not by vigilance.
+
+---
+
+## 8. Platform-Wide Developer Experience
+
+**Maintained by**: Isabella (Business Analyst)
+**Status**: Draft — pending approval per `6_documentation_standards/REQUIREMENTS-AUTHORITY.md` amendment process
+**Version**: 1.0.0
+**Change request**: TASK-97 / issue #97 (UAT peer-integration profile for local dev environments)
+
+### Scope
+
+Platform-Wide Developer Experience is the platform capability covering **how developers run OElite applications locally while integrating with peer platform services**. It defines which peers a local environment may reach, under which integration profile, with which credentials and mutation boundaries — so local development is predictable, safe, and isolated from Production by construction.
+
+**Actors**: developers (local environment owners), Ethan (peer registry + UAT peer availability), Daniel (app configuration pattern implementation), Isabella (business documentation and validation), Marcus (architecture review), Maya (security/permission boundary review), Emma (orchestration and approval).
+
+**Engineering source**: `1_dotNet_coding_standards/16-SHARED-LOCAL-INFRASTRUCTURE.md` (local shared data stack), the peer endpoint registry (`infrastructure/oelite-stack/config/peer-registry.yml` — Ethan's implementation), the `peers-health` utility, and the .NET `appsettings.init.json` integration-profile pattern.
+
+### 8.1 Business Rules (BR-DEV)
+
+Full normative text: `0_project_planning_standards/rules/BR-DEV-001-local-peer-integration.md`.
+
+| ID | Rule (summary) |
+|----|----------------|
+| BR-DEV-001 | **Local Data Isolation** — an app's own data layer connects ONLY to the local shared stack (`localhost:*`); never to UAT/Prod data stores. Prod isolation is incident-level with no exceptions. |
+| BR-DEV-002 | **UAT Peer Opt-In** — local dev reaches UAT peers ONLY via the explicit `uat-peers` profile; the platform default is `local-peers` (fail-safe). |
+| BR-DEV-003 | **Central Peer Registry** — peer endpoints resolve from the central versioned registry (`peer-registry.yml`); profile resolution order is per-peer env var → appsettings per-peer → global `OELITE_PROFILE` → app default → platform default. Production endpoints are not resolvable through this chain (structural prod-prevention; fail-closed domain-pattern guard, no CI exception). |
+| BR-DEV-004 | **Credential Isolation** — UAT peer credentials live in per-machine Keychain or gitignored secret files; never committed. Developers hold read-only or tenant-scoped UAT credentials only — no admin/service-root credentials on dev machines. |
+| BR-DEV-005 | **UAT Data Respect** — local dev treats UAT peer data as shared acceptance data: reads permitted; writes only via the reserved test patterns (Origin Auth: dedicated `dev-<username>-local` IAM client; peer records: `dev-<username>-` identifier prefix). Any other mutation is prohibited. |
+| BR-DEV-006 | **Fail Fast on Peer Unavailability** — when a required UAT peer is unavailable under the `uat-peers` profile, local dev FAILS FAST with a clear error naming the peer and the `peers-health` command. No mock/local fallback, no silent degradation. `peers-health` pre-flight is the prevention mechanism. |
+
+### 8.2 Operational Expectations
+
+- **UAT peer uptime**: UAT peers target 99% availability (best-effort, shared); availability is Ethan-owned, monitored via Orion. Local dev is NOT a availability SLO consumer of last resort — a down peer fails fast (BR-DEV-006) rather than degrading.
+- **Stability window**: UAT peer endpoints MUST be stable for at least 5 consecutive business days per deploy cycle (aligns with the UAT soak gate, BR-REL-003) — no silent endpoint churn; changes go through the versioned registry via reviewed MR.
+- **Rotation cadence**: registry endpoint/version changes are sprint-aligned; credential rotation follows the secrets-handling rules in `agents/core/principles.md` (§ Security & Best Practices — no committed secrets, Keychain/K8s-secrets storage) with `peers-health --auth` validation.
+- **Recovery**: a failed UAT peer deployment is recovered within 4 hours during business hours, 1 business day otherwise (Ethan-owned runbook); local developers are notified via the standard UAT availability channel.
+
+### 8.3 Business Features (BF-DEV)
+
+| ID | Feature | Outcome |
+|----|---------|---------|
+| BF-DEV-001 | Integration profiles (`mock-peers`, `local-peers`, `uat-peers`) with per-peer overrides | Developers choose isolation level per service, not just per environment |
+| BF-DEV-002 | Central versioned peer endpoint registry (all 9 peer services: Origin Auth, Kortex, Nexus, OeSterling, Apex, Synapse, Obelisk, Hermes, Orion) | One review point and one drift source for peer endpoints |
+| BF-DEV-003 | `peers-health` pre-flight check (reachability, version, `--auth` credential validation, `--strict` mode) | Peer problems surface before the app starts, not mid-task |
+| BF-DEV-004 | `appsettings.init.json` integration-profile pattern with startup fail-fast validation | Misconfiguration fails at startup with an explicit message, never silent localhost defaults |
+| BF-DEV-005 | Structural production prevention (fail-closed domain-pattern guard + CI lint + registry schema without prod fields) | Production is unreachable from local dev by construction |
+
+### 8.4 Workflows (WF-DEV)
+
+| ID | Workflow | Steps (summary) |
+|----|----------|-----------------|
+| WF-DEV-001 | **Onboard a repo to peer integration** | Add `integrationProfile` block to `appsettings.init.json` (default `local-peers`) → configure per-peer profile if needed → run `peers-health` → record registry MR if the repo is itself a peer. |
+| WF-DEV-002 | **Run a UAT peer-integration session** | `peers-health` pre-flight → start app with `uat-peers` (opt-in) → work within BR-DEV-005 write patterns → shut down; any dev-created UAT data is identifiable for purge. |
+| WF-DEV-003 | **Respond to UAT peer outage** | App fails fast (BR-DEV-006) → developer checks `peers-health` and the UAT availability channel → escalation to Ethan (recovery SLO above) → resume after health check passes. |
+
+### 8.5 UI User Journeys
+
+**N/A** — Developer Experience is a developer-facing capability with no end-user UI. The "interface" is the integration-profile configuration, the `peers-health` CLI, and the peer registry MR process.
+
+### Cross-references
+
+- `1_dotNet_coding_standards/16-SHARED-LOCAL-INFRASTRUCTURE.md` — the local shared data stack that BR-DEV-001 requires for an app's own data layer.
+- `6_documentation_standards/REQUIREMENTS-AUTHORITY.md` — amendment process governing this section and the BR-DEV rule file.
+- `agents/core/principles.md` (§ Security & Best Practices) — secrets-handling baseline referenced by BR-DEV-004 / § 8.2.
 
 ---
 
