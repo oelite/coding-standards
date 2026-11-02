@@ -188,3 +188,4 @@ A release issue MUST NOT be closed (`issue-status closed`) without this comment 
 | Date | Change |
 |------|--------|
 | Nov 02 2026 | Initial standard (TASK-95, issue #95): environments/deploy boards, rollout failure detection (no auto-rollback), post-deploy health checks + explicit soak-gate definition, alerting paths, Orion boundary, release-issue integration, proposed SLOs. |
+| Nov 02 2026 | Marked § 7 SLOs as ratified post-MR !120 (retrospective audit correction). |

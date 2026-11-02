@@ -178,5 +178,5 @@ Unit tests and CI pipelines run hermetically under `mock-peers` only. CI must ne
 
 | Date | Author | Change |
 |---|---|---|
-| 2026-11-02 | Daniel | Initial creation — implements Marcus's final arbitration spec on #97 (Flags 1–3), amended by Emma's stakeholder decisions (fail-fast over degraded mode; per-developer IAM clients; V2 short-lived creds pending sign-off). Issue #97. |
+| 2026-11-02 | Daniel | Initial creation — implements Marcus's final arbitration spec on #97 (Flags 1–3), amended by Emma's stakeholder decisions (fail-fast over degraded mode; per-developer IAM clients; V2 short-lived creds pending sign-off). Issue #97. *(superseded by row 2)* |
 | 2026-11-02 | Daniel | Added § Dynamic Peer Credentials (V2) cross-reference to `18-DYNAMIC-PEER-CREDENTIALS.md` per the approved joint sign-off on #99. Issue #99. |
