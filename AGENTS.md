@@ -224,7 +224,7 @@ READY: true
 | Frontend (Next.js) | `coding-standards/4_react_nextjs_coding_standards/` | 12-NEXTJS-CODING-STANDARDS.md |
 | Frontend (Angular) | `coding-standards/3_angular_coding_standards/` | 11-ANGULAR-CODING-STANDARDS.md |
 | General Web | `coding-standards/2_general_web_coding_standards/` | README.md |
-| Git Workflow | `coding-standards/5_git_workflow_standards/` | GIT-WORKFLOW-STANDARDS.md, TASK-TEMPLATES.md, ISSUE-MR-TEMPLATES.md, PROHIBITED-PATTERNS.md, WORKTREE-OWNER-DNA.md |
+| Git Workflow | `coding-standards/5_git_workflow_standards/` | GIT-WORKFLOW-STANDARDS.md, TASK-TEMPLATES.md, ISSUE-MR-TEMPLATES.md, PROHIBITED-PATTERNS.md, WORKTREE-OWNER-DNA.md, DEPLOYMENT-OBSERVABILITY-STANDARD.md |
 | Documentation | `coding-standards/6_documentation_standards/` | DOC-STANDARDS.md |
 | Planning | `coding-standards/0_project_planning_standards/` | 6 templates |
 

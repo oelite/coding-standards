@@ -22,7 +22,9 @@ and what happens when a peer is down.
 
 UAT is a **shared, best-effort environment**. It may be briefly unavailable
 during deploys; `peers-health` is the tool that tells you whether it is
-currently usable.
+currently usable. App-deploy rollout/health checks are defined separately in
+`5_git_workflow_standards/DEPLOYMENT-OBSERVABILITY-STANDARD.md` — this runbook
+covers peer availability, not app deployment observability.
 
 ## 2. Version-Pinning Policy (`minVersion` enforcement)
 
