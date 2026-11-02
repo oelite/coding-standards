@@ -1,8 +1,56 @@
 # Regression pipeline for the shared GitLab wrapper and its readiness classifier.
 # Runs only offline, secret-free suites: parser fixtures and disposable local Git
 # repositories. No Keychain, no network credentials, no shared Docker stack.
+#
+# UAT integration auth boundary (V2, TASK-99 — BUSINESS-RULEBOOK § 8.2):
+#   Hermetic jobs (everything below) NEVER mint UAT tokens. Jobs that must hit
+#   UAT peers extend the `uat-integration-auth` template below: per-project
+#   pipeline-scoped IAM client from protected CI variables, per-run mint,
+#   token held only in job-scoped env, NEVER written to disk or cached across
+#   jobs. Developer IAM clients (dev-<username>-local) are forbidden in CI.
 stages:
   - test
+
+# -----------------------------------------------------------------------------
+# UAT integration auth template (V2, TASK-99) — DOCUMENTED PATTERN, NON-BLOCKING
+# -----------------------------------------------------------------------------
+# This template is intentionally not referenced by any job yet: hermetic CI
+# never mints (AC-004). It documents the ONLY sanctioned pattern for a future
+# UAT-touching integration job:
+#
+#   1. Register ONE per-project IAM client per consuming repo in the UAT realm
+#      (client id: uat-ci-<project-slug>), scoped to exactly the peer
+#      `credentials.scopes` the job needs. Registration is an Ethan-owned
+#      realm operation, requested via GitLab issue on oelite/coding-standards.
+#   2. Store the client id/secret as PROTECTED + MASKED CI/CD variables:
+#        OELITE_UAT_IAM_CLIENT_ID / OELITE_UAT_IAM_CLIENT_SECRET
+#      (optionally OELITE_UAT_TOKEN_ENDPOINT; defaults to the origin-auth UAT
+#      realm token endpoint). Never as file-type variables.
+#   3. The token is minted per job run (script below), held ONLY in the
+#      job-scoped environment, and dies with the job. It must NEVER be
+#      written to disk, artifacts, cache, or echoed into logs.
+#
+# To opt a job in: `extends: .uat-integration-auth` and export the minted
+# token as $OELITE_UAT_TOKEN within the job's own script. GitLab protects
+# protected-variable values from logs by default; do not disable masking.
+.uat-integration-auth:
+  variables:
+    OELITE_UAT_TOKEN_ENDPOINT: https://origin-auth.uat.phanes.ltd/connect/token
+  id_tokens:
+    VAULT_ID_TOKEN:
+      aud: https://vault.phanes.ltd
+  script:
+    # Per-run mint (client-credentials, RFC 6749 §4.4). The client secret is
+    # a protected+masked variable; it never appears in output. The access
+    # token lives only in this job's process environment.
+    - export OELITE_UAT_TOKEN="$(curl -fsS --max-time 10 "$OELITE_UAT_TOKEN_ENDPOINT"
+      -d grant_type=client_credentials
+      -d client_id="$OELITE_UAT_IAM_CLIENT_ID"
+      -d client_secret="$OELITE_UAT_IAM_CLIENT_SECRET"
+      -d scope="$OELITE_UAT_SCOPES" | python3 -c 'import json,sys; print(json.load(sys.stdin)["access_token"])')"
+    # Sanity guard: fail closed if the mint returned nothing (never proceed unauthenticated).
+    - test -n "$OELITE_UAT_TOKEN" || { echo "UAT token mint failed" >&2; exit 1; }
+    # NOTE: no `echo $OELITE_UAT_TOKEN`, no artifacts, no cache — token dies with the job.
 
 validate-peer-registry:
   stage: test

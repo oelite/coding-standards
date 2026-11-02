@@ -57,6 +57,12 @@ profiles:
 #   testTenantId    : reserved UAT test tenant for dev writes (BR-DEV-005)
 #   resetPolicy     : weekly | monthly | manual — tenant data reset cadence
 #   credentials     : where credentials live (Keychain source; never committed)
+#   credentials.mode: static (default; per-machine Keychain secret, 90-day
+#                     rotation) | dynamic (V2 TASK-99: Origin Auth client-
+#                     credentials minting, TTL <= 15 min, no long-lived
+#                     per-peer secret). Per-peer opt-in; staged rollout —
+#                     flip individual peers to dynamic only after the V2
+#                     minting client (origin-auth repo) is deployed.
 # -----------------------------------------------------------------------------
 peers:
   - name: origin-auth
