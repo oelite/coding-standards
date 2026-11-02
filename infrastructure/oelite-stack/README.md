@@ -455,30 +455,22 @@ Both `deploy_uat` and `deploy_prod` MUST reference the exact same SHA tag — ne
 
 #### verify-uat-deployed.sh (artifact continuity check)
 
-Reference implementation — place in each deployable repo's `scripts/` folder:
+The canonical implementation is committed and versioned at **`coding-standards/scripts/verify-uat-deployed.sh`** (owned by Ethan). Copy it into each deployable repo's `scripts/` folder — or invoke it directly from a shared CI template — so `deploy_prod` fails closed when the image SHA was never deployed to UAT.
 
 ```bash
-#!/usr/bin/env bash
-set -euo pipefail
-
-SHA="$1"
-if [[ -z "$SHA" ]]; then
-  echo "Usage: verify-uat-deployed.sh <sha>" >&2
-  exit 1
-fi
-
-# Check UAT deployments for the SHA annotation on running deployments
-if ! kubectl --kubeconfig "$PHANES_K8S" -n oelite-uat \
-    get deploy -o jsonpath='{.items[*].metadata.annotations.oelite\.io/sha}' \
-    | grep -q "$SHA"; then
-  echo "ERROR: Image $SHA was never deployed to UAT. UAT soak gate failed." >&2
-  exit 1
-fi
-
-echo "OK: Image $SHA verified as deployed to UAT"
+# Usage: verify-uat-deployed.sh <sha>
+./scripts/verify-uat-deployed.sh "$CI_COMMIT_SHA"
 ```
 
-Alternatively, query the GitLab Environments API for the project's UAT deployment history. The key requirement: the Production deploy MUST fail if the SHA was never deployed to UAT.
+Behavior:
+- **`UAT_CHECK_BACKEND=kubectl`** (default): inspects the `oelite.io/sha` annotation on running deployments in the `oelite-uat` namespace, using `$PHANES_K8S` as the kubeconfig when set.
+- **`UAT_CHECK_BACKEND=gitlab`**: queries the GitLab Environments/Deployments API (`CI_API_V4_URL` + `CI_PROJECT_ID` + `GITLAB_TOKEN`/`CI_JOB_TOKEN`) for the project's `uat` environment deployment history.
+- **Empty/missing SHA** → usage error, exit 1.
+- **SHA absent from UAT** → clear error, exit 1 (fails closed). **SHA present** → success message, exit 0.
+- **`--test`** flag runs the built-in self-tests (kubectl + gitlab backends, present/absent/empty cases).
+- Idempotent and side-effect free — safe to run in CI.
+
+Alternatively, query the GitLab Environments API directly for the project's UAT deployment history. The key requirement: the Production deploy MUST fail if the SHA was never deployed to UAT.
 
 Namespaces follow the platform convention: `oelite-dev`, `oelite-uat`, `oelite-prod`; production deploys are `when: manual` on top of the `main`-branch gate (see `GIT-WORKFLOW-STANDARDS.md` §2.1.2).
 
