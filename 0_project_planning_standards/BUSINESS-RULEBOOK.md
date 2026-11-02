@@ -3,8 +3,8 @@
 > **Repository**: coding-standards
 > **Last Updated**: 2026-11-02
 > **Maintained by**: Isabella (Business Analyst)
-> **Status**: Active — index of authoritative business docs; § 7.1 Release Management is Draft pending approval; § 8 Platform-Wide Developer Experience is Draft pending approval
-> **Version**: 1.2.0
+> **Status**: Active — index of authoritative business docs; § 5 numeric SLOs ratified (2026-11-02); § 7.1 Release Management is Draft pending approval; § 8 Platform-Wide Developer Experience is Draft pending approval
+> **Version**: 1.3.0
 
 ---
 
@@ -75,8 +75,21 @@ Per-repo rule files follow (or should follow) `6_documentation_standards/REQUIRE
 ## 5. Operation Expectations (SLOs, permissions, audit)
 
 Platform-wide baselines come from `agents/core/principles.md` (security: origin-auth RS256 JWT, Argon2id, AES-256 field encryption; e2e quality gates; integration testing on shared stack).
-Per-repo operational SLO tables: **TODO(owner)** — none of the audited repos currently carries a dedicated SLO section in `docs/business/`. Audit logging requirements exist in cadence within origin-auth BR-12 and each repo's SRS where written.
-Release-specific operational expectations (cadence, rollback time, deploy reliability) are stated in § 7.1 BR-REL; the numeric SLOs remain part of the platform SLO TODO above.
+**Numeric platform SLOs** — ratified (MR !113 / DOS §7 pending-ratification note resolved). These SLOs are platform commitments owned by Ethan (DevOps & Reliability) and measured via GitLab Environments/Deploy Boards, `kubectl rollout status`, and Orion alerts, with evidence recorded on release issues per DOS §4.
+
+| # | SLO | Ratified target | Measurement method | Owner | Review cadence |
+|---|-----|-----------------|--------------------|-------|----------------|
+| 1 | Deploy success rate (deploy_uat / deploy_prod) | ≥ 99% of jobs reach rollout-status success | GitLab Deploy Board rollout state + `kubectl rollout status` exit code, per deploy job | Ethan | Sprint review |
+| 2 | Production rollback time | ≤ 30 minutes from authorization | Time from human authorization on release issue to `kubectl rollout undo` completion, recorded on REL issue | Ethan | Per incident + sprint review |
+| 3 | UAT rollback time | ≤ 15 minutes from authorization | Time from human authorization on release issue to `kubectl rollout undo` completion | Ethan | Per incident + sprint review |
+| 4 | Post-deploy health checks | Run within 5 minutes of rollout completion | Health-check result timestamp vs rollout-completion timestamp on release issue comment (DOS §4) | Ethan / deploying agent | Every deploy + sprint review |
+| 5 | Existing peer SLAs (ratified) | 4h ack / 1 business-day recovery (UAT peer availability) | Orion availability monitoring + incident ack/recovery timestamps (UAT-AVAILABILITY-RUNBOOK §3) | Ethan | Daily during release week |
+
+**Deltas from DOS §7 proposal**: none — all values ratified as proposed in DEPLOYMENT-OBSERVABILITY-STANDARD.md §7. DOS §7 SLOs cover rollout-failure detection/acknowledgment targets (≤10 min detection, ≤1 h prod / ≤4 h UAT acknowledgment, same-session health evidence, ≥1 business-day UAT soak) which remain **targets** in DOS; the ratified platform SLOs above narrow them to measurable commitments.
+
+**Change History (this section):**
+- 2026-11-02: SLOs ratified in § 5 (Isabella). Resolves DOS §7 "PROPOSED, PENDING RATIFICATION" note (MR !113); closes watch item 1 of issue #67 baseline. Values ratified as-proposed with zero deltas.
+
 UAT peer availability for local development: see § 8.2 Operational Expectations (`rules/BR-DEV-001-local-peer-integration.md`).
 
 ## 6. Traceability Matrix — Platform
@@ -200,10 +213,10 @@ Step-by-step business flow from a merged feature to a verified production deploy
 
 ### Operational Expectations
 
-Per-repo operational SLO tables are a known platform gap (§ 5 above). Release-specific expectations until dedicated SLOs are authored:
+Per-repo operational SLO tables remain a known gap (platform SLOs ratified in § 5; per-repo tables TODO). Release-specific expectations:
 
 - **Release cadence**: releases are sprint-aligned (sprint-N releases per §2.1.2 traceability rule); ad-hoc releases are permitted for hotfixes following the same chain.
-- **Rollback time**: rollback MUST be executable via `kubectl rollout undo` within minutes of a confirmed Production incident; the target SLO is to be authored with the platform SLO table (TODO: § 5).
+- **Rollback time**: rollback MUST be executable via `kubectl rollout undo` within minutes of a confirmed Production incident; ratified SLOs are Production ≤30 min / UAT ≤15 min from authorization (BUSINESS-RULEBOOK § 5, MR !113 ratification).
 - **Deploy reliability**: a production deploy of a SHA not previously deployed to UAT MUST fail closed, by construction (BR-REL-004), not by vigilance.
 
 ---
