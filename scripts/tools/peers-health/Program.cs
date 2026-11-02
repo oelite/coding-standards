@@ -94,6 +94,14 @@ internal static class Program
         }
 
         var authErrors = options.Auth ? CredentialChecker.ValidateCredentials(selected) : new List<string>();
+
+        // V2 (TASK-99): dynamic-mode peers validate the full mint path
+        // (client-credentials exchange against the token endpoint) instead of
+        // a Keychain lookup; static peers keep the Keychain validation.
+        var dynamicAuthResults = options.Auth
+            ? await DynamicAuthValidator.ValidateDynamicPeersAsync(selected, options.Verbose).ConfigureAwait(false)
+            : new Dictionary<string, DynamicAuthResult>();
+
         if (authErrors.Count > 0)
         {
             foreach (var error in authErrors)
@@ -104,10 +112,27 @@ internal static class Program
             return ExitConfigError;
         }
 
+        // Check if any dynamic peer failed minting and is critical
+        var dynamicFailures = dynamicAuthResults.Values.Where(r => !r.Valid).ToList();
+        if (dynamicFailures.Count > 0)
+        {
+            foreach (var failure in dynamicFailures)
+            {
+                Console.Error.WriteLine($"AUTH ERROR (dynamic mint failed): {failure.Peer}: {failure.Error}");
+            }
+
+            // In strict mode or if any critical peer failed dynamic auth, abort or flag as error
+            var criticalFailed = dynamicFailures.Any(f => selected.Any(p => p.Name == f.Peer && p.Critical));
+            if (criticalFailed || options.Strict)
+            {
+                return ExitConfigError;
+            }
+        }
+
         using var http = HttpClientFactory.Create(options.Auth, options.Verbose);
         var results = await PeerChecker.CheckAllAsync(http, registry, selected, options).ConfigureAwait(false);
 
-        var report = ReportBuilder.Build(registry, options.Profile, results, options);
+        var report = ReportBuilder.Build(registry, options.Profile, results, options, dynamicAuthResults);
         if (options.Json)
         {
             Console.WriteLine(JsonSerializer.Serialize(report, PeersJsonContext.Default.HealthReport));
@@ -244,7 +269,7 @@ internal sealed class Options
               --profile <name>   Profile to resolve endpoints against: mock-peers | local-peers | uat-peers (default: uat-peers)
               --strict           Fail (exit 1) when ANY checked peer is down, not only critical ones
               --json             Emit machine-readable JSON report instead of terminal format
-              --auth             Also validate that per-machine credentials exist for each peer
+              --auth             Also validate per-peer credentials: static peers via Keychain lookup, dynamic peers (credentials.mode: dynamic, V2 TASK-99) via a full client-credentials mint against the UAT token endpoint, reporting TTL remaining
               --peer <name>      Check only the named peer (repeatable)
               --registry <path>  Override path to peer-registry.yml
               --timeout <sec>    Per-request timeout in seconds (default: 10)
@@ -352,6 +377,9 @@ public sealed class PeerEndpoints
 
 public sealed class PeerCredentials
 {
+    [JsonPropertyName("mode")]
+    public string Mode { get; set; } = "static";
+
     [JsonPropertyName("source")]
     public string Source { get; set; } = string.Empty;
 
@@ -491,6 +519,13 @@ internal static class CredentialChecker
                 continue;
             }
 
+            // V2 (TASK-99): dynamic-mode peers validate the full mint path
+            // (client-credentials exchange) instead of a Keychain lookup.
+            if (peer.Credentials.Mode == "dynamic")
+            {
+                continue; // validated asynchronously by DynamicAuthValidator (RunAsync)
+            }
+
             var (exitCode, _) = Run("security", $"find-generic-password -s \"{peer.Credentials.KeychainService}\" -a oelite");
             if (exitCode != 0)
             {
@@ -530,6 +565,141 @@ internal static class CredentialChecker
         {
             return (-1, ex.Message);
         }
+    }
+}
+
+// -----------------------------------------------------------------------------
+// Dynamic credential validation (--auth, V2 TASK-99)
+// -----------------------------------------------------------------------------
+
+public sealed class DynamicAuthResult
+{
+    [JsonPropertyName("peer")]
+    public string Peer { get; set; } = string.Empty;
+
+    [JsonPropertyName("mode")]
+    public string Mode { get; set; } = "static";
+
+    [JsonPropertyName("valid")]
+    public bool Valid { get; set; }
+
+    [JsonPropertyName("tokenTtlSecondsRemaining")]
+    public int? TokenTtlSecondsRemaining { get; set; }
+
+    [JsonPropertyName("tokenEndpoint")]
+    public string? TokenEndpoint { get; set; }
+
+    [JsonPropertyName("error")]
+    public string? Error { get; set; }
+}
+
+internal static class DynamicAuthValidator
+{
+    // V2 (TASK-99): environment-provided client credentials for the UAT IAM
+    // bootstrap client (dev-<username>-local on dev machines; pipeline-scoped
+    // per-project client in CI). Never read from disk, never cached.
+    private const string ClientIdEnvVar = "OELITE_UAT_IAM_CLIENT_ID";
+    private const string ClientSecretEnvVar = "OELITE_UAT_IAM_CLIENT_SECRET";
+    private const string TokenEndpointEnvVar = "OELITE_UAT_TOKEN_ENDPOINT";
+    private const string DefaultTokenEndpoint = "https://origin-auth.uat.phanes.ltd/connect/token";
+
+    public static async Task<Dictionary<string, DynamicAuthResult>> ValidateDynamicPeersAsync(
+        List<PeerDefinition> peers, bool verbose)
+    {
+        var results = new Dictionary<string, DynamicAuthResult>();
+        var dynamicPeers = peers.Where(p => p.Credentials.Mode == "dynamic").ToList();
+        if (dynamicPeers.Count == 0)
+        {
+            return results;
+        }
+
+        var clientId = Environment.GetEnvironmentVariable(ClientIdEnvVar);
+        var clientSecret = Environment.GetEnvironmentVariable(ClientSecretEnvVar);
+        var tokenEndpoint = Environment.GetEnvironmentVariable(TokenEndpointEnvVar) ?? DefaultTokenEndpoint;
+
+        foreach (var peer in dynamicPeers)
+        {
+            var result = new DynamicAuthResult
+            {
+                Peer = peer.Name,
+                Mode = "dynamic",
+                TokenEndpoint = tokenEndpoint,
+            };
+
+            if (string.IsNullOrEmpty(clientId) || string.IsNullOrEmpty(clientSecret))
+            {
+                result.Error =
+                    $"dynamic-mode peer requires {ClientIdEnvVar} and {ClientSecretEnvVar} in the environment " +
+                    "(dev: dev-<username>-local IAM client via Keychain bootstrap; CI: pipeline-scoped per-project " +
+                    "client from protected variables — never committed, never cached).";
+                results[peer.Name] = result;
+                continue;
+            }
+
+            try
+            {
+                using var http = new HttpClient { Timeout = TimeSpan.FromSeconds(10) };
+                using var form = new FormUrlEncodedContent(new Dictionary<string, string>
+                {
+                    ["grant_type"] = "client_credentials",
+                    ["client_id"] = clientId,
+                    ["client_secret"] = clientSecret,
+                    ["scope"] = string.Join(" ", peer.Credentials.Scopes),
+                });
+
+                using var response = await http.PostAsync(tokenEndpoint, form).ConfigureAwait(false);
+                var body = await response.Content.ReadAsStringAsync().ConfigureAwait(false);
+                if (!response.IsSuccessStatusCode)
+                {
+                    result.Error = $"token endpoint returned HTTP {(int)response.StatusCode}: {Truncate(body)}";
+                    results[peer.Name] = result;
+                    continue;
+                }
+
+                using var doc = JsonDocument.Parse(body);
+                var expiresIn = doc.RootElement.TryGetProperty("expires_in", out var expEl)
+                    && expEl.TryGetInt32(out var exp)
+                    ? exp
+                    : (int?)null;
+                var issuedToken = doc.RootElement.TryGetProperty("access_token", out var tokenEl)
+                    && tokenEl.ValueKind == JsonValueKind.String;
+
+                if (!issuedToken || expiresIn is null || expiresIn <= 0)
+                {
+                    result.Error = "token response missing access_token or expires_in.";
+                    results[peer.Name] = result;
+                    continue;
+                }
+
+                if (expiresIn > 900)
+                {
+                    result.Error = $"TTL {expiresIn}s exceeds the 15-minute V2 ceiling (BR-DEV-004).";
+                    results[peer.Name] = result;
+                    continue;
+                }
+
+                result.Valid = true;
+                result.TokenTtlSecondsRemaining = expiresIn;
+                if (verbose)
+                {
+                    Console.Error.WriteLine($"[auth] {peer.Name}: minted token, TTL {expiresIn}s (scopes: {string.Join(" ", peer.Credentials.Scopes)})");
+                }
+            }
+            catch (Exception ex)
+            {
+                result.Error = $"mint failed: {ex.Message}";
+            }
+
+            results[peer.Name] = result;
+        }
+
+        return results;
+    }
+
+    private static string Truncate(string value)
+    {
+        var trimmed = value.Trim();
+        return trimmed.Length <= 128 ? trimmed : trimmed[..128] + "…";
     }
 }
 
@@ -738,6 +908,9 @@ public sealed class HealthReport
 
     [JsonPropertyName("peers")]
     public List<PeerCheckResult> Peers { get; set; } = new();
+
+    [JsonPropertyName("auth")]
+    public List<DynamicAuthResult> AuthResults { get; set; } = new();
 }
 
 public sealed class ReportSummary
@@ -756,12 +929,16 @@ public sealed class ReportSummary
 
     [JsonPropertyName("versionDrift")]
     public int VersionDrift { get; set; }
+
+    [JsonPropertyName("authFailures")]
+    public int AuthFailures { get; set; }
 }
 
 internal static class ReportBuilder
 {
-    public static HealthReport Build(PeerRegistry registry, string profile, List<PeerCheckResult> results, Options options)
+    public static HealthReport Build(PeerRegistry registry, string profile, List<PeerCheckResult> results, Options options, Dictionary<string, DynamicAuthResult>? dynamicAuthResults = null)
     {
+        var authResultsList = dynamicAuthResults?.Values.ToList() ?? new List<DynamicAuthResult>();
         return new HealthReport
         {
             Profile = profile,
@@ -774,8 +951,10 @@ internal static class ReportBuilder
                 FailedPeers = results.Count(r => r.Status == "down"),
                 FailedCriticalPeers = results.Count(r => r.Status == "down" && r.Critical),
                 VersionDrift = results.Count(r => r.VersionDrift == true),
+                AuthFailures = authResultsList.Count(r => !r.Valid),
             },
             Peers = results,
+            AuthResults = authResultsList,
         };
     }
 }
@@ -820,6 +999,25 @@ internal static class ReportPrinter
         }
 
         Console.WriteLine();
+        if (report.AuthResults.Count > 0)
+        {
+            Console.WriteLine("auth:");
+            foreach (var auth in report.AuthResults)
+            {
+                if (auth.Valid)
+                {
+                    var ttl = auth.TokenTtlSecondsRemaining is { } s ? $"{s}s remaining" : "TTL unknown";
+                    Console.WriteLine($"  OK    {auth.Peer} [dynamic] {ttl}");
+                }
+                else
+                {
+                    Console.WriteLine($"  FAIL  {auth.Peer} [dynamic] {auth.Error}");
+                }
+            }
+
+            Console.WriteLine();
+        }
+
         Console.WriteLine(
             $"summary: {report.Summary.Healthy}/{report.Summary.Total} healthy" +
             (report.Summary.FailedCriticalPeers > 0
@@ -827,6 +1025,9 @@ internal static class ReportPrinter
                 : string.Empty) +
             (report.Summary.VersionDrift > 0
                 ? $", {report.Summary.VersionDrift} below minVersion"
+                : string.Empty) +
+            (report.Summary.AuthFailures > 0
+                ? $", {report.Summary.AuthFailures} auth failure(s)"
                 : string.Empty));
         if (report.Summary.FailedPeers > 0)
         {
@@ -852,6 +1053,7 @@ public sealed class PeersHealthException : Exception
 [JsonSerializable(typeof(HealthReport))]
 [JsonSerializable(typeof(PeerCheckResult))]
 [JsonSerializable(typeof(ReportSummary))]
+[JsonSerializable(typeof(DynamicAuthResult))]
 internal sealed partial class PeersJsonContext : JsonSerializerContext
 {
 }

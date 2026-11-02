@@ -86,6 +86,11 @@
           "additionalProperties": false,
           "properties": {
             "source": { "enum": ["keychain"] },
+            "mode": {
+              "enum": ["static", "dynamic"],
+              "default": "static",
+              "description": "V2 (TASK-99): static = per-machine Keychain secret (default, 90-day rotation). dynamic = Origin Auth client-credentials minting (TTL <= 15 min, registry scopes, no long-lived per-peer secret)."
+            },
             "keychainService": {
               "type": "string",
               "pattern": "^oelite-uat-[a-z0-9-]+$",

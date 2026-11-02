@@ -113,7 +113,34 @@ Notes:
 - Exit `2` (config error) in CI is **always** blocking — a broken registry
   must not merge, which is why `validate-peer-registry` runs first.
 
-## 6. Local Developer Quick Reference
+## 6. CI Token Minting (V2, TASK-99 — BUSINESS-RULEBOOK § 8.2)
+
+Hermetic CI jobs never mint UAT tokens (AC-004). When a job must hit UAT peers,
+the ONLY sanctioned pattern is the documented `.uat-integration-auth` template
+in `.gitlab-ci.yml`:
+
+1. **Variables provisioning** (Ethan-owned, per consuming repo):
+   - Register ONE per-project IAM client per consuming repo in the UAT realm
+     (client id: `uat-ci-<project-slug>`), scoped to exactly the peer
+     `credentials.scopes` the job needs. Request via GitLab issue on
+     `oelite/coding-standards`.
+   - Store the client id/secret as **PROTECTED + MASKED** CI/CD variables:
+     `OELITE_UAT_IAM_CLIENT_ID` / `OELITE_UAT_IAM_CLIENT_SECRET`.
+     Optionally `OELITE_UAT_TOKEN_ENDPOINT` (defaults to origin-auth UAT).
+2. **Per-run mint**: the job mints a token at the start of its script using
+   the client-credentials flow (RFC 6749 §4.4). The token is held ONLY in the
+   job-scoped environment (`$OELITE_UAT_TOKEN`) and dies with the job.
+3. **Never write to disk, artifacts, or cache** — the token must never persist
+   across jobs or be exposed in logs. GitLab protects protected-variable
+   values from logs by default; do not disable masking.
+4. **Audit expectations**: every mint carries the per-project client identity
+   in the UAT audit log. Ethan monitors issuance rate/anomaly via Orion; Maya
+   owns anomaly investigation (BR-DEV-004).
+
+This pattern ensures zero long-lived secrets in CI, per-job attribution, and
+≤15-minute blast radius for any leaked token.
+
+## 7. Local Developer Quick Reference
 
 ```bash
 # Is UAT usable right now?
@@ -125,7 +152,11 @@ Notes:
 # Machine-readable output (scripts / tooling)
 ./infrastructure/oelite-stack/scripts/peers-health.sh --profile uat-peers --json
 
-# Verify my machine's UAT credentials are provisioned (Keychain)
+# Verify my machine's UAT credentials are provisioned
+#   static peers: Keychain lookup
+#   dynamic peers (V2): full client-credentials mint vs UAT token endpoint,
+#   reporting TTL remaining. Requires OELITE_UAT_IAM_CLIENT_ID /
+#   OELITE_UAT_IAM_CLIENT_SECRET in the environment (bootstrap IAM client).
 ./infrastructure/oelite-stack/scripts/peers-health.sh --profile uat-peers --auth
 
 # Only the peer I actually depend on
