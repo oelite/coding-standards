@@ -1,10 +1,10 @@
 # OElite Platform Business Rulebook — Source of Authority Index
 
 > **Repository**: coding-standards
-> **Last Updated**: 2026-10-22
+> **Last Updated**: 2026-11-02
 > **Maintained by**: Isabella (Business Analyst)
-> **Status**: Active — index of authoritative business docs
-> **Version**: 1.0.0
+> **Status**: Active — index of authoritative business docs; § 6.1 Release Management is Draft pending approval
+> **Version**: 1.1.0
 
 ---
 
@@ -17,6 +17,7 @@ Rules of authority:
 1. **Factual documents** (BRD, SRD/SRS, user stories, journeys, process flows, business rules `BR-XX-NNN`) are the authority for what features ARE and how they MUST behave. They change only via the amendment process in `6_documentation_standards/REQUIREMENTS-AUTHORITY.md`.
 2. **Implementation state** (shipped? evidence? MR numbers?) must NOT live in factual docs. Where a repo document currently mixes them (e.g. `uranus/arc-cli/docs/business/RULEBOOK.md` ships-status columns), the factual content (features, rules, ACs) is authoritative and the status columns must migrate to GitLab (issue #68 audit finding).
 3. If a repo has **no** `docs/business/` material, the platform templates in this folder (`0.1`–`0.5`) are the requirement for Isabella/Emma to author before development.
+4. **Platform-wide capabilities** (not owned by any single product repo) are documented directly in this file — see § 6 (currently: Release Management, § 6.1 / BR-REL).
 
 ---
 
@@ -75,6 +76,7 @@ Per-repo rule files follow (or should follow) `6_documentation_standards/REQUIRE
 
 Platform-wide baselines come from `agents/core/principles.md` (security: origin-auth RS256 JWT, Argon2id, AES-256 field encryption; e2e quality gates; integration testing on shared stack).
 Per-repo operational SLO tables: **TODO(owner)** — none of the audited repos currently carries a dedicated SLO section in `docs/business/`. Audit logging requirements exist in cadence within origin-auth BR-12 and each repo's SRS where written.
+Release-specific operational expectations (cadence, rollback time, deploy reliability) are stated in § 6.1 BR-REL; the numeric SLOs remain part of the platform SLO TODO above.
 
 ## 6. Traceability Matrix — Platform
 
@@ -86,6 +88,120 @@ Traceability is per-repo (the matrix maps stories ↔ ACs ↔ journeys ↔ tests
 | jupiter/apex | `docs/business/traceability-matrix.md` | Present — TODO(owner): refresh |
 | venus/obelisk-runtime | story/e2e-linked (verified via docs structure) | Medium |
 | All others | — | TODO(owner): build matrix from BRD + USER-STORIES.md |
+
+## 6. Platform-Wide Business Capabilities
+
+The rulebook's primary role is an index of per-repo business documents. Some capabilities, however, are **platform-wide by nature** — they are not features of any single product repo but govern how the platform itself operates and delivers. These are documented here directly as normative business rules, with stable `BR-REL-NNN` IDs. The engineering counterpart (branch mechanics, CI job syntax, CLI commands) lives in `5_git_workflow_standards/GIT-WORKFLOW-STANDARDS.md` (§2.1.2 Promotion Gates, §2.1.3 Rollback Standard, §8.7 Release Issue Lifecycle); where this section and that document could appear to differ, both agree by construction — this section states the business rule, that document its engineering enforcement.
+
+## 6.1 Release Management (BR-REL)
+
+> **Maintained by**: Isabella (Business Analyst)
+> **Status**: Draft — pending approval per REQUIREMENTS-AUTHORITY.md amendment process
+> **Version**: 1.0.0
+> **Approved decision**: pending — TASK-94 / issue #94 change request
+
+### Scope
+
+Release Management is the platform-wide business capability covering **how software moves from development to production**. It defines who may promote code, under what business conditions a release may proceed, who validates it, and what happens when a release must be withdrawn.
+
+**Actors**: Ethan (infrastructure / promotion execution), Emma (orchestration and closure), Olivia (UAT quality validation), Isabella (UAT business validation), Marcus (standards/architecture review), the human business owner (Production authorization).
+
+**Engineering source**: `GIT-WORKFLOW-STANDARDS.md` §2.1.2 (promotion chain and gates), §2.1.3 (rollback standard), §8.7 (release issue lifecycle).
+
+### BR-REL-001: Environment Promotion Chain
+
+Software MUST move through environments in the fixed order **development → UAT → Production**, via promotion MRs (`feature/* → develop → uat → main`). No code MAY reach Production that has not been deployed to and validated in UAT first.
+
+- **Applies when**: any deployable change is promoted toward a customer-visible environment.
+- **Outcome**: production receives only UAT-validated code.
+- **Exceptions**: none. The chain has no bypass path.
+
+### BR-REL-002: Source-Branch Restrictions
+
+Promotion MRs MUST respect fixed source-branch rules: an MR targeting `uat` MUST originate from `develop`; an MR targeting `main` MUST originate from `uat`. Any other source branch is a workflow violation and MUST be rejected.
+
+- **Applies when**: a promotion MR is created or reviewed.
+- **Outcome**: branch topology is uniform and machine-checkable.
+
+### BR-REL-003: UAT Soak Gate
+
+An MR promoting code to Production (`uat → main`) MUST NOT merge until: (a) the UAT deployment pipeline is green, (b) the UAT health check passed, and (c) both **Olivia (quality validation)** and **Isabella (business validation)** sign-offs are recorded on the release issue.
+
+- **Applies when**: a `uat → main` release MR is prepared for merge.
+- **Outcome**: two independent UAT validations (quality + business) gate every production release.
+- **Exceptions**: see BR-REL-006 (soak compression requires recorded human business-owner authorization).
+
+### BR-REL-004: Artifact Continuity
+
+Docker images are built exactly once, tagged with the commit SHA at merge to `develop`, and that same SHA-tagged image is deployed to every subsequent environment. Production MUST NOT deploy an image that was never deployed to UAT; Production deploy MUST fail closed when this check fails.
+
+- **Applies when**: images are built, promoted, or deployed to any environment.
+- **Outcome**: the artifact validated in UAT is bit-identical to the artifact deployed in Production.
+
+### BR-REL-005: Release Issue Lifecycle (REL-XXX)
+
+Every release MUST be tracked by a release issue (REL-XXX) created at promotion time. Olivia's and Isabella's UAT sign-offs are recorded as comments on this issue (canonical location). The release issue moves: **In Progress** (upon `develop → uat` promotion, Ethan) → **Ready to Merge** (UAT soak gate satisfied, Olivia + Isabella sign-offs recorded) → **Done + Closed** (Production deploy verified and post-deploy health check passed, Emma).
+
+- **Applies when**: a release is orchestrated.
+- **Outcome**: a single, auditable record of who validated what, and when.
+
+### BR-REL-006: UAT Soak Compression Exception
+
+The UAT soak gate (BR-REL-003) MAY be compressed ONLY with **explicit human business-owner authorization, recorded on the release issue**. A soak gate MUST never be skipped silently. An unauthorized skip is a workflow violation and the release MUST be rolled back to the last known-good state pending review.
+
+- **Applies when**: the business owner elects to release before the full UAT soak period.
+- **Outcome**: exceptional, audited, business-authorized acceleration — never a silent engineering shortcut.
+
+### BR-REL-007: Rollback Authority and Procedure
+
+Every deployable service MUST support rollback to the last known-good release. **Ethan executes rollbacks**; **the human business owner (or Emma's delegate) authorizes Production rollbacks**. UAT rollbacks are at Ethan's discretion. Rollback uses immutable SHA-tagged images via `kubectl rollout undo`, and forward-only DB migrations require a recorded compensating migration before a release MR merges — an app MUST NOT be rolled back past an unreversed breaking migration.
+
+- **Applies when**: a release causes a Production or UAT incident.
+- **Outcome**: fast, authorized, structurally safe withdrawal of a bad release.
+
+### Ownership summary
+
+| Step | Owner |
+|------|-------|
+| Promotion MR creation and deploy execution (develop→uat, uat→main) | Ethan |
+| Release orchestration, promotion MR verification, release issue closure | Emma |
+| UAT quality-validation sign-off on the release issue | Olivia |
+| UAT business-validation sign-off on the release issue | Isabella |
+| Standards/architecture review of promotion-gate changes | Marcus |
+
+### Workflow: WF-REL-01 Release & Promotion
+
+Step-by-step business flow from a merged feature to a verified production deploy:
+
+| # | Step | Owner | Gate / Outcome |
+|---|------|-------|----------------|
+| 1 | Feature MR merged to `develop` after review + CI green (standard §8 lifecycle) | Implementing agent → reviewer | `develop` pipeline green; image tagged with merge commit SHA |
+| 2 | Release issue (REL-XXX) created at promotion time | Ethan or Emma | REL issue exists with release notes |
+| 3 | Promotion MR `develop → uat` created, referencing the REL issue | Ethan | MR targets `uat` from `develop` only (BR-REL-002) |
+| 4 | UAT deployment pipeline runs and succeeds on the `uat` branch | CI (Ethan verifies) | Same SHA-tagged image deployed to `oelite-uat` (BR-REL-004) |
+| 5 | UAT health check passes | Ethan | Health endpoint / `./oelite-stack.sh cluster UAT health` |
+| 6 | Olivia records UAT quality-validation sign-off **on the REL issue** | Olivia | Comment evidence on REL issue |
+| 7 | Isabella records UAT business-validation sign-off **on the REL issue** | Isabella | Comment evidence on REL issue |
+| 8 | REL issue transitions to `Ready to Merge` once soak gate satisfied (BR-REL-003) | Ethan or Emma (reviewer) | Both sign-offs verified on the REL issue |
+| 9 | Release MR `uat → main` created and merged | Ethan | MR targets `main` from `uat` only (BR-REL-002); Production deploy is manual (`when: manual`) |
+| 10 | Production deploy verified (`mr-status` confirms merge) and post-deploy health check passed | Ethan | Deploy of a SHA never deployed to UAT fails closed (BR-REL-004) |
+| 11 | REL issue → `Done` + Closed in the same session as verification | Emma | Per §8.7 / §8.2.2 closure rule |
+| 12 | (Exceptional path) Soak compression authorized in advance by the human business owner, recorded on the REL issue | Human business owner → Emma | BR-REL-006 |
+| 13 | (Incident path) Rollback executed on Production authorization; incident and follow-up recorded on the REL issue | Ethan, authorized by human business owner / Emma's delegate | BR-REL-007 |
+
+**Marcus's role**: standards/architecture review of the promotion-gate mechanism itself (branch rules, CI gate syntax, artifact-continuity checks). He is not a per-release approver.
+
+### UI User Journeys
+
+**N/A** — Release Management is an operator-facing capability, not a consumer feature. There is no end-user UI journey; the "interface" is the promotion MR chain and the release issue record. Per-repo product features that ship through this process have their own journeys in their own `docs/business/` folders.
+
+### Operational Expectations
+
+Per-repo operational SLO tables are a known platform gap (§ 5 above). Release-specific expectations until dedicated SLOs are authored:
+
+- **Release cadence**: releases are sprint-aligned (sprint-N releases per §2.1.2 traceability rule); ad-hoc releases are permitted for hotfixes following the same chain.
+- **Rollback time**: rollback MUST be executable via `kubectl rollout undo` within minutes of a confirmed Production incident; the target SLO is to be authored with the platform SLO table (TODO: § 5).
+- **Deploy reliability**: a production deploy of a SHA not previously deployed to UAT MUST fail closed, by construction (BR-REL-004), not by vigilance.
 
 ---
 
