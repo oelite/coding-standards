@@ -83,6 +83,13 @@ Daniel (primary), Marcus (architecture review reference)
 ## Handoff Target
 - Grace (code review) → Maya (if auth/CRUD) → Victor (if perf/data) [can be parallel] → Olivia (testing) → Ethan (deploy) → Isabella (docs + biz validation)
 
+## Peer-Integration References
+When implementing peer integration, profile configuration, or credential handling, load:
+- `1_dotNet_coding_standards/17-LOCAL-DEV-PEER-INTEGRATION.md` — profile/registry mechanics, Keychain static path
+- `1_dotNet_coding_standards/18-DYNAMIC-PEER-CREDENTIALS.md` — normative dynamic credential (token minting) spec
+- `1_dotNet_coding_standards/CONFIGURATION-VALIDATION.md` — fail-fast profile-resolution validation spec + acceptance tests
+- `1_dotNet_coding_standards/SECURITY-PATTERNS.md` — credential storage and minting security patterns
+
 ## Verification Checklist
 - [ ] `dotnet build <project> --configuration Release` → 0 errors
 - [ ] `./oelite-stack.sh health` → all services healthy

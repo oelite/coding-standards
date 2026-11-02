@@ -109,7 +109,7 @@ The **UAT soak gate** (GIT-WORKFLOW-STANDARDS §2.1.2 rule 3) is satisfied only 
 |----------|-------------|---------|--------------------|
 | Rollout failure / health fail | production | Page Ethan (direct) + comment on REL issue | immediate (business hours) / 1 h (release window) |
 | Rollout failure / health fail | uat | Ethan via GitLab issue on the affected repo | 4 h |
-| Peer down in UAT | uat peers | Per UAT-AVAILABILITY-RUNBOOK §4 steps (issue to owning team) | 4 h ack / 1 business-day recovery (runbook SLAs) |
+| Peer down in UAT | uat peers | Per UAT-AVAILABILITY-RUNBOOK §3 steps (issue to owning team) | 4 h ack / 1 business-day recovery (runbook SLAs) |
 | Environment drift / stale envs | any | Sprint-review audit (§1.3) | next sprint review |
 
 ### 4.2 Auto-filed incident issue template

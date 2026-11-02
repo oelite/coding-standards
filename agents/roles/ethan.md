@@ -58,3 +58,9 @@ Guarantee reproducible builds, healthy containers, and reliable deployments acro
 
 ## Handoff Target
 - Isabella (documentation + business validation)
+
+## Peer-Registry & Health References
+When working on the peer registry, UAT peer availability, or peer health tooling, load:
+- `infrastructure/oelite-stack/config/peer-registry.yml` — central peer endpoint/credential-mode registry (Ethan-owned)
+- `infrastructure/oelite-stack/UAT-AVAILABILITY-RUNBOOK.md` — UAT peer availability SLAs, CI token minting, local quick reference
+- `scripts/tools/peers-health/` — peers-health utility (reachability + version + `--auth` + `--strict`)

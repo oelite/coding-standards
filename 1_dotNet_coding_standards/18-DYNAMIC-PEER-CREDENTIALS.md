@@ -6,7 +6,7 @@
 
 ## Overview
 
-V2 adds a **dynamic credential path** alongside the v1 static Keychain path. When a peer's registry entry sets `credentials.mode: dynamic`, UAT peer credentials are **minted at startup** as short-lived access tokens via the **Origin Auth client-credentials flow** — using the existing per-developer IAM client `dev-<username>-local` (BR-DEV-005). No new client type, no new secret class, no new registration model.
+V2 adds a **dynamic credential path** alongside the v1 static Keychain path. When a peer's registry entry sets `credentials.mode: dynamic`, UAT peer credentials are **minted lazily (at startup for required/critical peers)** as short-lived access tokens via the **Origin Auth client-credentials flow** — using the existing per-developer IAM client `dev-<username>-local` (BR-DEV-005). No new client type, no new secret class, no new registration model.
 
 The provider abstraction (`IPeerCredentialProvider`, defined in doc 17) gains a second implementation:
 
