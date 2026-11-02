@@ -415,7 +415,8 @@ MANDATORY: Read .oe-scope in your worktree to restore full task context after co
 - ✅ Worktree identity via `scripts/oelite-gitlab.sh worktree-create`
 - ✅ `develop` sync before worktree creation (use `worktree-sync` — safe sync that does NOT checkout develop)
 - ✅ **Pre-commit hook enforcement**: Hook blocks commits outside `.worktrees/` and on protected branches (`develop`, `main`, `master`). Humans bypass with `OELITE_HUMAN=1`. Installed automatically by `worktree-create`.
-- ✅ **Protected branches**: `develop` and `main` are for MR merges only. AI agents must NEVER commit directly on them. GitLab protected branches should be configured server-side as a second layer of defense.
+- ✅ **Protected branches**: `develop`, `uat`, and `main` are for MR merges only. AI agents must NEVER commit directly on them. GitLab protected branches should be configured server-side as a second layer of defense.
+- ✅ **Environment promotion chain**: deployments follow develop → uat → main via promotion MRs with CI branch gates and UAT soak (see GIT-WORKFLOW-STANDARDS.md §2.1.2).
 - ✅ Zero mock data
 - ✅ **Zero mock persistence** — real shared-stack Docker infra for tests; never per-repo containers (see `1_dotNet_coding_standards/16-SHARED-LOCAL-INFRASTRUCTURE.md`). A stopped shared service is recovered with `./oelite-stack.sh up`, never by creating a new container
 - ✅ No `as any`, `@ts-ignore`, `@ts-expect-error`

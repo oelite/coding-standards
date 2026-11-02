@@ -187,10 +187,13 @@ Closes #<issue>
 **Never**: AI references, emojis, co-authors.
 
 ### Branch Strategy & Packaging
+Deployments follow a strictly enforced promotion chain: `feature/*` → `develop` (dev) → `uat` (UAT) → `main` (Production). Each promotion occurs via reviewed Merge Requests with CI branch gates, UAT soak validation, and immutable SHA-tagged artifact continuity. For full normative rules, see `coding-standards/5_git_workflow_standards/GIT-WORKFLOW-STANDARDS.md` §2.1.2 ("Branch Promotion & Deployment Gates").
+
+Downstream of these promotion gates:
 - **main**: production releases → NuGet `nuget.org`; Docker `registry.phanes.ltd/oelite`.
 - **develop**: development pre-releases → `packages.phanes.ltd`.
 - **uat**: UAT pre-releases → `packages.phanes.ltd`.
-- K8s namespaces: `oelite-dev` / `oelite-uat` / `oelite-prod`; production deploys are `when: manual`.
+- K8s namespaces: `oelite-dev` / `oelite-uat` / `oelite-prod`. In CI/CD, deploy jobs to `oelite-prod` run only from `main` and require `when: manual` confirmation.
 
 ---
 

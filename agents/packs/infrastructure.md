@@ -67,7 +67,13 @@ Ethan (primary), Marcus (architecture review)
 - Registries:
   - NuGet: `nuget.org` (main) / `packages.phanes.ltd` (develop/uat)
   - Docker: `registry.phanes.ltd/oelite`
-- K8s namespaces: `oelite-{dev,uat,prod}`; prod is `when: manual`
+- K8s namespaces: `oelite-{dev,uat,prod}`; prod deploys run only from `main` under `when: manual`
+- **Branch-gated deploy jobs (mandatory):** every deploy job MUST declare an explicit `rules:` clause bound to its branch and a GitLab `environment:` declaration.
+  - `deploy_uat`: `rules: [ if: '$CI_COMMIT_BRANCH == "uat"' ]`, `environment: { name: uat, url: https://uat.phanes.ltd }`
+  - `deploy_prod`: `rules: [ if: '$CI_COMMIT_BRANCH == "main"' ]` + `when: manual`, `environment: { name: production, url: https://www.oelite.io }`
+  - A deploy job with no branch `rules:` MUST NOT exist; a manual button on the wrong branch must never render.
+- **Artifact continuity (mandatory):** Docker images are built ONCE (tagged with the commit SHA) when the MR merges into `develop`. `deploy_uat` and `deploy_prod` deploy that exact SHA tag — never rebuild per environment. `deploy_prod` MUST fail if the image SHA was not previously deployed to UAT (`verify-uat-deployed.sh` guard).
+- **Normative source:** `coding-standards/5_git_workflow_standards/GIT-WORKFLOW-STANDARDS.md` §2.1.2 ("Branch Promotion & Deployment Gates").
 
 ## Verification Checklist
 - [ ] `docker build -f <Dockerfile> .` succeeds

@@ -23,8 +23,9 @@ The templates enforce consistent, detailed, and verifiable task information so t
 2. [Issue Template: Feature](#2-issue-template-feature)
 3. [Issue Template: Bug](#3-issue-template-bug)
 4. [Issue Template: Task](#4-issue-template-task)
-5. [Merge Request Template](#5-merge-request-template)
-6. [Required Labels Reference](#6-required-labels-reference)
+5. [Issue Template: Release](#45-issue-template-release-rel-xxx)
+6. [Merge Request Template](#5-merge-request-template)
+7. [Required Labels Reference](#6-required-labels-reference)
 
 ---
 
@@ -50,7 +51,8 @@ Every active OElite repository MUST contain the following files:
     ├── issue_templates/
     │   ├── Feature.md
     │   ├── Bug.md
-    │   └── Task.md
+    │   ├── Task.md
+    │   └── Release.md
     └── merge_request_templates/
         ├── Default.md
         └── Release-Promotion.md
@@ -336,6 +338,56 @@ All acceptance criteria MUST be verified against source code per [AC-VERIFICATIO
 
 ---
 
+## 4.5 Issue Template: Release (REL-XXX)
+
+**File**: `.gitlab/issue_templates/Release.md`
+
+A Release (REL-XXX) issue bundles a set of feature/bug issues into a single deployable release for the develop → uat → main promotion chain (GIT-WORKFLOW-STANDARDS.md §2.1.2). It is created by Ethan or Emma at promotion time and is the canonical location for UAT soak sign-offs.
+
+```markdown
+## Title
+[REL-XXX] <Sprint / release name> — promotion to UAT and Production
+
+## Release Scope
+List of bundled issues and their merge status:
+- [ ] #<iid> — <feature/bug title> (merged into develop)
+- [ ] #<iid> — <feature/bug title> (merged into develop)
+
+## Release Notes
+<Business-facing summary of what ships in this release. Used for the release-notes page and stakeholder comms.>
+
+## Promotion Plan
+- [ ] `develop → uat` promotion MR created (references this issue)
+- [ ] `uat → main` release MR created after UAT soak gate satisfied
+
+## UAT Soak Checklist (§2.1.2 rule 3 — ALL mandatory before uat → main)
+- [ ] UAT deployment pipeline green on the exact SHA being promoted
+- [ ] UAT health check passed (`./oelite-stack.sh cluster UAT health` or service health endpoint)
+- [ ] Olivia validation sign-off recorded **on this release issue**
+- [ ] Isabella business validation sign-off recorded **on this release issue**
+- [ ] Same SHA-tagged image confirmed for `deploy_prod` (artifact continuity — no rebuilds)
+
+## Rollback Plan
+- Rollback owner: <agent/role>
+- Image tag to roll back to: `<sha-tag>` (immutable SHA tag from `develop` merge)
+- Rollback procedure: `kubectl rollout undo deployment/<name> -n oelite-prod` (see GIT-WORKFLOW-STANDARDS.md §2.1.3)
+- DB migration rollback plan: <forward-only + compensating migration | n/a>
+
+## Go/No-Go Decision
+- Decision owner: <human business owner or Emma delegate>
+- Go/No-Go recorded on this issue: YES / NO
+
+## Deploy Verification Steps
+- [ ] Production deploy MR merged and verified via `mr-status`
+- [ ] `kubectl rollout status deployment/<name> -n oelite-prod` succeeded
+- [ ] Health endpoint returns 200 post-deploy
+- [ ] Release notes published (Isabella)
+
+/label ~"Release"
+```
+
+---
+
 ## 5. Merge Request Template
 
 **File**: `.gitlab/merge_request_templates/Default.md`
@@ -497,6 +549,7 @@ Every OElite GitLab project MUST have the following labels:
 | `Done` | `#3CB371` | MR merged + business validation passed | Emma |
 | `Blocked` | `#FF0000` | External dependency blocking progress | Assignee |
 | `Bug` | `#DC3545` | Defect or regression | Emma / Reporter |
+| `Release` | `#6F42C1` | Promotion/release MR or release issue | Ethan / Emma |
 | `Priority::Critical` | `#FF0000` | Must be resolved immediately | Emma |
 | `Priority::High` | `#FF8C00` | Significant business impact | Emma |
 | `Priority::Medium` | `#FFD700` | Normal priority | Emma |

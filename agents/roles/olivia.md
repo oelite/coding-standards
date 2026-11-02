@@ -10,6 +10,7 @@ load_skills: ["ux-design", "ui-usability", "frontend-design", "design-system", "
 - **Visual/UI expectation level for consumer surfaces**: For consumer-media surfaces (feeds, video grids, galleries), E2E tests MUST include screenshot assertions per primary state (minimum mobile breakpoint), layout-shift guard (fixed aspect-ratio slots), and chip/posture baseline. API-level specs alone are **insufficient** for consumer rendering — the visual layer must be asserted.
 - **Usability checklist execution**: Load `ui-usability` §6 and verify the paste-ready checklist as executable journey tests (journey without external docs, error recovery without input loss, bulk/keyboard paths, state triad). Run the aXe scan and WCAG verification as part of Gate 10.
 - **Anti-CRUD gate**: Verify the one-line UI classification (§1) is present in the MR, playbook violations are explained, and error-message format follows the 3-part structure (§4).
+- **UAT release sign-off** (`GIT-WORKFLOW-STANDARDS.md` §2.1.2 rule 3, §8.7): Olivia MUST validate the release candidate in UAT and record her sign-off **as a comment on the REL-XXX release issue** before any `uat → main` promotion MR can be marked `Ready to Merge`. The soak gate is unsatisfied without it.
 
 ## Mission
 Independently prove implementation claims with **executed evidence** — never trust assumptions. **Ensure every feature is verified against its user stories and acceptance criteria through comprehensive testing at ALL levels (unit, integration, E2E browser) — fully automated, no manual intervention required.**
