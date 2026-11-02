@@ -3,7 +3,7 @@
 > **Owner**: Ethan (DevOps & Reliability)
 > **Companion standards**: `GIT-WORKFLOW-STANDARDS.md` §2.1.2 (promotion gates), §2.1.3 (rollback standard), §8.7 (release issue lifecycle)
 > **Companion runbook**: `infrastructure/oelite-stack/UAT-AVAILABILITY-RUNBOOK.md` (UAT peer availability SLAs)
-> **Status**: §7 SLOs **ratified — see BUSINESS-RULEBOOK § 5**.
+> **Status**: §7 platform SLOs **ratified — see BUSINESS-RULEBOOK § 5**; §7 detection/acknowledgment and soak items below remain engineering targets (not ratified commitments).
 
 This standard defines how deployments are **observed** after CI/CD ships them: how we watch rollouts, detect failure, page humans, verify health, and record evidence. It complements — does not replace — the promotion gates (§2.1.2) and rollback standard (§2.1.3) in `GIT-WORKFLOW-STANDARDS.md`.
 
@@ -169,11 +169,11 @@ A release issue MUST NOT be closed (`issue-status closed`) without this comment 
 
 ---
 
-## 7. Service-Level Objectives (SLOs) — ratified — see BUSINESS-RULEBOOK § 5
+## 7. Service-Level Objectives (SLOs) — platform SLOs ratified (BUSINESS-RULEBOOK § 5); items below remain engineering targets
 
-> ✅ **These SLOs are ratified (BUSINESS-RULEBOOK § 5).**
+> ✅ The FIVE platform SLOs are ratified (BUSINESS-RULEBOOK § 5, MR !113): deploy success ≥ 99%, prod rollback ≤ 30 min, UAT rollback ≤ 15 min, health checks ≤ 5 min, peer SLAs 4 h ack / 1 business-day recovery. The detection/acknowledgment targets in the table below are engineering targets, NOT ratified commitments.
 
-| SLO | Proposed target | Scope |
+| SLO | Engineering target | Scope |
 |-----|-----------------|-------|
 | Rollout completion detection | ≤ 10 min from deploy job end | all environments |
 | Production rollout failure acknowledgment | ≤ 1 h during release window | production |
@@ -189,3 +189,4 @@ A release issue MUST NOT be closed (`issue-status closed`) without this comment 
 |------|--------|
 | Nov 02 2026 | Initial standard (TASK-95, issue #95): environments/deploy boards, rollout failure detection (no auto-rollback), post-deploy health checks + explicit soak-gate definition, alerting paths, Orion boundary, release-issue integration, proposed SLOs. |
 | Nov 02 2026 | Marked § 7 SLOs as ratified post-MR !120 (retrospective audit correction). |
+| Nov 02 2026 | § 7 annotated — platform SLOs ratified per BUSINESS-RULEBOOK § 5 (MR !113), detection/ack items explicitly scoped as engineering targets (Marcus arbitration on #67). |
