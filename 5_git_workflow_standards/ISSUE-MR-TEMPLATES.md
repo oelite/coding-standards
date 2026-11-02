@@ -52,7 +52,8 @@ Every active OElite repository MUST contain the following files:
     │   ├── Bug.md
     │   └── Task.md
     └── merge_request_templates/
-        └── Default.md
+        ├── Default.md
+        └── Release-Promotion.md
 ```
 
 To install:
@@ -440,6 +441,47 @@ curl -f http://localhost:<port>/health
 /label ~"PR Review"
 ```
 
+### 5.1 Merge Request Template: Release Promotion
+
+**File**: `.gitlab/merge_request_templates/Release-Promotion.md`
+
+Use for `develop → uat` and `uat → main` promotion MRs per `GIT-WORKFLOW-STANDARDS.md` §2.1.2.
+
+```markdown
+## Release Issue
+Closes #<release-iid>
+
+## Promotion
+- [ ] Direction: `develop → uat` (release candidate) / `uat → main` (production release)
+- [ ] Source branch is the ONLY permitted source (`uat` ← `develop`; `main` ← `uat`) — §2.1.2
+
+## Included Changes
+<Release notes: merged issues, story refs (US-XXX/BUG-XXX), known issues.>
+
+## Deployment Gates (§2.1.2)
+
+### For develop → uat:
+- [ ] `develop` CI pipeline green on merge SHA
+- [ ] Image tagged with commit SHA in registry (artifact continuity)
+- [ ] `deploy_uat` job configured with `rules: if $CI_COMMIT_BRANCH == "uat"`
+
+### For uat → main (UAT soak gate — ALL mandatory):
+- [ ] UAT deployment pipeline green on the exact SHA being promoted
+- [ ] UAT health check passed (`./oelite-stack.sh cluster UAT health` / service health endpoints)
+- [ ] Olivia E2E/validation sign-off recorded on the release issue
+- [ ] Isabella business validation recorded on the release issue
+- [ ] `deploy_prod` deploys the same SHA-tagged image — no rebuilds
+- [ ] Production deploy is `when: manual` + branch-gated to `main`
+
+## Rollback Plan
+<Image tag to roll back to; `kubectl rollout undo` procedure.>
+
+## Reviewer
+Ethan (or Emma). Implementing agents MUST NOT create promotion MRs.
+
+/label ~"PR Review" ~"Release"
+```
+
 ---
 
 ## 6. Required Labels Reference
@@ -477,3 +519,4 @@ Every OElite GitLab project MUST have the following labels:
 | 2026-07-22 | Orchestrator / Isabella | 1.1.0 | Added AC verification checklist from AC-VERIFICATION-PROCESS.md to all templates |
 | 2026-06-29 | Emma / Isabella | 1.0.0 | Created dedicated ISSUE-MR-TEMPLATES.md for GitLab issue and MR templates |
 | 2026-09-02 | Isabella (per TASK-008) | 1.3.0 | Added `worktree-cleanup` step to MR Post-Approval Actions — hard-gate enforcement for post-merge cleanup per `GIT-WORKFLOW-STANDARDS.md` §1.8 |
+| 2026-11-02 | Ethan (per TASK-91) | 1.4.0 | Added §5.1 Release Promotion MR template — `develop → uat → main` promotion MRs with UAT soak gate and artifact-continuity checklist per `GIT-WORKFLOW-STANDARDS.md` §2.1.2; installation tree updated |

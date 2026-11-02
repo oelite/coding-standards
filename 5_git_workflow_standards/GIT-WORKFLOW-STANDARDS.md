@@ -13,6 +13,7 @@ The OElite team consists of 12 members (10 AI agents + human developers) who wor
 - **MR-Centric Model.** All code enters `develop` through GitLab Merge Requests. Agents push their feature branch, create an MR, and the MR is reviewed and merged via GitLab. No local merges — GitLab is the integration point.
 - **Review before merge.** Code review is a gate, not an afterthought. No code enters `develop` without required approvals. GitLab enforces this natively.
 - **Auto-merge on approval.** When an MR is approved and the CI pipeline succeeds, GitLab auto-merges and auto-deletes the feature branch. This eliminates manual merge steps.
+- **Environment promotion chain.** Deployments always follow `develop → uat → main` via promotion MRs. Code reaches Production only after it has been deployed to and validated in UAT. No direct pushes or bypass MRs to `uat` or `main`.
 - **Parallel by design.** Directory-level ownership and worktree isolation let multiple agents work simultaneously without stepping on each other. GitLab handles concurrent MRs natively.
 
 ---
@@ -225,17 +226,100 @@ Every team member has a unique GitLab identity. AI agents commit under the team 
 
 | Branch | Purpose | Who Commits |
 |--------|---------|-------------|
-| `develop` | Integration branch. All MRs target this. | Only via merged MRs. Never direct commits. |
-| `main` | Production-ready releases. | Only via release MRs from `develop`. |
+| `develop` | Integration branch. All MRs target this. Auto-deploys to the dev environment. | Only via merged MRs. Never direct commits. |
+| `uat` | Release-candidate branch. Deploys to the UAT k8s cluster (`oelite-uat`). | Only via promotion MRs from `develop`. Never direct commits. |
+| `main` | Production-ready releases. Deploys to the Production k8s cluster (`oelite-prod`). | Only via promotion MRs from `uat`. Never direct commits. |
 
 ### 2.1.1 Protected Branches (Server-Side Enforcement)
 
-**GitLab protected branches MUST be configured for `develop` and `main`** as a second layer of defense beyond the pre-commit hook:
+**GitLab protected branches MUST be configured for `develop`, `uat`, and `main`** as a second layer of defense beyond the pre-commit hook:
 
 - `develop`: Protected against direct pushes. Only MR merges allowed. Allows force push? **No**.
-- `main`: Protected against direct pushes. Only MR merges from `develop` allowed. Allows force push? **No**.
+- `uat`: Protected against direct pushes. Only MR merges from `develop` allowed (CI gate enforces source branch — §2.1.2). Allows force push? **No**.
+- `main`: Protected against direct pushes. Only MR merges from `uat` allowed (CI gate enforces source branch — §2.1.2). Allows force push? **No**.
 
 This prevents accidental direct commits even if an agent bypasses the pre-commit hook. Configure in GitLab: **Settings > Repository > Protected Branches**.
+
+### 2.1.2 Branch Promotion & Deployment Gates (Hard Gate)
+
+**This is a non-negotiable gate. No environment is deployed from the wrong branch, and no environment is skipped.**
+
+CI/CD pipelines deploy Docker images directly to the UAT and Production k8s clusters (see `infrastructure/oelite-stack/README.md`). To guarantee that every change passes through dev → UAT → Production in order, the promotion chain is machine-enforced:
+
+```
+feature/* ──MR──▶ develop ──promotion MR──▶ uat ──release MR──▶ main
+   dev deploy      (CI)        UAT deploy      (gates)     PROD deploy (manual)
+```
+
+#### Rules
+
+1. **Promotion MRs only.** MRs targeting `uat` MUST originate from `develop`. MRs targeting `main` MUST originate from `uat`. Feature branches, hotfix branches, and any other source MUST NOT target `uat` or `main` directly.
+2. **CI-enforced branch gating.** Every deploy job MUST declare an explicit `rules:` clause bound to its branch and a GitLab `environment:` declaration. A deploy job that has no branch rule MUST NOT exist. A manual button on the wrong branch must never appear.
+3. **UAT soak gate.** A `uat → main` release MR MUST NOT be merged until: (a) the UAT deployment pipeline on the `uat` branch is green, (b) the UAT health check passed (`./oelite-stack.sh cluster UAT health` or the service health endpoint), and (c) Olivia/Isabella validation is recorded on the release issue. This is the deployment analogue of the Olivia-before-`Ready to Merge` chain (§8.3).
+4. **Artifact continuity.** Docker images are built ONCE (tagged with the commit SHA) when the MR merges into `develop`. `deploy_uat` and `deploy_prod` deploy that exact SHA tag — never rebuild per environment. `deploy_prod` MUST fail if the image SHA was not previously deployed to UAT. This makes it structurally impossible for code to reach Production that never passed UAT.
+5. **Traceability.** Promotion MRs MUST reference a release issue (e.g., `[REL-00X] Promote to UAT — sprint N release`) created via `issue-create`. Use the Release Promotion MR template (`ISSUE-MR-TEMPLATES.md` §5.1).
+6. **Ownership.** Promotion MRs are created by **Ethan** (or Emma) via `scripts/oelite-gitlab.sh mr-create <project> ethan develop uat "..."`. Implementing agents never create promotion MRs. Hotfix exception: for a Critical production incident, a hotfix branch MAY be merged to `develop` first, then promoted through the same chain — never directly to `uat`/`main`.
+
+#### CI/CD deploy job requirements (machine enforcement)
+
+```yaml
+deploy_uat:
+  stage: deploy_k8s
+  image: bitnami/kubectl:latest
+  environment:
+    name: uat
+    url: https://uat.phanes.ltd
+  rules:
+    - if: '$CI_COMMIT_BRANCH == "uat"'          # HARD GATE: only deploys from uat branch
+  script:
+    - kubectl --kubeconfig "$PHANES_K8S" -n oelite-uat apply -f k8s/
+    - kubectl --kubeconfig "$PHANES_K8S" -n oelite-uat rollout status deploy/<name>
+
+deploy_prod:
+  stage: deploy_k8s
+  image: bitnami/kubectl:latest
+  environment:
+    name: production
+    url: https://www.oelite.io
+  rules:
+    - if: '$CI_COMMIT_BRANCH == "main"'          # HARD GATE: only deploys from main branch
+      when: manual                               # manual gate ON TOP of branch gate
+  script:
+    - ./scripts/verify-uat-deployed.sh "$CI_COMMIT_SHA"   # artifact continuity check — fails if SHA never deployed to UAT
+    - kubectl --kubeconfig "$OElite_K8S" -n oelite-prod apply -f k8s/
+    - kubectl --kubeconfig "$OElite_K8S" -n oelite-prod rollout status deploy/<name>
+```
+
+- `$CI_COMMIT_BRANCH == "uat"` / `"main"` is the machine gate: a manual Production button on any other branch simply never renders.
+- `when: manual` alone is NOT a gate — it must always be paired with the branch rule.
+- `environment:` declarations give GitLab Environments/Deploy Boards visibility of what is deployed where.
+
+#### Promotion MR creation
+
+```bash
+# Release issue first (Issue-First applies to promotions too)
+scripts/oelite-gitlab.sh issue-create oelite/<family>/<repo> ethan \
+  "[REL-00X] Release sprint N to UAT" "<release notes>"
+
+# Promote develop → uat
+scripts/oelite-gitlab.sh mr-create oelite/<family>/<repo> ethan develop uat \
+  "[REL-00X] Promote to UAT — sprint N release" "Closes #<release-iid>"
+
+# After UAT validation recorded, promote uat → main
+scripts/oelite-gitlab.sh mr-create oelite/<family>/<repo> ethan uat main \
+  "[REL-00X] Release sprint N to Production" "Closes #<release-iid>"
+```
+
+#### Enforcement
+
+| Scenario | Action |
+|----------|--------|
+| MR targeting `uat` from a non-`develop` source branch | CI gate job fails; reviewer MUST reject |
+| MR targeting `main` from a non-`uat` source branch | CI gate job fails; reviewer MUST reject |
+| `deploy_uat` job without branch `rules:` | Prohibited — `.gitlab-ci.yml` is a gated file (§4.2); reviewer MUST reject |
+| `uat → main` MR merged without UAT validation recorded | Release issue NOT closed; escalation to Emma |
+| Production deploy of an SHA never deployed to UAT | `verify-uat-deployed.sh` fails the pipeline; deploy blocked |
+| Direct push to `uat` or `main` | Blocked by GitLab protected branches (§2.1.1) |
 
 ### 2.2 Feature Branches
 
@@ -861,6 +945,7 @@ An issue is only `Done` when ALL are true:
 - [ ] **Issue closed in GitLab** via `issue-status closed` (not just labeled `Done`)
 - [ ] **Post-merge audit passed**: `issue-audit` confirms no orphaned open issues for this MR
 - [ ] **Worktree cleaned up**: `scripts/oelite-gitlab.sh worktree-cleanup <agent> --delete-branch` ran successfully in the same session as the merge verification — see §1.8
+- [ ] **(Release/promotion changes only)** UAT soak gate satisfied per §2.1.2: UAT pipeline green, UAT health check passed, Olivia/Isabella validation recorded on the release issue
 
 ### 8.5 Issue Comment Templates
 
@@ -1595,6 +1680,7 @@ GitLab will re-evaluate mergeability automatically.
 | Jun 29 2026 | **SCRUM/Dev Workflow Enhancement**: Added explicit GitLab issue lifecycle protocol at §8. Defined mandatory status labels (`To Do`, `In Progress`, `PR Review`, `Ready to Merge`, `Done`, `Blocked`), status transition rules, role responsibilities, SCRUM integration, issue comment templates, and definition-of-done checklist. Added `issue-status` CLI command. Emma owns issue assignment and closure; assignees update labels during workflow; reviewers set `Ready to Merge`; Isabella validates before `Done`. |
 | Jul 21 2026 | **Issue-First & Closure Enforcement**: Added §1.7 Issue-First hard gate — no work begins without a GitLab issue with full elaboration. Added §8.2.1 Merge Verification (mandatory `mr-status` check before labeling `Done`). Added §8.2.2 Issue Closure Enforcement (`issue-status closed` in same session as merge verification). Added §8.2.3 Post-Merge Issue Audit (`issue-audit` CLI). Updated §8.3 role responsibilities (Emma verifies merge + closes; Reviewer verifies merge; Isabella runs audit). Updated §8.4 Definition of Done with closure + audit checkboxes. Updated §14 Post-MR checklist with merge verification + closure steps. Added `mr-status` and `issue-audit` CLI commands. |
 | Sep 30 2026 | **Readiness & sync accuracy correction (BUG-045 / !57 review)**: §10.1 CI criterion now requires a matching head-SHA `head_pipeline` with `status == "success"` and fails closed — `merge_status == "can_be_merged"` is explicitly NOT CI evidence. §8.2.1 documents the three-axis `mr-status` report. §10.3 corrects auto-approval attribution (recorded under Emma's identity via the `emma` PAT). §1 Key Principles and §11 sync wording now match `worktree-sync`'s real behavior: refresh `origin/develop`, fast-forward local `develop` only when unchecked-out and non-divergent, preserve dirty/divergent checkouts. §9.5 adds the read-only `mr-show`, `pipeline-jobs`, and `pipeline-job-trace` commands. |
+| Nov 02 2026 | **Environment promotion chain (TASK-91)**: Added §2.1.2 Branch Promotion & Deployment Gates hard gate — codified `develop → uat → main` promotion MRs with source-branch restrictions, CI-enforced deploy-job branch `rules:` + `environment:` declarations, UAT soak gate before `uat → main` merges, SHA-tagged artifact continuity (prod deploys only images previously deployed to UAT), promotion MR ownership (Ethan/Emma), and Release Promotion MR template reference. §2.1/§2.1.1 updated to include `uat` as a protected permanent branch. §8.4 Definition of Done extended with release promotion checklist. |
 
 ---
 

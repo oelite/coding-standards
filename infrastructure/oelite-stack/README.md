@@ -410,15 +410,81 @@ CI/CD pipelines deploy to K8s using GitLab CI/CD variables, **not** local kubeco
 Store these as GitLab **file-type** CI/CD variables. In `.gitlab-ci.yml`:
 
 ```yaml
+# ⚠️ HARD GATE §2.1.2: UAT deploys ONLY from the uat branch
 deploy_uat:
   stage: deploy_k8s
   image: bitnami/kubectl:latest
+  environment:
+    name: uat
+    url: https://uat.phanes.ltd
+  rules:
+    - if: '$CI_COMMIT_BRANCH == "uat"'          # HARD GATE: only deploys from uat branch
   script:
     - kubectl --kubeconfig "$PHANES_K8S" -n oelite-uat apply -f k8s/
     - kubectl --kubeconfig "$PHANES_K8S" -n oelite-uat rollout status deploy/<name>
+
+# ⚠️ HARD GATE §2.1.2: Production deploys ONLY from the main branch + manual gate
+deploy_prod:
+  stage: deploy_k8s
+  image: bitnami/kubectl:latest
+  environment:
+    name: production
+    url: https://www.oelite.io
+  rules:
+    - if: '$CI_COMMIT_BRANCH == "main"'          # HARD GATE: only deploys from main branch
+      when: manual                               # manual gate ON TOP of branch gate
+  script:
+    - ./scripts/verify-uat-deployed.sh "$CI_COMMIT_SHA"   # artifact continuity check — fails if SHA never deployed to UAT
+    - kubectl --kubeconfig "$OElite_K8S" -n oelite-prod apply -f k8s/
+    - kubectl --kubeconfig "$OElite_K8S" -n oelite-prod rollout status deploy/<name>
 ```
 
-Namespaces follow the platform convention: `oelite-dev`, `oelite-uat`, `oelite-prod`; production deploys are `when: manual`.
+Namespaces follow the platform convention: `oelite-dev`, `oelite-uat`, `oelite-prod`.
+
+#### Artifact continuity (SHA-tagged images)
+
+Images are built ONCE when the MR merges into `develop`:
+
+```yaml
+build_and_push:
+  stage: build
+  script:
+    - docker build -t registry.phanes.ltd/oelite/<service>:$CI_COMMIT_SHA .
+    - docker push registry.phanes.ltd/oelite/<service>:$CI_COMMIT_SHA
+  rules:
+    - if: '$CI_COMMIT_BRANCH == "develop"'
+```
+
+Both `deploy_uat` and `deploy_prod` MUST reference the exact same SHA tag — never rebuild per environment. The `verify-uat-deployed.sh` script in the Production deploy checks that the image SHA was previously deployed to UAT; if not, the pipeline fails. This makes it structurally impossible for code to reach Production that never passed UAT.
+
+#### verify-uat-deployed.sh (artifact continuity check)
+
+Reference implementation — place in each deployable repo's `scripts/` folder:
+
+```bash
+#!/usr/bin/env bash
+set -euo pipefail
+
+SHA="$1"
+if [[ -z "$SHA" ]]; then
+  echo "Usage: verify-uat-deployed.sh <sha>" >&2
+  exit 1
+fi
+
+# Check UAT deployments for the SHA annotation on running deployments
+if ! kubectl --kubeconfig "$PHANES_K8S" -n oelite-uat \
+    get deploy -o jsonpath='{.items[*].metadata.annotations.oelite\.io/sha}' \
+    | grep -q "$SHA"; then
+  echo "ERROR: Image $SHA was never deployed to UAT. UAT soak gate failed." >&2
+  exit 1
+fi
+
+echo "OK: Image $SHA verified as deployed to UAT"
+```
+
+Alternatively, query the GitLab Environments API for the project's UAT deployment history. The key requirement: the Production deploy MUST fail if the SHA was never deployed to UAT.
+
+Namespaces follow the platform convention: `oelite-dev`, `oelite-uat`, `oelite-prod`; production deploys are `when: manual` on top of the `main`-branch gate (see `GIT-WORKFLOW-STANDARDS.md` §2.1.2).
 
 ### Public TCP port allowlist (firewall)
 
