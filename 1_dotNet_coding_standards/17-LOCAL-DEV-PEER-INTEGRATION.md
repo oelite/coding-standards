@@ -24,7 +24,7 @@ The central registry is `infrastructure/oelite-stack/config/peer-registry.yml` �
 
 Resolution is **most-specific wins**, evaluated top-down; the first hit wins:
 
-1. **Per-peer env var**: `OELITE_PEERS__<PEERNAME>__PROFILE` (e.g. `OELITE_PEERS__ORIGINAUTH=local`, `OELITE_PEERS__NEXUS=uat`) — supports hybrid composition (app is a UAT consumer for one peer and a local provider for another).
+1. **Per-peer env var**: `OELITE_PEERS__<PEERNAME>__PROFILE` (e.g. `OELITE_PEERS__ORIGINAUTH__PROFILE=uat-peers`, `OELITE_PEERS__NEXUS__PROFILE=local-peers` — full values only; shorthand forms fail fast per `CONFIGURATION-VALIDATION.md` § 3) — supports hybrid composition (app is a UAT consumer for one peer and a local provider for another).
 2. **Per-app appsettings override**: `integrationProfile.peers.<peerName>.profile`
 3. **Global env var**: `OELITE_PROFILE`
 4. **App default**: `integrationProfile.defaultProfile`

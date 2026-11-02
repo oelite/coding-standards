@@ -2,7 +2,7 @@
 
 **Status**: Active (since 2026-11-02)
 **Owner**: Maya (security review), Daniel (backend implementation patterns)
-**Related**: `17-LOCAL-DEV-PEER-INTEGRATION.md`, `CONFIGURATION-VALIDATION.md`, `16-SHARED-LOCAL-INFRASTRUCTURE.md`, Issue #97
+**Related**: `17-LOCAL-DEV-PEER-INTEGRATION.md`, `18-DYNAMIC-PEER-CREDENTIALS.md` (V2 dynamic peer credentials — doc 18), `CONFIGURATION-VALIDATION.md`, `16-SHARED-LOCAL-INFRASTRUCTURE.md`, Issue #97
 
 ## Overview
 
@@ -57,7 +57,7 @@ When a peer's `peer-registry.yml` entry sets `credentials.mode: dynamic`, UAT pe
 - **TTL**: ≤ 15 minutes, minted lazily at startup for peers resolved under the `uat-peers` profile, refreshed on demand at **80% of TTL (~12 min)**.
 - **Caching**: tokens are cached in the OS credential store under `oelite/peer/<peerName>/uat-token` with TTL metadata; no cross-run or cross-job caching.
 - **Fail-closed (BR-DEV-006)**: mint/refresh failure **fails fast at startup**, naming the peer, token endpoint, and `peers-health`. No stale-token fallback, no degraded mode; `critical: true` peers hard-fail as today. In dynamic mode no long-lived per-peer app secret exists on the machine.
-- **Rotation**: the 90-day rotation SLA applies to the **bootstrap IAM client only**; dynamic-mode peers drop per-peer app-credential rotation. Infra credentials are out of scope (stay on their own SLAs, cf. #37).
+- **Rotation**: the 90-day rotation SLA applies to the **per-developer IAM client only**; dynamic-mode peers drop per-peer app-credential rotation. Infra credentials are out of scope (stay on their own SLAs, cf. #37).
 - **CI boundary**: hermetic CI (`mock-peers`) never mints. Integration jobs hitting UAT peers use pipeline-scoped per-project IAM clients, minted per run, never cached.
 - **Staged rollout**: `credentials.mode: static` is the platform default; dynamic mode is enabled per-peer via the registry. Static Keychain entries (v1) remain valid. `peers-health --auth` validates the mint path and reports TTL remaining.
 

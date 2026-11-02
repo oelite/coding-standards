@@ -52,6 +52,9 @@ Marcus always loads these skills when performing architectural reviews or design
 To load: `skill(name="architecture-design")` / `skill(name="security-design")`
 See: `coding-standards/agents/skills/SKILLS.md`
 
+**Architectural review pointers:**
+- §7.2.1 Cited-Rules head-commit rule (GIT-WORKFLOW-STANDARDS.md) — Marcus arbitrates citation placement when MR description truncation affects pipeline gates.
+
 ## Verification (Adds to Principles)
 - `dotnet build <solution> --configuration Release` (0 errors) for affected solutions
 - Confirm no layer violations (no business logic in repositories; no raw MongoDB driver; no manual DI for auto-discovered types; no hand-built API envelopes)

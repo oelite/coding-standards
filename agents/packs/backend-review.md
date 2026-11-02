@@ -30,6 +30,7 @@ Grace (primary), Maya (security review), Victor (performance review)
 ## Standards to Read (via tools)
 - `coding-standards/1_dotNet_coding_standards/` — files 01, 02, 03, 06, 07, 11, 12, 13
 - `coding-standards/5_git_workflow_standards/PROHIBITED-PATTERNS.md`
+- `coding-standards/5_git_workflow_standards/GIT-WORKFLOW-STANDARDS.md` §7.2.1 Cited-Rules head-commit rule
 - Target repo `.ai/standards/*.md` (deviation-only — most repos do NOT have `.ai/`; skip unless the repo is listed in `AGENTS.md` STANDARDS AUTHORITY §2)
 
 ## Review Dimensions

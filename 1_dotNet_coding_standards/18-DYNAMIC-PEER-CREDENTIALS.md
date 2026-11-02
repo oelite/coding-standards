@@ -13,7 +13,7 @@ The provider abstraction (`IPeerCredentialProvider`, defined in doc 17) gains a 
 | Implementation | Registry mode | Credential source | Rotation |
 |---|---|---|---|
 | `StaticKeychainPeerCredentialProvider` (v1) | `static` (default) | OS credential store entry `oelite/peer/<peerName>/<key>` | 90-day SLA |
-| `DynamicPeerCredentialProvider` (V2) | `dynamic` | Minted access token, cached at `oelite/peer/<peerName>/uat-token` | Bootstrap IAM client only (90-day SLA); no long-lived per-peer app secret exists |
+| `DynamicPeerCredentialProvider` (V2) | `dynamic` | Minted access token, cached at `oelite/peer/<peerName>/uat-token` | Per-developer IAM client only (90-day SLA); no long-lived per-peer app secret exists |
 
 **Staged rollout**: `static` is the platform default. A peer moves to dynamic mode only via a reviewed registry MR changing its `credentials.mode`. Existing v1 Keychain entries remain valid; nothing is forced to migrate.
 
@@ -66,6 +66,8 @@ scope=<space-joined registry credentials.scopes for THIS peer>
 The `scope` parameter is **exactly** the peer's registry-declared `credentials.scopes`, space-joined in registry order. The provider MUST NOT add, drop, reorder, or "helpfully expand" scopes. If Origin Auth rejects the scope set (HTTP 400 `invalid_scope`), that is a **registry bug or realm misconfiguration** — fail fast pointing at the registry entry; do not retry with a reduced scope set. Widening local-dev token reach is possible **only** via a reviewed registry MR (Marcus arch review per the BR-DEV-003 review point).
 
 ### Bootstrap secret
+
+The **canonical term** is the **per-developer IAM client** (`dev-<username>-local`). In earlier drafts and some docs the same client is called the **"bootstrap IAM client"** — the names are interchangeable; prefer "per-developer IAM client" in new writing.
 
 The only long-lived secret on the machine is the `dev-<username>-local` IAM **client secret**, held in the OS credential store under `oelite/iam/dev-<username>-local` and rotated on the existing 90-day cadence — the same Keychain-held bootstrap pattern as agent PATs. It is never used as a peer credential itself; it only authenticates minting requests.
 
