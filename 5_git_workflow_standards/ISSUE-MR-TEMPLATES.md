@@ -367,6 +367,9 @@ List of bundled issues and their merge status:
 - [ ] Isabella business validation sign-off recorded **on this release issue**
 - [ ] Same SHA-tagged image confirmed for `deploy_prod` (artifact continuity — no rebuilds)
 
+## Observability Evidence (DEPLOYMENT-OBSERVABILITY-STANDARD.md §6 — required closure input)
+- [ ] Post-deploy health comment recorded **on this issue** by Ethan/Emma: deployed SHA, rollout completion evidence, health-check result, incidents (or "none")
+
 ## Rollback Plan
 - Rollback owner: <agent/role>
 - Image tag to roll back to: `<sha-tag>` (immutable SHA tag from `develop` merge)

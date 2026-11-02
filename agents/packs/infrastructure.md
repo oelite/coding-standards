@@ -40,6 +40,7 @@ Ethan (primary), Marcus (architecture review)
 - K8s deployment validation
 - Environment consistency
 - Observability wiring
+- **Deployment observability** — post-deploy health checks, rollout failure detection, alerting paths, environment/deploy-board cadence: see `5_git_workflow_standards/DEPLOYMENT-OBSERVABILITY-STANDARD.md`
 - **Shared local development infrastructure** (`infrastructure/oelite-stack/`) — machine-wide singleton, NOT per-repo
 
 ## Docker Compose Standards
