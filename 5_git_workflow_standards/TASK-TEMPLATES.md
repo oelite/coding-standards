@@ -52,7 +52,7 @@ An issue is **Done** when ALL of the following are true. Only Emma may mark an i
 - [ ] MR merged into `develop` via GitLab (**verified via `mr-status` CLI — not assumed**)
 - [ ] CI pipeline green (build + unit tests)
 - [ ] Integration tests pass against real Docker infrastructure (if applicable)
-- [ ] E2E tests pass against running dev server (if user-facing)
+- [ ] E2E tests pass against running dev server (if user-facing) — run **locally** against the shared `oelite-stack` before the MR is marked Ready; evidence (command + pass/fail counts + screenshot/trace paths) recorded in the MR description. E2E does NOT run in MR pipelines per `5_git_workflow_standards/CI-PIPELINE-EFFICIENCY-STANDARD.md` §2.2; CI runs E2E only on protected branches (nightly on `develop`; blocking gates on `uat`/`main` promotion MRs).
 - [ ] Code review approved by required reviewer(s) (Grace/Felix/Marcus/Maya)
 - [ ] **NO stub/fake/simplified implementations detected**: Reviewer explicitly verified full implementation
 - [ ] Security review completed (if auth/security/CRUD-sensitive)
