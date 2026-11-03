@@ -42,7 +42,7 @@ workflow:
 | Tier | Trigger | Jobs allowed | Rationale |
 |------|---------|--------------|-----------|
 | **MR pipeline** | `merge_request_event` | Build, lint, unit tests, static analysis | The merge-eligibility gate. Fast feedback; no E2E. |
-| **Protected-branch pipeline** | push to `develop` / `uat` / `main`/`master` | Full pipeline: build, unit, integration (ephemeral `services:` where available), E2E tiers per §2 | Validates the integration point; feeds deployment gates. |
+| **Protected-branch pipeline** | push to `develop` / `uat` / `main`/`master` | Full pipeline: build, unit, integration (ephemeral `services:` where available). E2E only where §2.3 assigns it to that branch (promotion gates) — NOT on ordinary `develop` pushes. | Validates the integration point; feeds deployment gates. |
 | **Promotion MR** | MR `uat` ← `develop`, `main` ← `uat` | Per §2.1.2 promotion gates | UAT soak + production gates unchanged. |
 | **Feature/fix branch push** | plain push, no MR | **No pipeline** | Intermediate commits prove nothing; the MR pipeline validates the final state. |
 
@@ -93,7 +93,7 @@ Unchanged from existing policy (`agents/roles/ethan.md`, standard 16): unit test
 A failing test suite MUST stop early instead of collecting hours of secondary failures:
 
 - **Playwright**: set `maxFailures: 5` in `playwright.config.ts` (or `--max-failures=5` on the CLI).
-- **.NET**: `dotnet test -- --stop-on-failure` (xUnit v3 / VSTest `--StopOnFail` where supported).
+- **.NET**: verify whether the target test runner supports stopping after an assertion failure; do not pass an unverified `--stop-on-failure` option to `dotnet test`. When no runner-specific fail-fast facility exists, split long suites into bounded subsets and enforce the job `timeout:` in §3.2. `--blame-hang` diagnoses hung tests; it does **not** stop a suite after an ordinary assertion failure.
 - **Jest/Vitest**: `--bail=5`.
 
 Secondary-failure logs are still available from the partial run; the goal is to stop hours-long zombie runs, not to hide diagnostics.
@@ -145,7 +145,7 @@ Projects MUST keep **Settings → Merge requests → "Pipelines must succeed"** 
 - [ ] `workflow:` block present; no push pipelines on unprotected branches
 - [ ] MR pipeline jobs: `interruptible: true`, explicit `timeout:`, no E2E jobs
 - [ ] Promotion-gate E2E evidence present per §2.3; no nightly E2E schedule configured
-- [ ] Fail-fast configured in test runner config (`maxFailures` / runner-specific bail or stop-on-failure)
+- [ ] Fail-fast configured in test runner config (`maxFailures` for Playwright / `--bail` for Jest-Vitest / bounded .NET strategy per §3.1)
 - [ ] "Auto-cancel redundant pipelines" + "Pipelines must succeed" enabled
 - [ ] Caching configured for package managers
 - [ ] `deploy_uat` / `deploy_prod` branch-gated rules unchanged (§2.1.2 still holds)
