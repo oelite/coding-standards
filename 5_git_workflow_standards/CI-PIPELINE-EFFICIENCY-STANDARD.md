@@ -29,7 +29,7 @@ workflow:
   rules:
     # MR pipelines — the merge gate (build + unit + lint; NO E2E)
     - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
-    # Protected branches — full pipeline including integration/E2E tiers
+    # Protected branches — full pipeline; E2E only where §2.3 assigns it (promotion gates)
     - if: '$CI_COMMIT_BRANCH == "develop"'
     - if: '$CI_COMMIT_BRANCH == "uat"'
     - if: '$CI_COMMIT_BRANCH == "main" || $CI_COMMIT_BRANCH == "master"'
