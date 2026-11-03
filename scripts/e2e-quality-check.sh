@@ -15,7 +15,7 @@
 # ============================================================================
 
 set -euo pipefail
-SCRIPT_DIR="${0:A:h}"
+SCRIPT_DIR="$(cd -- "$(dirname -- "$0")" && pwd)"
 
 DOCUMENT_BODY_PATTERN="expect\\(.*locator\\([\"'](body|html)[\"']\\)\\).*toBeVisible"
 TAUTOLOGICAL_PATTERNS=(
