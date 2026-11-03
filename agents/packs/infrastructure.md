@@ -64,7 +64,7 @@ Ethan (primary), Marcus (architecture review)
 ## CI/CD Pipeline Requirements
 - Stage pattern: `version → build → test → pack/deploy → build_docker → deploy_k8s`
 - Skip data-layer integration tests: `dotnet test --filter "Category!=Integration"`
-- Skip E2E browser tests in MR pipelines (no E2E in MR pipelines). E2E runs in CI only on protected branches: nightly full E2E on `develop`, and blocking E2E as part of `develop → uat` promotion soak and `uat → main` promotion evidence (see `5_git_workflow_standards/CI-PIPELINE-EFFICIENCY-STANDARD.md` §2.3). Developers run the full E2E suite locally before marking an MR Ready (§2.2).
+- Skip E2E browser tests in MR pipelines (no E2E in MR pipelines). E2E runs in CI only as part of the promotion chain: blocking E2E in the `develop → uat` promotion soak and `uat → main` promotion evidence (see `5_git_workflow_standards/CI-PIPELINE-EFFICIENCY-STANDARD.md` §2.3). No nightly/scheduled E2E pipelines. Developers run the full E2E suite locally before marking an MR Ready (§2.2).
 - Registries:
   - NuGet: `nuget.org` (main) / `packages.phanes.ltd` (develop/uat)
   - Docker: `registry.phanes.ltd/oelite`

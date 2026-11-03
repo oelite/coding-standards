@@ -4,8 +4,8 @@
 > **Scope**: ALL OElite sub-repositories (normative for every `.gitlab-ci.yml`)
 > **Maintained by**: Ethan (DevOps & Reliability)
 > **Status**: Active
-> **Version**: 1.0.0
-> **Issue**: TASK-102 (oelite/coding-standards #102)
+> **Version**: 1.1.0
+> **Issues**: TASK-102 (#102), TASK-104 (#104) — v1.1.0 amends per owner decision: nightly E2E schedules DROPPED
 
 ---
 
@@ -16,7 +16,7 @@ This standard defines **when pipelines run**, **which test tiers run at each tri
 **Decisions recorded by the business owner (2026-11-03):**
 
 1. Pipelines trigger on **MR events and protected branches only** — no push pipelines on `feature/*` or `fix/*` branches.
-2. **No E2E suites in MR pipelines.** Developers run the full E2E suite **locally** (against the shared `oelite-stack` infrastructure) and record evidence in the MR before requesting review. CI runs E2E only on protected branches: nightly on `develop`, and as promotion gates per `GIT-WORKFLOW-STANDARDS.md` §2.1.2.
+2. **No E2E suites in MR pipelines.** Developers run the full E2E suite **locally** (against the shared `oelite-stack` infrastructure) and record evidence in the MR before requesting review. CI runs E2E only as part of the promotion chain (§2.3) per `GIT-WORKFLOW-STANDARDS.md` §2.1.2. **No nightly/scheduled E2E pipelines** (owner decision, TASK-104).
 
 ---
 
@@ -35,15 +35,14 @@ workflow:
     - if: '$CI_COMMIT_BRANCH == "main" || $CI_COMMIT_BRANCH == "master"'
     # Release tags
     - if: '$CI_COMMIT_TAG'
-    # Manual / scheduled / API triggers (nightly E2E schedules land here)
-    - if: '$CI_PIPELINE_SOURCE == "web" || $CI_PIPELINE_SOURCE == "schedule" || $CI_PIPELINE_SOURCE == "api"'
+    # Manual / API triggers only — NO scheduled E2E pipelines (TASK-104)
+    - if: '$CI_PIPELINE_SOURCE == "web" || $CI_PIPELINE_SOURCE == "api"'
 ```
 
 | Tier | Trigger | Jobs allowed | Rationale |
 |------|---------|--------------|-----------|
 | **MR pipeline** | `merge_request_event` | Build, lint, unit tests, static analysis | The merge-eligibility gate. Fast feedback; no E2E. |
 | **Protected-branch pipeline** | push to `develop` / `uat` / `main`/`master` | Full pipeline: build, unit, integration (ephemeral `services:` where available), E2E tiers per §2 | Validates the integration point; feeds deployment gates. |
-| **Scheduled pipeline** | `schedule` (nightly, `develop`) | Full E2E suite | Hours-long runtime acceptable; nobody waits on it. |
 | **Promotion MR** | MR `uat` ← `develop`, `main` ← `uat` | Per §2.1.2 promotion gates | UAT soak + production gates unchanged. |
 | **Feature/fix branch push** | plain push, no MR | **No pipeline** | Intermediate commits prove nothing; the MR pipeline validates the final state. |
 
@@ -71,15 +70,15 @@ For every user-facing change, the implementing developer (human or agent) MUST, 
 
 Reviewers MUST reject an MR for a user-facing change whose description lacks local E2E evidence. "Unit tests pass" is NOT sufficient (see `ISSUE-MR-TEMPLATES.md` MR template checklist).
 
-### 2.3 CI E2E — protected branches only
+### 2.3 CI E2E — promotion gates only
 
-| Branch | E2E execution | Blocking? |
-|--------|---------------|-----------|
-| `develop` | Nightly scheduled full E2E suite | Non-blocking for the daily flow; failures create a BUG issue assigned via Emma. Blocking evidence for promotion is taken from UAT soak below. |
+| Branch / gate | E2E execution | Blocking? |
+|---------------|---------------|-----------|
+| `develop` | No automatic E2E on ordinary pushes; developer local E2E evidence remains the MR gate (§2.2). | N/A |
 | `uat` | Full E2E as part of the develop → uat promotion soak | Blocking per §2.1.2 |
 | `main`/`master` | Full E2E post-deploy verification (or as part of uat → main promotion MR evidence) | Per §2.1.2 + `DEPLOYMENT-OBSERVABILITY-STANDARD.md` |
 
-Scheduled pipelines are configured by Ethan per repo (Settings → CI/CD → Schedules, nightly on `develop`).
+No nightly/scheduled E2E pipelines are configured. Ethan preserves the existing promotion-gate sequence and verifies E2E evidence per release issue.
 
 ### 2.4 Data-layer integration tests
 
@@ -108,7 +107,7 @@ Every job MUST declare an explicit `timeout:` bounded to its tier (GitLab defaul
 | Build / lint / unit | 15m |
 | Integration (ephemeral services) | 30m |
 | E2E smoke / post-deploy checks | 30m |
-| Full E2E (scheduled/promotion) | 90m |
+| Full E2E (promotion) | 90m |
 
 ### 3.3 Interruptible jobs
 
@@ -135,10 +134,9 @@ Projects MUST keep **Settings → Merge requests → "Pipelines must succeed"** 
 ## 5. Rollout Plan (Ethan-owned)
 
 1. Update `coding-standards/.gitlab-ci.yml` as the reference implementation (this repo).
-2. Create child tasks per repo family and roll the `workflow:` block + timeouts + `interruptible` + fail-fast config into all active repos' `.gitlab-ci.yml` (22+ repos; `mercury/runners` CI remains disabled with `SKIP_BUILD=true` until separately reinstated).
-3. Enable "Auto-cancel redundant pipelines" group-wide; verify per project with `project-approvals` / settings audit.
-4. Configure nightly E2E schedules for repos with E2E suites (develop branch, `web`/`schedule` source).
-5. Announce the developer local-E2E contract via Emma (team communication) and update onboarding docs (Isabella).
+2. Roll the `workflow:` block + timeouts + `interruptible` + validated fail-fast config into all active repos' `.gitlab-ci.yml` (22+ repos; `mercury/runners` CI remains disabled with `SKIP_BUILD=true` until separately reinstated). Use per-repo issues/worktrees as required by the Git workflow; no pilot/wave sequencing is mandated.
+3. Enable "Auto-cancel redundant pipelines" group-wide; verify per project via settings audit.
+4. Announce the developer local-E2E contract via Emma (team communication) and update onboarding docs (Isabella).
 
 ---
 
@@ -146,9 +144,8 @@ Projects MUST keep **Settings → Merge requests → "Pipelines must succeed"** 
 
 - [ ] `workflow:` block present; no push pipelines on unprotected branches
 - [ ] MR pipeline jobs: `interruptible: true`, explicit `timeout:`, no E2E jobs
-- [ ] Protected-branch pipeline includes integration/E2E tiers per §2.3
-- [ ] Nightly schedule configured (repos with E2E suites)
-- [ ] Fail-fast configured in test runner config (`maxFailures` / `--bail` / stop-on-failure)
+- [ ] Promotion-gate E2E evidence present per §2.3; no nightly E2E schedule configured
+- [ ] Fail-fast configured in test runner config (`maxFailures` / runner-specific bail or stop-on-failure)
 - [ ] "Auto-cancel redundant pipelines" + "Pipelines must succeed" enabled
 - [ ] Caching configured for package managers
 - [ ] `deploy_uat` / `deploy_prod` branch-gated rules unchanged (§2.1.2 still holds)
