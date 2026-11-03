@@ -8,6 +8,19 @@
 #   pipeline-scoped IAM client from protected CI variables, per-run mint,
 #   token held only in job-scoped env, NEVER written to disk or cached across
 #   jobs. Developer IAM clients (dev-<username>-local) are forbidden in CI.
+# -----------------------------------------------------------------------------
+# Pipeline trigger tiers (TASK-102 / CI-PIPELINE-EFFICIENCY-STANDARD.md §1)
+# Reference implementation for the shared wrapper repo. MR pipelines + protected
+# branches + scheduled/manual triggers only — no push pipelines on feature branches.
+# -----------------------------------------------------------------------------
+workflow:
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
+    - if: '$CI_COMMIT_BRANCH == "develop"'
+    - if: '$CI_PIPELINE_SOURCE == "schedule"'
+    - if: '$CI_PIPELINE_SOURCE == "web"'
+    - if: '$CI_PIPELINE_SOURCE == "api"'
+
 stages:
   - test
 
@@ -66,6 +79,7 @@ validate-peer-registry:
     - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
     - if: '$CI_COMMIT_BRANCH == "develop"'
   timeout: 5m
+  interruptible: true
 
 peers-health-check:
   stage: test
@@ -79,6 +93,7 @@ peers-health-check:
     - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
     - if: '$CI_COMMIT_BRANCH == "develop"'
   timeout: 5m
+  interruptible: true
 
 scripts-regression:
   stage: test
@@ -101,3 +116,4 @@ scripts-regression:
     - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
     - if: '$CI_COMMIT_BRANCH == "develop"'
   timeout: 10m
+  interruptible: true

@@ -411,7 +411,7 @@ Closes #<issue-iid>
 - [ ] Build passes (`dotnet build` / `npm run build` / `ng build`)
 - [ ] Unit tests pass
 - [ ] Integration tests pass against real Docker infrastructure
-- [ ] E2E tests pass against running dev server (if user-facing)
+- [ ] **Local full E2E evidence (user-facing changes)**: full E2E suite ran locally against the shared oelite-stack BEFORE marking MR Ready — command + pass/fail counts + screenshot/trace paths recorded in this MR (E2E does NOT run in MR pipelines per `CI-PIPELINE-EFFICIENCY-STANDARD.md` §2.2; CI runs E2E on protected branches only)
 - [ ] **AC Verification**: All acceptance criteria verified per [AC-VERIFICATION-PROCESS.md](./AC-VERIFICATION-PROCESS.md)
 - [ ] **NO stub implementations**: Every method/endpoint/component has full production-ready logic (no `throw new NotImplementedException()`, no empty method bodies, no `// TODO: implement later` comments)
 - [ ] **NO simplified implementations**: All business logic, error handling, validation, and edge cases are implemented per acceptance criteria (no "happy path only", no "basic version for now")
