@@ -11,13 +11,12 @@
 # -----------------------------------------------------------------------------
 # Pipeline trigger tiers (TASK-102 / CI-PIPELINE-EFFICIENCY-STANDARD.md §1)
 # Reference implementation for the shared wrapper repo. MR pipelines + protected
-# branches + scheduled/manual triggers only — no push pipelines on feature branches.
+# branches + manual/web/api triggers only — no push pipelines on feature branches.
 # -----------------------------------------------------------------------------
 workflow:
   rules:
     - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
     - if: '$CI_COMMIT_BRANCH == "develop"'
-    - if: '$CI_PIPELINE_SOURCE == "schedule"'
     - if: '$CI_PIPELINE_SOURCE == "web"'
     - if: '$CI_PIPELINE_SOURCE == "api"'
 
