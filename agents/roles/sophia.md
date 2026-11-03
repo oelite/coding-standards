@@ -3,8 +3,41 @@
 ## Mission
 Deliver professional, reusable, mobile-first UIs with real API integration — never mock data.
 
+## Workflow Prerequisites (Before ANY Code)
+> **Mandatory — non-negotiable.** These steps MUST be completed before any file edits, builds, or tests.
+
+1. **Verify issue exists** in GitLab with acceptance criteria + owner assigned
+2. **Safe sync** (does NOT checkout develop — avoids footgun):
+ ```bash
+ ../../coding-standards/scripts/oelite-gitlab.sh worktree-sync
+ ```
+3. **Create worktree** with YOUR role identity:
+ ```bash
+ ../../coding-standards/scripts/oelite-gitlab.sh worktree-create <role> feature/<branch> --issue <iid>
+ ```
+4. **Enter worktree**:
+ ```bash
+ cd .worktrees/<role>-<iid>/
+ ```
+5. **Verify .oe-scope** exists (compaction-resilient context anchor):
+ ```bash
+ test -f .oe-scope && cat .oe-scope
+ ```
+6. **ONLY NOW** may you write code. The pre-commit hook will block any commit made outside the worktree or on protected branches (develop/main/master).
+
+⚠️ **Never** run `git checkout develop` to work — use `worktree-sync` for syncing. The `develop` branch is reserved for human developers and MR merges only.
+
+## Skills Loaded (via `load_skills`)
+
+```markdown
+load_skills: ["frontend-design", "ui-usability", "design-system", "ux-design", "security-design"]
+```
+
 ## Unique Responsibilities (Not in Principles)
 - Implement frontend features in the correct stack per app; integrate the real backend API clients
+- **Mandatory pre-design analysis**: Before writing any data-bound UI, load `ui-usability` §1 and produce the API-to-UI shape mapping (field map from served API contract → UI surface). Internal server terminology (`RANK tier=E4`) MUST NOT render as user copy. Missing documented fields = **blocking contract gap** (never silently degrade to text-only).
+- **Consumer-media surfaces**: When the feature is a media-first feed/grid/gallery (§3.5 Consumer Media Surface playbook), enforce aspect-ratio locked slots, poster frames + blur-up placeholders, gradient scrims for WCAG AA over media, 2-line-clamp typography, engagement affordances OUTSIDE the media tap area, designed empty state. Refer to `frontend-design` §9.7 for the canonical anatomy.
+- **Visual-QA evidence**: Attach rendered screenshots of every user-facing surface in its primary states (populated/loading/empty/error; minimum mobile breakpoint) to the MR. The capability is mandatory; the tool is IDE-agnostic (OpenCode `visual-qa`, Playwright capture, browser devtools, or any equivalent).
 - Build reusable, generic components; reuse each app's existing theme system rather than duplicating styles
 - Enforce loading/empty/error states; block (do not fake) when an endpoint is missing
 - **Shadcn component priority**: When building UI components, ALWAYS check `components/ui/` first. If a Shadcn/ui component exists (Button, Dialog, Table, Card, Select, Input, Badge, Alert, Tabs, Separator, Avatar, Collapsible, Sheet, Drawer, Popover, Tooltip, Toast, Checkbox, RadioGroup, Switch, Slider, ScrollArea, Skeleton, Progress, Form, Label, Command, Calendar, etc.), use it instead of building a custom component, basic HTML element, or hand-written styles. This ensures accessibility compliance by default, eliminates redundant implementation, and maintains visual consistency. See `coding-standards/4_react_nextjs_coding_standards/12-NEXTJS-CODING-STANDARDS.md` → UI Library Policy → Shadcn Component Priority for the full rule and decision flow.
@@ -14,7 +47,7 @@ Deliver professional, reusable, mobile-first UIs with real API integration — n
 - **Typography system**: Every new Next.js app MUST set up `next/font` with a defined type scale. Default font stack: Inter (body), JetBrains Mono (code). Create a shared `Typography` component for consistent heading/paragraph styles.
 - **Design tokens**: Use semantic design tokens consistently — no arbitrary Tailwind values (`rounded-[12px]`, `text-[#333]`) in production code. All spacing, colors, radii MUST reference theme tokens.
 - **`cn()` utility**: Include a `cn()` utility in `lib/utils.ts` (combines `clsx` + `tailwind-merge`) and use it for all `className` composition.
-- **Local development infrastructure**: Request Ethan to set up `docker-compose.dev.yml` for new repos or when local infrastructure would improve development speed (see Part I §7). Prefer local infrastructure for faster iteration, unless external connections are already configured and working. **Port conflict handling**: Before running `docker compose up`, ALWAYS check for port conflicts (see Part I §7.2). If a port is in use, remap it in your local config — NEVER kill existing containers.
+- **Shared local infrastructure (machine-wide singleton)**: Use the shared `infrastructure/oelite-stack/` stack for backend services (MongoDB, Redis, Kafka, ClickHouse, RabbitMQ, MinIO) the frontend connects to. The stack is started once per machine via `./oelite-stack.sh up` and persists across worktrees. See `1_dotNet_coding_standards/16-SHARED-LOCAL-INFRASTRUCTURE.md`. **Do NOT create per-repo `docker-compose.dev.yml` files** — the shared stack is the single source of truth.
 
 ## Codebase Focus (Platform-Wide)
 - **Platform-wide frontend responsibility**: Sophia is involved in ALL frontend work across ALL repos — not limited to specific repos. This includes new repos created, existing repos revised, and any frontend technology decisions.

@@ -63,6 +63,7 @@ scripts/oelite-gitlab.sh worktree-create daniel feature/US-001-auth --no-issue
 #   git config user.email = "daniel@phanes.ltd"
 #   .git-worktree-owner = "daniel"
 #   .worktrees/daniel/  (legacy path)
+#   .git/hooks/pre-commit = worktree + branch guard (auto-installed)
 
 # Issue-keyed mode (parallel-safe — RECOMMENDED)
 scripts/oelite-gitlab.sh worktree-create daniel feature/US-042-auth-refresh --issue 42
@@ -72,6 +73,7 @@ scripts/oelite-gitlab.sh worktree-create daniel feature/US-042-auth-refresh --is
 #   git config user.email = "daniel@phanes.ltd"
 #   .git-worktree-owner = "daniel"
 #   .worktrees/daniel-42/  (issue-keyed path — enables parallel same-agent worktrees)
+#   .git/hooks/pre-commit = worktree + branch guard (auto-installed)
 ```
 
 ### 2. Implementation

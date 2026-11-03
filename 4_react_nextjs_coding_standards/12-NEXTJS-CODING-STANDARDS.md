@@ -501,6 +501,8 @@ Arbitrary Tailwind values in production JSX are forbidden. They bypass the desig
 
 ### Typography System (MANDATORY)
 
+> **Canonical source:** Typography (Inter + JetBrains Mono, allowed weights, type scale, tabular numerals) is governed by `agents/skills/design-system/SKILL.md` (issue #70). The scale below is the Shadcn/Tailwind mapping of that system and remains valid; stray font recommendations elsewhere in this doc (e.g. the Roboto pairing in the performance section) are superseded — use Inter/JetBrains Mono only.
+
 Every app MUST use `next/font` with a defined type scale. Font loading via `next/font` is optimized (no layout shift, self-hosted). Bare heading elements without consistent styling produce visual inconsistency across pages.
 
 #### Font Setup
@@ -1967,8 +1969,11 @@ export const ProductImage = ({ product }: { product: Product }) => {
   );
 };
 
-// ✅ CORRECT - Font optimization
-import { Inter, Roboto } from 'next/font/google';
+// ✅ CORRECT - Font optimization (simplified example)
+// Canonical stacks: Inter (UI) + JetBrains Mono (code) per agents/skills/design-system/SKILL.md.
+// Weights: 400/500/600/700 only. A second UI sans (e.g. Roboto in this legacy example) is
+// only valid under the design-system skill's §11 documented override policy.
+import { Inter, JetBrains_Mono } from 'next/font/google';
 
 const inter = Inter({
   subsets: ['latin'],
@@ -1976,12 +1981,7 @@ const inter = Inter({
   variable: '--font-inter'
 });
 
-const roboto = Roboto({
-  weight: ['400', '500', '700'],
-  subsets: ['latin'],
-  display: 'swap',
-  variable: '--font-roboto'
-});
+const robotoOverride = Inter; // legacy example retained; replace with JetBrains_Mono for code
 ```
 
 #### **Server Components vs Client Components**

@@ -1,0 +1,173 @@
+#!/usr/bin/env bash
+# OElite Pre-Commit Hook — Worktree + Branch + Scope Enforcement
+#
+# Installed into every worktree by `oelite-gitlab.sh worktree-create`.
+# Blocks commits that would violate the OElite workflow:
+#   1. Rejects commits made outside a .worktrees/ directory (agents must use worktrees)
+#   2. Rejects commits made on protected branches by AI agents (develop/main/master)
+#   3. Cross-checks the branch's issue ref against the worktree's .oe-scope
+#      (catches "agent committed issue #42's work into a #57 branch" mixing)
+#   4. Warns if .oe-scope is missing (compaction-resilience guard)
+#   5. Runs scripts/check-requirements-authority.py --staged when factual
+#      requirements documents changed (blocks delivery-state injection into
+#      BRD/SRS/rulebook/user stories; see 6_documentation_standards/REQUIREMENTS-AUTHORITY.md)
+#
+# Human bypass: OELITE_HUMAN=1 or `git commit --no-verify` (discouraged for agents).
+#
+# Install: auto via `oelite-gitlab.sh worktree-create`
+# Manual:  cp scripts/hooks/pre-commit .git/hooks/pre-commit && chmod +x .git/hooks/pre-commit
+
+set -euo pipefail
+
+# ── Human bypass ──
+if [[ -n "${OELITE_HUMAN:-}" ]]; then exit 0; fi
+
+# ── Resolve git paths (worktree-safe) ──
+git_dir=$(git rev-parse --git-dir 2>/dev/null) || exit 0
+common_dir=$(git rev-parse --git-common-dir 2>/dev/null) || exit 0
+toplevel=$(git rev-parse --show-toplevel 2>/dev/null) || exit 0
+
+# ── Check 1: Reject commits outside .worktrees/ ──
+if [[ "$toplevel" != *"/.worktrees/"* ]]; then
+  cat >&2 <<EOF
+❌ OElite Worktree Guard: COMMIT BLOCKED
+
+  You are attempting to commit in the main repository directory.
+  AI agents MUST work in isolated git worktrees, never in the main dir.
+
+  To fix:
+    1. Create a worktree:
+       ../../coding-standards/scripts/oelite-gitlab.sh worktree-create <agent> feature/<branch> --issue <iid>
+    2. cd into the worktree:
+       cd .worktrees/<agent>-<iid>/
+    3. Re-commit your changes there.
+
+  If you are a HUMAN developer, bypass with:
+    OELITE_HUMAN=1 git commit ...
+  or use --no-verify (not recommended for agents).
+EOF
+  exit 1
+fi
+
+# ── Check 2: Reject commits on protected branches ──
+current_branch=$(git branch --show-current 2>/dev/null) || exit 0
+
+case "$current_branch" in
+  develop|main|master)
+    cat >&2 <<EOF
+❌ OElite Branch Guard: COMMIT BLOCKED
+
+  You are on branch '$current_branch' — a PROTECTED branch.
+  AI agents must NEVER commit directly on develop, main, or master.
+  All code enters develop through GitLab Merge Requests (MR-Centric Model).
+
+  To fix:
+    1. Create a feature branch and worktree:
+       ../../coding-standards/scripts/oelite-gitlab.sh worktree-create <agent> feature/US-XXX-description --issue <iid>
+    2. cd into the worktree:
+       cd .worktrees/<agent>-<iid>/
+    3. Commit on the feature branch, push, and create an MR.
+
+  If you are a HUMAN developer, bypass with:
+    OELITE_HUMAN=1 git commit ...
+EOF
+    exit 1
+    ;;
+esac
+
+# ── Check 3: Cross-check branch vs .oe-scope issue ──
+scope_file="$toplevel/.oe-scope"
+if [[ -f "$scope_file" ]]; then
+  # Parse issue IID from .oe-scope (format: key: value lines, or YAML-ish)
+  scope_issue=""
+  if grep -qE '^(issue|iid):' "$scope_file" 2>/dev/null; then
+    scope_issue="$(grep -E '^(issue|iid):' "$scope_file" | head -1 | sed -E 's/^(issue|iid):[[:space:]]*//' | tr -d '[:space:]')"
+  fi
+  # If we have a declared issue, ensure the branch name references it.
+  if [[ -n "$scope_issue" && ! "$current_branch" =~ (^|/)${scope_issue}([-/]|$) ]]; then
+    cat >&2 <<EOF
+❌ OElite Scope Guard: COMMIT BLOCKED
+
+  The worktree's .oe-scope declares issue #$scope_issue, but the current
+  branch is '$current_branch' — which does not reference #$scope_issue.
+
+  This usually means an agent is committing unrelated work into a
+  worktree that was created for a different issue. Refuse to proceed.
+
+  To fix:
+    1. If this is the right work:
+       - Rename the branch: git branch -m feature/<issue>-<scope>
+       - Or update .oe-scope if the issue changed
+    2. If this is the wrong worktree:
+       - Move changes elsewhere: git stash && cd ../<correct-worktree>/
+       - Then: git stash pop
+
+  If you are a HUMAN developer, bypass with:
+    OELITE_HUMAN=1 git commit ...
+EOF
+    exit 1
+  fi
+else
+  # ── Check 4: Warn if .oe-scope is missing (non-blocking) ──
+  cat >&2 <<EOF
+⚠️  OElite Scope Guard: .oe-scope not found
+
+  This worktree does not have a .oe-scope file.
+  This file is your compaction-resilient context anchor.
+  If you lost context after compaction, you may be in the wrong worktree.
+
+  To verify your worktree:
+    test -f .oe-scope && cat .oe-scope
+  To recreate .oe-scope:
+    ../../coding-standards/scripts/oelite-gitlab.sh oe-scope <agent>-<iid> --task-type <type> --desc '<description>'
+
+  Commit will proceed, but verify you are in the correct worktree.
+EOF
+fi
+
+# ── Check 5: Requirements-authority tripwire on factual requirements ──
+# Only runs when the staged diff touches factual requirements paths; the
+# validator itself decides which lines violate policy (narrow structural
+# markers only). Locate the policy script relative to the repo checkout.
+req_check=""
+probe="$toplevel/scripts/check-requirements-authority.py"
+if [[ -f "$probe" ]]; then
+  req_check="$probe"
+else
+  # Worktrees in other OElite repos share the sibling coding-standards repo.
+  # Resolve from the common git directory, walking up toward the container.
+  search_dir="$(git rev-parse --path-format=absolute --git-common-dir 2>/dev/null)"
+  while [[ "$search_dir" != / ]]; do
+    candidate="$search_dir/coding-standards/scripts/check-requirements-authority.py"
+    if [[ -f "$candidate" ]]; then req_check="$candidate"; break; fi
+    search_dir="$(dirname "$search_dir")"
+  done
+fi
+if [[ -n "$req_check" ]]; then
+  if ! command -v python3 >/dev/null 2>&1; then
+    echo "❌ Requirements-authority check requires python3; commit blocked." >&2
+    exit 1
+  fi
+  if ! python3 "$req_check" --staged; then
+    cat >&2 <<'EOF'
+
+❌ OElite Requirements-Authority Guard: COMMIT BLOCKED
+
+  Factual requirements documents (BRD/SRS/rulebook/user stories/process
+  flows) must not record implementation progress or delivery state.
+
+  To fix:
+    1. Edit the document: state the required behavior normatively, or move
+       delivery content to GitLab / a delivery record.
+    2. If a reviewer explicitly approved a flagged line, record that approval
+       in the MR and note it in the commit message; do not weaken the guard.
+
+  Policy: coding-standards/6_documentation_standards/REQUIREMENTS-AUTHORITY.md
+  Human bypass: OELITE_HUMAN=1 git commit ...
+EOF
+    exit 1
+  fi
+fi
+
+# ── All checks passed ──
+exit 0

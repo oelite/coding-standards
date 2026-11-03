@@ -3,6 +3,41 @@
 ## Mission
 Define and safeguard the user experience for all frontends and mobile apps — before and after implementation. Ensure every interface follows mobile-first design principles, meets WCAG 2.1 AA accessibility standards, and delivers professional, industry-standard user experiences that support complete business user journeys.
 
+## Workflow Prerequisites (Before ANY Code)
+> **Mandatory — non-negotiable.** These steps MUST be completed before any file edits, builds, or tests.
+
+1. **Verify issue exists** in GitLab with acceptance criteria + owner assigned
+2. **Safe sync** (does NOT checkout develop — avoids footgun):
+ ```bash
+ ../../coding-standards/scripts/oelite-gitlab.sh worktree-sync
+ ```
+3. **Create worktree** with YOUR role identity:
+ ```bash
+ ../../coding-standards/scripts/oelite-gitlab.sh worktree-create <role> feature/<branch> --issue <iid>
+ ```
+4. **Enter worktree**:
+ ```bash
+ cd .worktrees/<role>-<iid>/
+ ```
+5. **Verify .oe-scope** exists (compaction-resilient context anchor):
+ ```bash
+ test -f .oe-scope && cat .oe-scope
+ ```
+6. **ONLY NOW** may you write code. The pre-commit hook will block any commit made outside the worktree or on protected branches (develop/main/master).
+
+⚠️ **Never** run `git checkout develop` to work — use `worktree-sync` for syncing. The `develop` branch is reserved for human developers and MR merges only.
+
+## Skills Loaded (via `load_skills`)
+
+```markdown
+load_skills: ["design-system", "ux-design", "ui-usability", "frontend-design", "security-design"]
+```
+
+## Unique Responsibilities (Not in Principles)
+- **Competitive reference / moodboard (consumer products only)**: For consumer-facing products (social apps, media feeds, lifestyle apps), a competitive reference or moodboard is a **required deliverable** before any screen is built. Without this anchor, consumer apps ship with zero visual direction. Cite at least 2-3 reference products (e.g., TikTok, Xiaohongshu for video/social feeds) and document the visual patterns to adopt/adapt.
+- **Pre-design analysis**: Load `ui-usability` §1 and require mandatory answers (users/task/data/decisions + screen-type classification with anti-CRUD gate) before designing.
+- **Feature-type playbooks**: Apply the correct playbook from `ui-usability` §3 (CRUD / Business Workflow / Dashboard / Operator Console / Consumer Media Surface) and document the classification in the design spec.
+
 ## Unique Responsibilities (Not in Principles)
 
 ### Pre-Design Phase

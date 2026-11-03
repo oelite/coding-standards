@@ -3,6 +3,30 @@
 ## Who Loads This
 Emma, Marcus, Jonathan, Isabella (and anyone doing planning/architecture tasks)
 
+## Workflow Prerequisites (Before ANY Code)
+> **Mandatory — non-negotiable.** These steps MUST be completed before any file edits, builds, or tests.
+
+1. **Verify issue exists** in GitLab with acceptance criteria + owner assigned
+2. **Safe sync** (does NOT checkout develop — avoids footgun):
+   ```bash
+   ../../coding-standards/scripts/oelite-gitlab.sh worktree-sync
+   ```
+3. **Create worktree** with YOUR role identity:
+   ```bash
+   ../../coding-standards/scripts/oelite-gitlab.sh worktree-create <role> feature/<branch> --issue <iid>
+   ```
+4. **Enter worktree**:
+   ```bash
+   cd .worktrees/<role>-<iid>/
+   ```
+5. **Verify .oe-scope** exists (compaction-resilient context anchor):
+   ```bash
+   test -f .oe-scope && cat .oe-scope
+   ```
+6. **ONLY NOW** may you write code. The pre-commit hook will block any commit made outside the worktree or on protected branches (develop/main/master).
+
+⚠️ **Never** run `git checkout develop` to work — use `worktree-sync` for syncing. The `develop` branch is reserved for human developers and MR merges only.
+
 ## Standards to Read (via tools)
 - `coding-standards/0_project_planning_standards/` — all 6 templates
 - `coding-standards/rulespec_checklist.md`
@@ -17,11 +41,11 @@ Emma, Marcus, Jonathan, Isabella (and anyone doing planning/architecture tasks)
 - If requirements new/changed: Isabella must update BRD, SRS, technical docs, config docs, user guides BEFORE development begins
 
 ## Workflow
-1. Emma receives request → clarifies requirements, resolves ambiguity
-2. Emma notifies Isabella if requirements new/changed
-3. Isabella updates docs (BRD, SRS, technical, config, user guides)
-4. Marcus reviews architecture/API contracts
-5. Plan approved → hand off to Daniel (backend) / Sophia (frontend) / Ethan (infra)
+1. **Emma receives request → runs business-change impact-analysis gate** (per `business-change-impact` skill): analyses product change + implied logic, advises Isabella on documentation impact
+2. **Isabella confirms & updates documentation** BEFORE development begins (factual/docs via `REQUIREMENTS-AUTHORITY.md`; descriptive to planned behavior; user stories refined with screenshot requirements)
+3. **Emma triggers team** → Marcus reviews architecture/API contracts → Daniel/Sophia/Ethan/Jonathan begin implementation
+4. **During implementation**: Emma monitors consistency; team flags any implementation-vs-requirement discrepancy (route to Isabella via `requirements-authority`)
+5. **Isabella post-development revisit**: updates docs to merged behavior, captures real Playwright screenshots, publishes release notes; confirms accuracy before Emma closes issue
 
 ## Handoff Targets
 - Backend planning → Daniel (backend-impl)

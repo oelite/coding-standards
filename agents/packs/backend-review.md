@@ -3,13 +3,35 @@
 ## Who Loads This
 Grace (primary), Maya (security review), Victor (performance review)
 
+## Workflow Prerequisites (Before ANY Code)
+> **Mandatory — non-negotiable.** These steps MUST be completed before any file edits, builds, or tests.
+
+1. **Verify issue exists** in GitLab with acceptance criteria + owner assigned
+2. **Safe sync** (does NOT checkout develop — avoids footgun):
+   ```bash
+   ../../coding-standards/scripts/oelite-gitlab.sh worktree-sync
+   ```
+3. **Create worktree** with YOUR role identity:
+   ```bash
+   ../../coding-standards/scripts/oelite-gitlab.sh worktree-create <role> feature/<branch> --issue <iid>
+   ```
+4. **Enter worktree**:
+   ```bash
+   cd .worktrees/<role>-<iid>/
+   ```
+5. **Verify .oe-scope** exists (compaction-resilient context anchor):
+   ```bash
+   test -f .oe-scope && cat .oe-scope
+   ```
+6. **ONLY NOW** may you write code. The pre-commit hook will block any commit made outside the worktree or on protected branches (develop/main/master).
+
+⚠️ **Never** run `git checkout develop` to work — use `worktree-sync` for syncing. The `develop` branch is reserved for human developers and MR merges only.
+
 ## Standards to Read (via tools)
 - `coding-standards/1_dotNet_coding_standards/` — files 01, 02, 03, 06, 07, 11, 12, 13
 - `coding-standards/5_git_workflow_standards/PROHIBITED-PATTERNS.md`
-- Target repo `.ai/standards/coding-standards.md` (if exists)
-- Target repo `.ai/standards/architecture-standards.md` (if exists)
-- Target repo `.ai/standards/security-standards.md` (if exists)
-- Target repo `.ai/standards/testing-standards.md` (if exists)
+- `coding-standards/5_git_workflow_standards/GIT-WORKFLOW-STANDARDS.md` §7.2.1 Cited-Rules head-commit rule
+- Target repo `.ai/standards/*.md` (deviation-only — most repos do NOT have `.ai/`; skip unless the repo is listed in `AGENTS.md` STANDARDS AUTHORITY §2)
 
 ## Review Dimensions
 
@@ -48,9 +70,16 @@ Grace (primary), Maya (security review), Victor (performance review)
 - `as any`, `@ts-ignore`, `@ts-expect-error`
 - Comments unless explicitly requested
 
-## Verification Checklist
-- [ ] `dotnet build` clean (0 errors)
-- [ ] Tests exist and pass for new behavior
+## Verification Checklist (MANDATORY — Every check MUST be executed, not assumed)
+
+**Before approving, the reviewer MUST pull the feature branch into their review worktree and run these commands. Code review without build verification is NOT a complete review.**
+
+- [ ] Feature branch pulled into review worktree (`git fetch origin <branch> && git checkout <branch>`)
+- [ ] `dotnet build` clean (0 errors, 0 warnings) — **run in the review worktree**
+- [ ] Tests exist and pass for new behavior — **run `dotnet test` and verify the output**
+- [ ] Service starts and health endpoint responds 200 — **run `curl -f http://localhost:<port>/health`**
+- [ ] Implementer's handoff includes actual build/test/health output (not "should pass")
+- [ ] If handoff lacks evidence → REJECT the handoff, demand evidence
 - [ ] Naming/structure compliant
 - [ ] No forbidden patterns remain
 - [ ] Security review passed (Maya, if applicable)

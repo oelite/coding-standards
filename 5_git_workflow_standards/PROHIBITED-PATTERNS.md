@@ -24,7 +24,8 @@ This document defines **prohibited implementation patterns** that are **STRICTLY
 4. [Mock/Fake/Placeholder Data](#4-mockfakeplaceholder-data)
 5. [Insufficient E2E Test Coverage](#5-insufficient-e2e-test-coverage)
 6. [Reviewer Enforcement Protocol](#6-reviewer-enforcement-protocol)
-7. [Examples by Technology](#7-examples-by-technology)
+7. [Local Issue File Creation](#7-local-issue-file-creation)
+8. [Examples by Technology](#8-examples-by-technology)
 
 ---
 
@@ -498,13 +499,66 @@ const ProductCard = ({ product }) => (
 
 ### Prohibited Patterns
 
-**❌ FORBIDDEN - Missing API Integration Tests:**
+**❌ FORBIDDEN - Tautological/No-Op Assertions:**
 ```typescript
-// ❌ INSUFFICIENT: E2E test only checks page loads, no API verification
-test('product list page loads', async ({ page }) => {
-  await page.goto('/en/dashboards/products');
-  await expect(page).toHaveTitle(); // Does NOT verify API was called
+// ❌ FORBIDDEN: These assertions ALWAYS pass and provide zero verification value
+test('user list page renders', async ({ page }) => {
+  await page.goto('/users');
+  await expect(page.locator('body')).toBeVisible();    // body is ALWAYS visible
+  await expect(page.locator('html')).toBeVisible();     // html is ALWAYS visible
+  await expect(page).toHaveURL();                       // no expected URL!
+  // These assertions pass even if the page is completely broken
 });
+
+// ✅ CORRECT: Meaningful assertions that verify actual behavior
+test('user list loads and displays data from API', async ({ page }) => {
+  await page.goto('/users');
+  await page.waitForLoadState('networkidle');
+  await expect(page.locator('h1')).toContainText('Users');  // specific heading
+  await expect(page.locator('table tbody tr')).toHaveCount({ greaterThan: 0 }); // data exists
+  const firstRow = page.locator('table tbody tr').first();
+  await expect(firstRow).toBeVisible(); // specific element, not body
+});
+```
+
+**Detection**: Run `grep -rn 'expect.*body.*toBeVisible\|expect.*html.*toBeVisible\|expect.*\.toHaveURL()' tests/` in every web app. If ANY results found, the MR MUST be rejected. These assertions are always tautological and indicate the test is not verifying actual functionality.
+
+**❌ FORBIDDEN - Missing API Call Verification (page.route() Mandate):**
+```typescript
+// ❌ FORBIDDEN: Does not verify the API was actually called
+test('user list fetches data', async ({ page }) => {
+  await page.goto('/users');
+  await expect(page.locator('table')).toBeVisible();
+  // This passes even if the table is rendered with hardcoded/mock data
+  // or if the API call silently fails
+});
+
+// ✅ MANDATORY: Every data-driven test MUST intercept and verify API calls
+test('[US-XXX/AC-YYY] user list fetches and displays real API data', async ({ page }) => {
+  const apiCalls: string[] = [];
+  await page.route('**/v1.0/users*', (route) => {
+    apiCalls.push(route.request().url());
+    route.continue();
+  });
+
+  await page.goto('/users');
+  await page.waitForLoadState('networkidle');
+
+  // Verify API was called with correct endpoint
+  expect(apiCalls.length).toBeGreaterThan(0);
+  expect(apiCalls[0]).toContain('/v1.0/users');
+
+  // Verify data from API actually renders in UI
+  const response = await page.request.get('/v1.0/users');
+  const responseData = await response.json();
+  const rows = page.locator('table tbody tr');
+  await expect(rows).toHaveCount({ greaterThan: 0 });
+});
+```
+
+**Every E2E test for a data-driven page MUST include `page.route()` interception to prove the API call was made.** Tests that navigate to a page and check DOM structure without proving the API was called are REJECTED.
+
+**❌ FORBIDDEN - Missing API Integration Tests:**
 
 // ✅ CORRECT: Full API integration validation
 test('[US-015/AC-002] product list fetches and displays real API data', async ({ page }) => {
@@ -658,6 +712,108 @@ test('[US-015/AC-008] delete product persists to database', async ({ page }) => 
 });
 ```
 
+**❌ FORBIDDEN - Button Existence Without Action Verification:**
+```typescript
+// ❌ FORBIDDEN: Only checks button exists, never clicks it
+test('delete button exists', async ({ page }) => {
+  await page.goto('/users');
+  await expect(page.locator('button:has-text("Delete")')).toBeVisible();
+  // This test passes even if the button click handler does nothing
+  // or is completely broken
+});
+
+// ✅ MANDATORY: Every interactive element test MUST click it AND verify the result
+test('[US-XXX/AC-YYY] delete button triggers deletion flow', async ({ page }) => {
+  await page.goto('/users');
+  const deleteButton = page.locator('button:has-text("Delete")').first();
+  await expect(deleteButton).toBeEnabled(); // Verify it's clickable
+  
+  // Click and verify action
+  await deleteButton.click();
+  await expect(page.locator('[role="dialog"]')).toBeVisible(); // Dialog opened
+  
+  await page.locator('button:has-text("Confirm")').click();
+  await expect(page.locator('[data-testid="success-toast"]')).toBeVisible(); // Action completed
+});
+```
+
+**Every interactive element (button, link, form submit) MUST be tested by: (1) clicking it, (2) verifying the expected outcome.** Testing that an element "exists" without testing that it "works" is REJECTED.
+
+**❌ FORBIDDEN - Missing Data Persistence Verification:**
+```typescript
+// ❌ FORBIDDEN: Creates record but doesn't verify it persists
+test('create user flow', async ({ page }) => {
+  await page.goto('/users/new');
+  await page.fill('[name="email"]', 'test@example.com');
+  await page.click('button:has-text("Save")');
+  await expect(page.locator('[data-testid="success-toast"]')).toBeVisible();
+  // This passes even if the save failed silently
+  // or if the data was not actually written to the database
+});
+
+// ✅ MANDATORY: CRUD operations MUST verify data persists across page refresh
+test('[US-XXX/AC-YYY] created user persists after page refresh', async ({ page }) => {
+  const testEmail = `test-${Date.now()}@example.com`;
+  
+  // 1. Create via UI
+  await page.goto('/users/new');
+  await page.fill('[name="email"]', testEmail);
+  await page.click('button:has-text("Save")');
+  await page.waitForURL(/\/users\/[a-f0-9]+/);
+  
+  // 2. Verify in list
+  await page.goto('/users');
+  await expect(page.locator(`text=${testEmail}`)).toBeVisible();
+  
+  // 3. CRITICAL: Refresh and verify STILL exists
+  await page.reload();
+  await expect(page.locator(`text=${testEmail}`)).toBeVisible();
+  
+  // 4. Optional: Verify via API that data is in database
+  const apiResponse = await page.request.get(`/v1.0/users?email=${testEmail}`);
+  const userData = await apiResponse.json();
+  expect(userData.data).toBeDefined();
+  expect(userData.data.email).toBe(testEmail);
+});
+```
+
+**Every CRUD operation MUST verify: (1) immediate UI feedback, (2) data appears in list, (3) data persists after page refresh.** Tests that stop at "toast appeared" without proving persistence are REJECTED.
+
+**❌ FORBIDDEN - Missing Cross-Component/Cross-Field Validation:**
+```typescript
+// ❌ FORBIDDEN: Tests fields in isolation, misses business logic
+test('form validates required fields', async ({ page }) => {
+  await page.goto('/orders/new');
+  await page.click('button:has-text("Submit")');
+  await expect(page.locator('.error')).toContainText('Email is required');
+  // This only tests field-level validation, not business rules
+});
+
+// ✅ MANDATORY: Test cross-field business logic
+test('[US-XXX/AC-YYY] shipping method changes based on country and order value', async ({ page }) => {
+  await page.goto('/orders/new');
+  
+  // Test: Express shipping only available for orders > $50
+  await page.fill('[name="orderValue"]', '30');
+  await page.selectOption('[name="country"]', 'US');
+  await expect(page.locator('option:has-text("Express")')).not.toBeVisible();
+  
+  await page.fill('[name="orderValue"]', '100');
+  await expect(page.locator('option:has-text("Express")')).toBeVisible();
+  
+  // Test: State field required when Country = US
+  await page.selectOption('[name="country"]', 'US');
+  await page.click('button:has-text("Submit")');
+  await expect(page.locator('.error')).toContainText('State is required');
+  
+  await page.selectOption('[name="country"]', 'UK');
+  await page.click('button:has-text("Submit")');
+  await expect(page.locator('.error')).not.toContainText('State is required');
+});
+```
+
+**Every form with conditional business logic MUST test: (1) field interactions, (2) conditional requirements, (3) computed/derived values.** Testing field-level validation only without business rule interactions is REJECTED.
+
 ### Detection Checklist for Reviewers
 
 - [ ] Do E2E tests verify API request payloads match expected schema?
@@ -681,6 +837,11 @@ test('[US-015/AC-008] delete product persists to database', async ({ page }) => 
 - [ ] Do E2E tests verify accessibility via aXe scan, touch targets (44x44px min), color contrast?
 - [ ] Do E2E tests verify complete user journeys (happy path, branching, error recovery, permission-based)?
 - [ ] Do E2E tests verify state management (cache invalidation, optimistic updates, stale data handling)?
+- [ ] **Do E2E tests contain tautological assertions like `expect(page.locator('body')).toBeVisible()`?** — If YES, REJECT and require removal
+- [ ] **Do E2E tests use `page.route()` to intercept and verify API calls were made?** — If NO for data-driven pages, REJECT
+- [ ] **Do E2E tests only check element existence without clicking and verifying action?** — If YES, REJECT and add action verification
+- [ ] **Do E2E tests verify data persists after page.refresh() or page.reload()?** — If NO for CRUD operations, REJECT
+- [ ] **Do E2E tests verify cross-field business logic (conditional requirements, derived values)?** — If NO for complex forms, REJECT
 
 **If ANY missing → REJECT MR. "Unit tests pass" is NOT sufficient for UI features.**
 
@@ -759,7 +920,92 @@ When rejecting an MR with prohibited patterns, use this format:
 
 ---
 
-## 6. Examples by Technology
+## 7. Local Issue File Creation
+
+### Definition
+**Local issue file creation** is the practice of creating issue tickets, task tracking files, or template copies in the local filesystem (in `.gitlab/issue_templates/`, `.ai/`, or any other local directory) instead of using the GitLab server via the `issue-create` CLI. Issue management is a **server-side operation** — local copies bypass GitLab's tracking, state management, and team visibility.
+
+### Prohibited Patterns
+
+**❌ FORBIDDEN — Creating `.gitlab/issue_templates/*.md` files during feature implementation:**
+
+```bash
+# ❌ FORBIDDEN: Copying template files as part of daily work
+cp ../../coding-standards/.gitlab/issue_templates/Feature.md .gitlab/issue_templates/
+# ❌ FORBIDDEN: Creating local issue files during feature implementation
+echo "# [US-042] ..." > .gitlab/issue_templates/Feature.md
+
+# ✅ CORRECT: Use the CLI to create issues on GitLab server
+../../coding-standards/scripts/oelite-gitlab.sh issue-create oelite/helios/core emma "[US-042] Add user dashboard" "Description..."
+```
+
+**❌ FORBIDDEN — Creating issue/task files in `.ai/` directories:**
+
+```bash
+# ❌ FORBIDDEN: Writing issue tickets to .ai/ folders
+echo "# TASK-015: Implement login" > .ai/tasks/TASK-015.md
+
+# ❌ FORBIDDEN: Creating local task tracking systems
+.ai/issues/
+.ai/tasks/
+.ai/plans/
+  (The `.ai/` directory is reserved for `standards/` overrides only)
+```
+
+**❌ FORBIDDEN — Creating local copies of GitLab templates in any directory:**
+
+```bash
+# ❌ FORBIDDEN: Any local file that duplicates GitLab issue tracking
+issues/
+tickets/
+work-items/
+```
+
+**✅ CORRECT: For ALL issue lifecycle operations, use the GitLab CLI:**
+
+```bash
+# Create issue
+../../coding-standards/scripts/oelite-gitlab.sh issue-create <project> <agent> "<title>" "<description>"
+
+# Assign issue
+../../coding-standards/scripts/oelite-gitlab.sh issue-assign <project> <iid> <agent>
+
+# Comment on issue
+../../coding-standards/scripts/oelite-gitlab.sh issue-comment <project> <iid> <agent> "<message>"
+
+# Close issue
+../../coding-standards/scripts/oelite-gitlab.sh issue-status <project> <iid> <agent> closed
+
+# List open issues
+../../coding-standards/scripts/oelite-gitlab.sh issues <project>
+
+# Verify issue exists (bootstrap Step 0.5)
+../../coding-standards/scripts/oelite-gitlab.sh issues <project> | grep <iid>
+```
+
+### Why This Matters
+
+1. **GitLab is source of truth**: Issues on the server have state (open/closed), labels, assignees, comments, and merge request cross-references that local files cannot replicate.
+2. **Team visibility**: Only GitLab-tracked issues are visible to the team. Local files are invisible silos.
+3. **Workflow enforcement**: The bootstrap's Issue-First hard gate verifies issues exist on GitLab. Local files bypass this gate, allowing agents to start work without proper authorization.
+4. **Merge traceability**: MRs reference issue IIDs (e.g., `Closes #42`). Local files have no IID, breaking the audit trail from code change → business requirement.
+
+### Exception (One-Time Repo Setup)
+
+The ONLY time `.gitlab/issue_templates/*.md` files may be created locally is during **initial repository setup** (see `ISSUE-MR-TEMPLATES.md` §1). This is a one-time infrastructure task, performed once per repository, not part of daily issue creation or feature implementation.
+
+### Detection Checklist for Reviewers
+
+- [ ] Any `.gitlab/issue_templates/*.md` files added or modified in a feature branch?
+- [ ] Any `.ai/*` files that look like issue/task tickets (not `standards/` overrides)?
+- [ ] Any other local files (`.ai/issues/`, `.ai/tasks/`, `tickets/`, etc.) created for issue tracking?
+- [ ] Does the branch add or modify files that duplicate GitLab issue management functionality?
+
+**If ANY detected → REJECT MR. Issue management must use GitLab server CLI, not local files.**
+
+---
+
+## 8. Examples by Technology
 
 ### Backend (.NET 10)
 
@@ -793,11 +1039,134 @@ When rejecting an MR with prohibited patterns, use this format:
 
 ---
 
+## 9. Orphaned Worktree / Stale Branch
+
+### Definition
+
+An **orphaned worktree** is a `.worktrees/<agent>-<iid>/` directory (or a `prunable` gitdir reference to a missing directory) whose linked MR has already been merged or closed. A **stale branch** is a local feature branch (`feature/<issue>-<description>`) that no longer has an open MR.
+
+Both conditions indicate a workflow enforcement failure: per `GIT-WORKFLOW-STANDARDS.md` §1.8 and §3.4, worktree cleanup is a **hard gate** that MUST run in the same session as merge verification.
+
+### Prohibited Patterns
+
+**❌ FORBIDDEN — Leaving a worktree on disk after MR merge:**
+
+```bash
+# ❌ FORBIDDEN: After mr-status confirms "merged", agent proceeds without cleanup
+scripts/oelite-gitlab.sh mr-status oelite/helios/core 142
+# Output: [OK] MR !142 is MERGED
+# ... agent starts next task without removing the worktree
+scripts/oelite-gitlab.sh worktree-create daniel feature/US-200-next --issue 200
+# Result: .worktrees/daniel-142/ still consumes disk; feature/daniel-142-* still in branch list
+```
+
+**❌ FORBIDDEN — `prunable` orphan accumulating across MRs:**
+
+```text
+$ git worktree list
+/Users/.../coding-standards                        [develop]
+/Users/.../coding-standards/.worktrees/daniel-440  [feature/daniel-440-apiclient-fixes] prunable
+/Users/.../coding-standards/.worktrees/grace       [feature/grace-review-299]
+```
+
+The `prunable` flag means the directory no longer exists but git's metadata still references it. `cmd_worktree_remove` cannot clean this up on its own — it requires `git worktree prune` first, which is what the new `worktree-cleanup` subcommand does automatically.
+
+**❌ FORBIDDEN — Stale local branches not deleted:**
+
+```bash
+# ❌ FORBIDDEN: After MR merge, local branch lingers
+$ git branch
+  develop
+* feature/US-142-foo  # MR !142 merged days ago; this branch should be gone
+  feature/US-200-bar  # still in flight
+  feature/BUG-89-quux # MR !89 closed without merge; this branch should be gone
+```
+
+### Detection Checklist for Reviewers
+
+- [ ] Run `git worktree list` in the target repo. Any entry whose linked MR is merged/closed is a violation.
+- [ ] Run `git worktree list --porcelain | grep prunable`. Any output is a violation (orphan).
+- [ ] Run `git branch`. Any `feature/*` branch with no open MR is a violation.
+- [ ] Is the issue's "Definition of Done" (`GIT-WORKFLOW-STANDARDS.md` §8.4) item "Worktree cleaned up" checked? If not, the MR MUST be rejected.
+
+**If ANY detected → REJECT MR or escalate to Emma for `worktree-cleanup --all` sweep.**
+
+### Required Fix
+
+```bash
+# Agent self-cleanup (per §1.8 — same session as merge verification)
+scripts/oelite-gitlab.sh worktree-cleanup <agent> --delete-branch
+
+# Emma/Isabella periodic sweep (covers all agents)
+scripts/oelite-gitlab.sh worktree-cleanup --all
+
+# Dry-run report (no removal) for audit
+scripts/oelite-gitlab.sh worktree-check-stale
+```
+
+### Why This Matters
+
+1. **Disk exhaustion**: A 5 GB monorepo × N stale worktrees × 12 agents silently fills the developer's disk.
+2. **Workflow opacity**: `worktree-list` and `status` outputs become unreliable when they mix in-flight and abandoned work.
+3. **Audit trail breakage**: Reviewers cannot tell which worktree belongs to which MR; tests may run against already-merged code.
+4. **Remote branch accumulation**: If `remove_source_branch: True` was missed on `mr-create`, stale local branches get pushed to origin and pollute the global branch namespace.
+
+---
+
+## 10. Requirements Authority Violations
+
+### Definition
+
+**Requirements authority violations** inject implementation/delivery state into factual requirements documents — BRD, SRS, business rulebook (`docs/business/rules/`), user stories, process flows, and `.spec/0.1/0.2` business/software requirement files. These are approved statements of desired behavior (see `6_documentation_standards/REQUIREMENTS-AUTHORITY.md`); delivery state belongs in GitLab and delivery records. Contaminated requirements stop being a reliable source of authority for the whole team.
+
+### Prohibited Patterns
+
+**❌ FORBIDDEN — Implementation status inside rulebook/requirements files:**
+
+```markdown
+#### Implementation status (issue #798)
+Implemented on `feature/daniel-798-jwt-key-provider` (PR pending review).
+**RESOLVED (issue #798 / MR !517)**: abstraction in place; 25 unit tests pass.
+Gaps vs Current Code: ...
+
+# ✅ CORRECT: state the rule normatively; delivery state lives in GitLab
+### BR-31-011: signing-key-stability
+JWT signing keys MUST remain valid across rolling deploys.
+```
+
+**❌ FORBIDDEN — Delivery tracking inside user stories:**
+
+```markdown
+> **Status**: In Progress | **Sprint**: 14 | **Assigned to**: daniel
+- [x] All acceptance criteria pass
+| Developer | Daniel | ✅ Complete | 2026-10-13 | |
+
+# ✅ CORRECT: header carries document approval status + GitLab issue link only
+> **Status**: Active  > **GitLab Issue**: #142
+```
+
+### Detection Checklist for Reviewers
+
+- [ ] Does the MR change factual requirements files? If yes, run `python3 scripts/check-requirements-authority.py --diff <MR-diff-file>` (or `--staged` locally).
+- [ ] Any added "Implementation status", "Gaps vs current code", MR/issue status, code-path evidence, test tallies, branch names, DoD checkboxes, or sign-off rows in those files?
+- [ ] Is every factual change backed by an approved decision reference (issue/change request) in Change History?
+
+**If ANY detected → REJECT MR** with the validator output attached. The validator has no inline bypass. If a detector is wrong, fix the narrowly scoped detector and add a regression test in a reviewed standards MR; do not suppress the finding in the affected change.
+
+### Why This Matters
+
+1. **Authority erosion**: agents and humans can no longer tell approved behavior from sprint notes; requirement conflicts get "resolved" by whoever edits last.
+2. **Silent rewrites**: implementation-driven edits redefine approved behavior without a business decision.
+3. **Drift and duplication**: inline status copies GitLab state into static files, where it rots.
+
+---
+
 ## Related Documentation
 
 - [AGENTS.md](../../AGENTS.md) — Team roles and workflow chains
 - [TASK-TEMPLATES.md](./TASK-TEMPLATES.md) — Task creation and Definition of Done
 - [ISSUE-MR-TEMPLATES.md](./ISSUE-MR-TEMPLATES.md) — GitLab issue and MR templates
+- [REQUIREMENTS-AUTHORITY.md](../6_documentation_standards/REQUIREMENTS-AUTHORITY.md) — Requirements authority policy
 - [1_dotNet_coding_standards/](../1_dotNet_coding_standards/) — .NET backend standards
 - [4_react_nextjs_coding_standards/](../4_react_nextjs_coding_standards/) — React/Next.js standards
 - [3_angular_coding_standards/](../3_angular_coding_standards/) — Angular standards
@@ -809,3 +1178,5 @@ When rejecting an MR with prohibited patterns, use this format:
 | Date | Author | Version | Changes |
 |------|--------|---------|---------|
 | 2026-07-09 | Sisyphus (per user request) | 1.0.0 | Initial version - defines prohibited patterns to prevent stub/fake/simplified implementations from being approved in MRs |
+| 2026-09-02 | Isabella (per TASK-008) | 1.1.0 | Added §9 "Orphaned Worktree / Stale Branch" — hard-gate enforcement for post-merge cleanup, `worktree-cleanup` subcommand, and reviewer detection checklist |
+| 2026-10-13 | Isabella (per issue #40) | 1.2.0 | Added §10 "Requirements Authority Violations" — delivery-state injection into factual requirements is a review-reject category, with validator-backed detection checklist |

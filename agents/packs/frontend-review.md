@@ -3,13 +3,40 @@
 ## Who Loads This
 Felix (primary), Jonathan (UX/design fidelity review)
 
+## Workflow Prerequisites (Before ANY Code)
+> **Mandatory — non-negotiable.** These steps MUST be completed before any file edits, builds, or tests.
+
+1. **Verify issue exists** in GitLab with acceptance criteria + owner assigned
+2. **Safe sync** (does NOT checkout develop — avoids footgun):
+   ```bash
+   ../../coding-standards/scripts/oelite-gitlab.sh worktree-sync
+   ```
+3. **Create worktree** with YOUR role identity:
+   ```bash
+   ../../coding-standards/scripts/oelite-gitlab.sh worktree-create <role> feature/<branch> --issue <iid>
+   ```
+4. **Enter worktree**:
+   ```bash
+   cd .worktrees/<role>-<iid>/
+   ```
+5. **Verify .oe-scope** exists (compaction-resilient context anchor):
+   ```bash
+   test -f .oe-scope && cat .oe-scope
+   ```
+6. **ONLY NOW** may you write code. The pre-commit hook will block any commit made outside the worktree or on protected branches (develop/main/master).
+
+⚠️ **Never** run `git checkout develop` to work — use `worktree-sync` for syncing. The `develop` branch is reserved for human developers and MR merges only.
+
 ## Standards to Read (via tools)
 - `coding-standards/4_react_nextjs_coding_standards/12-NEXTJS-CODING-STANDARDS.md`
 - `coding-standards/3_angular_coding_standards/11-ANGULAR-CODING-STANDARDS.md`
 - `coding-standards/2_general_web_coding_standards/README.md`
 - `coding-standards/5_git_workflow_standards/PROHIBITED-PATTERNS.md`
 - `coding-standards/agents/packs/ux-design.md` (for Jonathan: UX fidelity review)
-- Target repo `.ai/standards/coding-standards.md` (if exists)
+- Target repo `.ai/standards/coding-standards.md` (deviation-only — skip unless repo is in AGENTS.md STANDARDS AUTHORITY §2)
+
+## Skills to Load
+- `load_skills: ["frontend-design", "design-system", "ui-usability", "ux-design", "security-design"]` — frontend-design for design token enforcement, Shadcn anti-pattern rejection, visual quality gate, brand consistency verification, and consumer-media anatomy (§9.7); design-system for canonical ecosystem design defaults; ui-usability §6 is the paste-ready usability review checklist; §1 classification + anti-CRUD gate and §4 error-message format are reviewer gates; ux-design for WCAG/heuristic detail; security-design for auth/PII/payment patterns.
 
 ## Review Dimensions
 
@@ -41,13 +68,20 @@ Felix (primary), Jonathan (UX/design fidelity review)
 - Stub/simplified/temporary implementations
 - Client components without `'use client'` (Next.js)
 
-## Verification Checklist
-- [ ] Build clean (0 errors)
-- [ ] Lint passes
+## Verification Checklist (MANDATORY — Every check MUST be executed, not assumed)
+
+**Before approving, the reviewer MUST pull the feature branch into their review worktree and run these commands. Code review without build verification is NOT a complete review.**
+
+- [ ] Feature branch pulled into review worktree (`git fetch origin <branch> && git checkout <branch>`)
+- [ ] Build clean (0 errors, 0 warnings) — **run `npx next build` / `ng build` in the review worktree**
+- [ ] Lint passes — **run `npm run lint` and verify output**
+- [ ] Implementer's handoff includes actual build/lint/test output (not "should pass")
+- [ ] If handoff lacks evidence → REJECT the handoff, demand evidence
 - [ ] Theme compliance verified
 - [ ] Accessibility audit passes (Lighthouse ≥ 90)
 - [ ] No mock data
 - [ ] Design spec matched
+- [ ] **Visual QA evidence — user-facing UI requires rendered screenshots, not just code reads**: the reviewer MUST inspect rendered screenshots of every user-facing surface in its primary states (default/populated, loading, empty, error — at minimum mobile breakpoint) attached to the MR or captured in the review worktree. Screenshot mechanism is IDE-agnostic — use your IDE's visual QA tooling (e.g., OpenCode's built-in `visual-qa` skill as one example), Playwright screenshot capture, or browser devtools; the capability is mandatory, the tool is not. A UI MR approved without rendered-screenshot evidence is an incomplete review.
 - [ ] Specific fixes provided for any rejection
 
 ## Failure Report Format

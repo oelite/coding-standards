@@ -175,6 +175,8 @@ This policy is enforced by Arc-Agents quality gates. Any code containing mock da
 
 ## 🎯 **Critical UI Implementation Practices**
 
+> **Canonical design system:** Typography, color tokens, spacing, component behavior, and user journeys for Angular apps are governed by `agents/skills/design-system/SKILL.md` (issue #70, owner Jonathan). This section's legacy Bootstrap/SCSS examples BELOW remain valid patterns for ec-std-01 structure and responsiveness, but canopy font-family choices, ad-hoc hex colors, and component state behavior MUST follow the design-system skill (map its tokens/rules onto Bootstrap variables — see its §11 override policy). Load `load_skills: ["design-system"]` for any Angular UI work.
+
 ### **Mandatory Requirements for All Angular Applications**
 
 The following practices are **MANDATORY** for all OElite Angular applications to ensure professional, maintainable, and user-friendly interfaces.

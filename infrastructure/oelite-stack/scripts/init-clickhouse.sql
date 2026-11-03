@@ -1,0 +1,4 @@
+-- OElite ClickHouse initialization (shared stack)
+-- This file is executed on first container start.
+-- Per-project databases are created by individual projects when they onboard.
+-- This file exists for container readiness; no project-specific databases here.

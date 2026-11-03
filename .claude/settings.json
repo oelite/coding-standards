@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(source *)",
+      "Bash(security find-generic-password *)",
+      "Bash(xxd *)"
+    ]
+  }
+}

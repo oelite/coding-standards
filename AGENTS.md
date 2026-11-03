@@ -1,8 +1,8 @@
 # OElite Platform — Agent Navigator
 
-> **Loaded every request. Read completely.**
-> **Source of Truth**: `coding-standards/` — all standards, templates, workflows live there.
-> **Per-Repo Context**: `<repo>/AGENTS.md` + `<repo>/.ai/standards/`
+**Loaded every request. Read completely.**
+**Source of Truth**: `coding-standards/` — all standards, templates, workflows live there.
+**Per-Repo Context**: `<repo>/AGENTS.md` (+ `<repo>/.ai/standards/` only if repo deviates from OElite patterns — see note below)
 
 ---
 
@@ -12,8 +12,27 @@
 
 ### STEP 0: SELECT TARGET REPOSITORY (Hard Gate)
 **You MUST be inside a sub-repository (e.g., `helios/core/`, `uranus/origin-auth/`, `jupiter/ec-nx-01/`) before running bootstrap.**
-The root `oelite/` folder is NOT a git repository — it is a monorepo container.
+The root `oelite/` folder IS now a git repository (`oelite/workspace` manifest repo on GitLab) — it contains ONLY the workspace manifest + tooling (`manifest.yaml`, `oelite-workspace.sh`, README). It is **NOT** a project repo, so agentic AI must never work or commit there.
 
+> **⛔ MACHINE-ENFORCED:** A PreToolUse hook (`coding-standards/scripts/hooks/oelite-guard.sh`)
+> blocks ALL of the following — for both Claude Code and OpenCode (via `coding-standards/scripts/opencode-plugin-oelite/`):
+>
+> | Gate | Blocks |
+> |---|---|
+> | **A. Root-write** | Write/Edit/Bash targeting paths under the oelite root but NOT inside a scoped git sub-repo |
+> | **B. Worktree-presence** | Edits inside a scoped git repo that are NOT under `.worktrees/<agent>-<iid>/` |
+> | **C. Protected-branch** | Edits in worktrees whose branch is `develop`, `main`, or `master` |
+> | **D. Issue-IID** | (Advisory) When `.oe-scope` exists, the worktree's declared issue must match the branch's issue ref |
+> | **E. No-standalone-infra** | Creating a per-repo `docker-compose*.yml` that declares a shared service (MongoDB, Redis, ClickHouse, Kafka, RabbitMQ, MinIO, OpenSearch, Mailpit), or running `docker run` for one of them, outside `coding-standards/infrastructure/oelite-stack/`. A down shared service is recovered with `./oelite-stack.sh up` — never by creating a replacement container |
+>
+> The `OELITE_HUMAN=1` environment variable bypasses the guard for intentional human maintenance.
+> `.claude/` and `.opencode/` are auto-allowed (IDE config writes).
+>
+> The guard is wired into **every active sub-repo** via per-repo `.claude/settings.json` files
+> (run `coding-standards/scripts/hooks/install-ide-guards.sh --apply` to roll out to new repos),
+> so the same rules fire regardless of which directory you launch your IDE from.
+> See § HARD GATES → "Unified IDE guard" for the full policy.
+>
 ```bash
 # Navigate to your assigned repo FIRST (check ACTIVE REPOS table below)
 cd <target-repo-path>   # e.g., cd helios/core
@@ -23,14 +42,39 @@ git rev-parse --show-toplevel
 # Must output your repo path, NOT "fatal: not a git repository"
 ```
 
-### STEP 0.5: VERIFY ISSUE TICKET EXISTS (Hard Gate — Issue-First)
-**No work begins until a GitLab issue ticket exists with full task elaboration.**
+### STEP 0.5: VERIFY OR CREATE ISSUE TICKET (Hard Gate — Issue-First)
+**No work begins until a GitLab issue ticket exists for this task with full task elaboration.**
+
+**The agent MUST create the issue, not the human.** The human gave you a goal;
+you owe them a properly-scoped, Definition-of-Ready issue ticket before any
+exploration or code edits. Do not block the session by asking the human to
+go create one themselves.
 
 ```bash
-# Verify the issue exists in GitLab before proceeding
-# Replace <project> with GitLab path (e.g., oelite/uranus/origin-auth)
-# Replace <iid> with the issue number
+# 1. Search GitLab for an existing issue that already covers this task.
+#    If one exists and meets Definition of Ready, reuse it.
 ../../coding-standards/scripts/oelite-gitlab.sh issues <project>
+
+# 2. If no issue exists, AUTHOR IT YOURSELF using the templates, then create
+#    it on GitLab via the CLI. Pick the template that matches the work:
+#    - Feature → ISSUE-MR-TEMPLATES.md § Feature Issue
+#    - Bug     → ISSUE-MR-TEMPLATES.md § Bug Issue
+#    - Task    → ISSUE-MR-TEMPLATES.md § Task Issue
+#    - Audit/post-implementation review → Task Issue with US-XXX ref
+../../coding-standards/scripts/oelite-gitlab.sh issue-create \
+  <project> <your-role> "<title>" "<description>"
+# example:
+# oelite-gitlab.sh issue-create oelite/uranus/origin-auth isabella \
+#   "[US-042] Post-impl audit: full UI/API journey validation" \
+#   "$(cat <<'EOF'
+#   ## Goal
+#   Retrospectively audit the origin-auth implementation ...
+#
+#   ## Acceptance Criteria (GIVEN/WHEN/THEN)
+#   - GIVEN the auth UI pages ... WHEN a user signs in ... THEN ...
+#   ...
+#   EOF
+#   )"
 ```
 
 **The issue MUST meet Definition of Ready** (see `TASK-TEMPLATES.md` §1):
@@ -39,9 +83,19 @@ git rev-parse --show-toplevel
 - Owner assigned
 - Priority labeled
 - Dependencies identified (not blocking)
+- **Authorization clause** for creating child issues and fixing discovered defects
+  in-scope (write it in the description if the parent is an audit/repair umbrella)
 
-**If no issue exists → STOP. Create one via `issue-create` using `ISSUE-MR-TEMPLATES.md` before any further work.**
-**If the issue exists but lacks acceptance criteria or owner → STOP. Ask Emma to elaborate before proceeding.**
+**If you find an existing issue that does NOT meet Definition of Ready → you
+update it, you do not block the session on a human.** Add the missing AC,
+assign yourself as owner, set priority, and proceed.
+
+**⚠️ DO NOT create local issue files.** Issue tickets belong on GitLab server, not in:
+- `.gitlab/issue_templates/` — **ONE-TIME REPO SETUP ONLY** (per `ISSUE-MR-TEMPLATES.md` §1)
+- `.ai/` — reserved for `standards/` overrides only
+- Any other local directory
+
+See `PROHIBITED-PATTERNS.md` §7 for the full prohibition.
 
 ### STEP 1: DECLARE IDENTITY
 ```markdown
@@ -54,11 +108,33 @@ MY_SESSION_TYPE = "<primary|subagent|continued>"
 ```bash
 # From INSIDE the target repo (after Step 0 cd):
 source ../../coding-standards/scripts/oelite-gitlab-env.sh
-git checkout develop && git pull origin develop
+# Safe sync — refreshes origin/develop; fast-forwards local develop only when safe (never checks out develop)
+../../coding-standards/scripts/oelite-gitlab.sh worktree-sync
 ../../coding-standards/scripts/oelite-gitlab.sh worktree-create "$MY_ROLE" "feature/<branch>" --issue "<iid>"
-# Verify owner DNA (see coding-standards/5_git_workflow_standards/WORKTREE-OWNER-DNA.md)
+# Verify owner DNA — USE `git -C` (NOT `cd .worktrees/... && git ...`)
+# See "⚠️ Claude Code permission pattern" below for why.
 git -C ".worktrees/$MY_ROLE-<iid>" config user.email  # Must be "$MY_ROLE@phanes.ltd"
 ```
+
+**⚠️ Claude Code permission pattern (use `git -C`, never `cd <dir> && git ...`).**
+Claude Code prompts for approval on every `cd <new-dir> && git ...` compound command because a new
+directory can host its own `.git/hooks/`. The pattern `Bash(git *)` in the allow-list does **not**
+match `cd <dir> && git ...`. Use `git -C <dir> ...` (or `git --git-dir=<dir>/.git ...`) instead —
+it matches `Bash(git -C *)` and skips the prompt. Same rule applies to any other version-control
+or build tool you want to invoke against a worktree. The apex per-repo `.claude/settings.local.json`
+is pre-seeded with worktree-scoped allow rules; add equivalents for your own repos.
+
+**⚠️ CRITICAL: Never pipe the `source` command.**
+- ✅ `source scripts/oelite-gitlab-env.sh` — correct
+- ✅ `source scripts/oelite-gitlab-env.sh 2>/dev/null` — quiet mode
+- ❌ `source scripts/oelite-gitlab-env.sh 2>&1 | tail -1` — **breaks: PATs are lost in subshell**
+>
+Piping `source` creates a subshell. All exported PATs evaporate. The script will detect this and abort.
+
+**⚠️ Never chain `source` with `curl` in a compound command.**
+- ❌ `source ...; curl ... $OELITE_PAT_X ...` — **triggers `simple_expansion` approval prompts and exposes the PAT to Claude Code's shell evaluator**
+- ✅ Run `source` standalone (or skip it entirely — the `oelite-gitlab.sh` wrapper loads PATs internally from Keychain as needed)
+- ✅ Use `oelite-gitlab.sh <subcommand> ...` for ALL GitLab operations — it handles PAT retrieval and never expands secrets in your command
 
 **Note**: `--issue <iid>` is REQUIRED by default (Issue-First workflow). For work that genuinely does not require an issue ticket, use `--no-issue` (falls back to legacy `.worktrees/<agent>/` naming).
 
@@ -78,14 +154,21 @@ git -C ".worktrees/$MY_ROLE-<iid>" config user.email  # Must be "$MY_ROLE@phanes
 **After context compaction (or at any point you're unsure where you are):**
 ```bash
 # Read the scope file to restore your working context
-cat .oe-scope
-# OR:
+# IMPORTANT: .oe-scope is a per-worktree file. It only exists inside
+# .worktrees/<agent>-<iid>/.oe-scope. If you're at the monorepo root or
+# a repo root, you will NOT find it there — that's normal.
+# cd to your worktree first, then read it:
+cat .worktrees/<role>-<iid>/.oe-scope
+# OR (from the repo root):
 ../../coding-standards/scripts/oelite-gitlab.sh oe-scope "$MY_ROLE-<iid>"
 ```
 
 **Pre-tool directory guard (run before ANY file edit if unsure of location):**
 ```bash
 # If this outputs anything, you are in the WRONG directory — STOP
+# Navigate to the correct worktree first:
+cd .worktrees/<role>-<iid>/
+# Then verify:
 test -f .oe-scope || { echo "SCOPE LOST: No .oe-scope found. You are not in a worktree. cd to the correct worktree first."; }
 ```
 
@@ -103,7 +186,7 @@ Read in this exact order:
 3. `coding-standards/agents/roles/{MY_ROLE}.md` — your role delta
 4. `coding-standards/agents/packs/{MY_TASK_TYPE}.md` — task-specific standards
 5. `<target-repo>/AGENTS.md` — repo orientation
-6. `<target-repo>/.ai/standards/*.md` — repo-specific overrides (if they exist)
+6. `<target-repo>/.ai/standards/*.md` — repo-specific deviations (ONLY if present; reserved for repos that deviate from OElite patterns — currently `uranus/lattice`, `uranus/origin-auth`, `venus/sip`, `mercury/synapse`)
 
 ### STEP 4: VERIFY & OUTPUT BOOTSTRAP COMPLETE
 **After reading all required files, output EXACTLY:**
@@ -120,10 +203,10 @@ LOADED:
   - coding-standards/agents/roles/<role>.md
   - coding-standards/agents/packs/<task-type>.md
   - <target-repo>/AGENTS.md
-  - <target-repo>/.ai/standards/*.md (if applicable)
+  - <target-repo>/.ai/standards/*.md (deviation-only; see STANDARDS AUTHORITY)
 WORKTREE: .worktrees/<role>-<iid>/feature/<branch> (verified via git config user.email)
 SCOPE: .oe-scope verified and updated (task-type, issue, description)
-SYNC: develop pulled from origin
+SYNC: origin/develop refreshed; local develop fast-forwarded only when safe
 IDENTITY: <role>@phanes.ltd (confirmed per WORKTREE-OWNER-DNA.md)
 READY: true
 ===
@@ -141,7 +224,7 @@ READY: true
 | Frontend (Next.js) | `coding-standards/4_react_nextjs_coding_standards/` | 12-NEXTJS-CODING-STANDARDS.md |
 | Frontend (Angular) | `coding-standards/3_angular_coding_standards/` | 11-ANGULAR-CODING-STANDARDS.md |
 | General Web | `coding-standards/2_general_web_coding_standards/` | README.md |
-| Git Workflow | `coding-standards/5_git_workflow_standards/` | GIT-WORKFLOW-STANDARDS.md, TASK-TEMPLATES.md, ISSUE-MR-TEMPLATES.md, PROHIBITED-PATTERNS.md, WORKTREE-OWNER-DNA.md |
+| Git Workflow | `coding-standards/5_git_workflow_standards/` | GIT-WORKFLOW-STANDARDS.md, TASK-TEMPLATES.md, ISSUE-MR-TEMPLATES.md, PROHIBITED-PATTERNS.md, WORKTREE-OWNER-DNA.md, DEPLOYMENT-OBSERVABILITY-STANDARD.md |
 | Documentation | `coding-standards/6_documentation_standards/` | DOC-STANDARDS.md |
 | Planning | `coding-standards/0_project_planning_standards/` | 6 templates |
 
@@ -190,7 +273,7 @@ READY: true
 
 ## 🤖 SUBAGENT DELEGATION RULE
 
-When spawning a subagent via `task()`, include in the prompt:
+When a request names a specific role and the context matches their responsibility, you MAY spawn that role as a subagent using the `Agent` tool. Include in the prompt:
 
 ```markdown
 # SUBAGENT BOOTSTRAP REQUIREMENTS
@@ -209,11 +292,109 @@ You MUST complete the Universal Agent Bootstrap (Steps 1-4) before ANY work.
 Your first output MUST be the bootstrap verification block (including SCOPE verified).
 ```
 
+**Note**: Subagent spawning is optional. The primary workflow is a single-agent session that outputs a structured handoff for the next role. Use subagents only when the user explicitly requests multi-agent orchestration or names a specific role.
+
+---
+
+## 🎯 SKILLS ARCHITECTURE
+
+Skills are **portable, loadable capabilities** that any agent can pull in on demand
+without bloating role files. A skill is a folder under `coding-standards/agents/skills/<skill-id>/`
+containing a `SKILL.md` file (and optionally templates, scripts, or reference material).
+The format follows the **OpenAgentSkill / agentskills.io** convention so skills are
+discoverable, composable, and tool-agnostic.
+
+### What a Skill Is
+
+A skill is a **self-contained unit of expertise** that:
+- Has a clear, narrow purpose
+- Declares who loads it by default and who loads it on demand
+- Provides standards, patterns, checklists, or workflows that are stable across roles
+- Can be combined with other skills (e.g., a backend reviewer can load `formatting` +
+  `architecture-design` + `security-design`)
+
+A skill is **NOT**:
+- A role definition (those live in `agents/roles/`)
+- A task-type workflow (those live in `agents/packs/`)
+- An application-specific pattern (those live in `<repo>/.ai/standards/`)
+
+### Where Skills Live
+
+| Type | Path | Owner |
+|------|------|-------|
+| **OElite skills** (in-repo, canonical) | `coding-standards/agents/skills/<skill-id>/SKILL.md` | Designated role (per registry) |
+| **Built-in OpenCode skills** | Shipped with OpenCode; accessed via `skill` tool | OpenCode |
+
+### The Skills Registry
+
+The single source of truth for every skill is:
+
+📄 **`coding-standards/agents/skills/SKILLS.md`**
+
+This file lists every OElite skill (planned + active) and every built-in OpenCode
+skill available via the `skill` tool. Each entry records:
+- ID (kebab-case), name, one-line purpose
+- Trigger phrases (phrases that should auto-load the skill)
+- Default loaders (which roles always load it) vs. on-demand loaders
+- Location path
+- **Status** (`[ ] planned` → `[x] active`) — flipped when SKILL.md is delivered
+
+### How to Discover Skills
+
+1. Read `coding-standards/agents/skills/SKILLS.md` to see the full registry.
+3. Pick the skill(s) that match the current task's trigger phrases or scope.
+
+### How to Load a Skill
+
+**Option A — `skill` tool (OpenCode built-in):**
+```
+skill(name="architecture-design")
+skill(name="security-design")
+```
+
+**Option B — `load_skills` in `task()` delegations:**
+When spawning a subagent, pass skill names that the subagent should load:
+```markdown
+Use task() with:
+  load_skills: ["architecture-design", "security-design"]
+```
+
+**Option C — Manual `read`:**
+For OElite skills (in-repo), simply read the SKILL.md file as part of bootstrap:
+```
+Read: coding-standards/agents/skills/architecture-design/SKILL.md
+```
+
+### How to Create a New Skill
+
+1. **Search `SKILLS.md` first.** If a related skill exists (even planned), add to it
+   rather than creating a duplicate.
+2. **Open a GitLab issue** describing the skill (purpose, audience, trigger phrases).
+3. **Create the folder:**
+   ```
+   coding-standards/agents/skills/<skill-id>/
+   ```
+4. **Create `SKILL.md`** following the template documented in `SKILLS.md` § "How to
+   Create a New Skill" (Purpose, When to Load, Standards & Rules, Verification).
+5. **Register the skill** in `SKILLS.md` with all required fields.
+6. **Update role files** to reference the skill via `load_skills` instead of inlining content.
+
+### 🚨 Non-Negotiable Rule
+
+> **Every new cross-cutting capability MUST be created as a skill, not duplicated in
+> role files.** Role files reference skills via `load_skills`, they do NOT inline
+> skill content. If you find yourself writing the same content into multiple role
+> files, stop and create a skill instead.
+
+This rule keeps role files lean (~50 lines each) and prevents the same standard from
+drifting across copies. If a role needs specialized knowledge, load the skill —
+don't paste it in.
+
 ---
 
 ## 🔄 CONTINUED SESSION RULE
 
-When continuing a session via `session_id` in `task()`:
+When continuing a session (e.g., resuming from a handoff or re-invoking a role after context compaction):
 
 ```markdown
 # CONTINUED SESSION BOOTSTRAP
@@ -230,15 +411,20 @@ MANDATORY: Read .oe-scope in your worktree to restore full task context after co
 ## 🛡️ HARD GATES (Non-Negotiable)
 
 - ✅ **Issue-First**: No work begins (no worktree, no code, no exploration) until a GitLab issue ticket exists with full task elaboration (goals, acceptance criteria, scope, dependencies, assigned owner) per `ISSUE-MR-TEMPLATES.md`. Bootstrap refuses to proceed without an issue IID.
+✅ **Unified IDE guard**: AI agents may create or modify files/folders only inside their scoped git sub-repository AND only inside a worktree on a feature branch. The `oelite/` root is a non-git monorepo container; direct writes to it and non-repository family containers are blocked, plus edits in main checkouts (not under `.worktrees/`) and on protected branches (`develop`/`main`/`master`) are blocked. Enforced by `coding-standards/scripts/hooks/oelite-guard.sh` for both Claude Code (via per-repo `.claude/settings.json`) and OpenCode (via `coding-standards/scripts/opencode-plugin-oelite/`). Humans bypass with `OELITE_HUMAN=1`; `.claude/` and `.opencode/` are auto-allowed (IDE config). Run `coding-standards/scripts/hooks/install-ide-guards.sh --apply` to roll out to new repos.
 - ✅ Worktree identity via `scripts/oelite-gitlab.sh worktree-create`
-- ✅ `develop` sync before worktree creation
+- ✅ `develop` sync before worktree creation (use `worktree-sync` — safe sync that does NOT checkout develop)
+- ✅ **Pre-commit hook enforcement**: Hook blocks commits outside `.worktrees/` and on protected branches (`develop`, `main`, `master`). Humans bypass with `OELITE_HUMAN=1`. Installed automatically by `worktree-create`.
+- ✅ **Protected branches**: `develop`, `uat`, and `main` are for MR merges only. AI agents must NEVER commit directly on them. GitLab protected branches should be configured server-side as a second layer of defense.
+- ✅ **Environment promotion chain**: deployments follow develop → uat → main via promotion MRs with CI branch gates and UAT soak (see GIT-WORKFLOW-STANDARDS.md §2.1.2).
 - ✅ Zero mock data
-- ✅ Zero mock persistence — real Docker infra for tests
+- ✅ **Zero mock persistence** — real shared-stack Docker infra for tests; never per-repo containers (see `1_dotNet_coding_standards/16-SHARED-LOCAL-INFRASTRUCTURE.md`). A stopped shared service is recovered with `./oelite-stack.sh up`, never by creating a new container
 - ✅ No `as any`, `@ts-ignore`, `@ts-expect-error`
 - ✅ Build + test + health check before "done"
 - ✅ **Merge verification**: After reviewer approves, the reviewer (or Emma) MUST verify the MR status is `merged` in GitLab (via `mr-status` CLI) before transitioning the linked issue to `Done`
 - ✅ **Issue closure enforcement**: Every merged MR's linked issue MUST be closed in GitLab via `issue-status closed` — not just labeled `Done`. Closure happens in the same session as merge verification.
 - ✅ **Post-merge issue audit**: Isabella (or designated reviewer) MUST run `issue-audit <project>` periodically to catch any issues left open after their linked MRs were merged.
+- ✅ **Worktree cleanup enforcement**: After MR merge, the merging agent MUST run `worktree-cleanup <agent> --delete-branch` to remove the local worktree and branch; if the MR is closed without merge, the agent MUST run cleanup manually. The `worktree-create` preflight now hard-blocks on merged/closed MR state (GIT-WORKFLOW-STANDARDS.md §1.8).
 - ✅ Autonomous handoff to next role per workflow chain
 - ✅ Bootstrap verification block as first output
 
@@ -248,9 +434,9 @@ MANDATORY: Read .oe-scope in your worktree to restore full task context after co
 
 | Family | Repos |
 |--------|-------|
-| **Helios** | `core/`, `kortex/`, `oesterling/`, `compass/`, `k8s/` |
+| **Helios** | `core/`, `nexus/`, `kortex/`, `oesterling/`, `compass/`, `k8s/` |
 | **Jupiter** | `ec-std-01`, `ec-nx-01`, `occ`, `bizsmart`, `apex/`, `apps-ec-store`, `apps-biz-suite` |
-| **Mercury** | `runners/Backplane`, `DataSync`, `LoadBalanceHealthCheckker`, `SubscriptionBilling` |
+| **Mercury** | `runners/` (**single git repo** — background-service projects are FOLDERS inside it: `OElite.Runners.Backplane`, `OElite.Runners.DataSync`, `OElite.Runners.LoadBalanceHealthCheckker`, `OElite.Runners.SubscriptionBilling`, …), `synapse/` |
 | **Uranus** | `origin-auth/`, `restme/`, `restme-dapper/`, `orion/`, `stella/`, `hermes/`, `lattice/`, `quantrix/`, `slate/`, `arc-cli/`, `arc-agents/` |
 | **Venus** | `obelisk/`, `sip/`, `stela/` |
 
@@ -263,30 +449,63 @@ The table above lists **local sub-repository folders** inside the monorepo conta
 | Local Folder | GitLab Project Path |
 |--------------|---------------------|
 | `helios/core/` | `oelite/helios/core` |
+| `helios/nexus/` | `oelite/helios/nexus` |
 | `uranus/origin-auth/` | `oelite/uranus/origin-auth` |
 | `jupiter/ec-nx-01/` | `oelite/jupiter/ec-nx-01` |
-| `mercury/runners/Backplane/` | `oelite/mercury/runners/Backplane` |
+| `mercury/runners/` | `oelite/mercury/runners` (ONE repo; interior projects are folders `OElite.Runners.*`, NOT separate GitLab projects) |
 
 Always pass the full GitLab project path (`oelite/<family>/<repo>`) to `scripts/oelite-gitlab.sh`.
 
 ### CLI Tool Reference
 
+**⚠️ GitLab API security rule:** Never generate raw `curl` commands against `code.phanes.ltd`, and never expand `OELITE_PAT_*` in an agent-generated Bash command. This exposes a secret-bearing operation to Claude Code's shell evaluator and triggers `simple_expansion` approval prompts. Use the provided wrapper for every GitLab operation:
+
+```bash
+# Correct — PAT is loaded internally from Keychain
+coding-standards/scripts/oelite-gitlab.sh issue-status oelite/jupiter/apex 323 emma closed
+
+# Forbidden — raw API call and PAT expansion
+source coding-standards/scripts/oelite-gitlab-env.sh; curl ... \"$OELITE_PAT_EMMA\" ...
+```
+
+The wrapper is the only supported interface for issues, worktrees, MRs, comments, approvals, and status transitions. If the wrapper lacks an operation, extend `oelite-gitlab.sh`; do not bypass it with raw API calls.
+
 | Command | Purpose |
 |---------|---------|
 | `setup` | Verify all 12 agent PATs against GitLab |
 | `issues <project>` | List open issues (GitLab path: `oelite/<family>/<repo>`) |
+| `issue-show <project> <iid>` | Show issue details with description and assignee |
 | `issue-create <project> <agent> <title> [desc]` | Create a new issue as agent |
 | `issue-assign <project> <iid> <agent>` | Assign issue to agent |
 | `issue-comment <project> <iid> <agent> <msg>` | Comment on issue as agent |
 | `issue-status <project> <iid> <agent> <opened|closed>` | Open or close issue as agent |
-| `worktree-create <agent> <branch> [base] [--issue <iid>] [--no-issue]` | Create worktree (issue-keyed for parallel same-agent work, or legacy) |
+| `issue-label <project> <iid> <agent> <label>...` | Add/replace issue labels as agent |
+| `worktree-sync` | Refreshes origin/develop; fast-forwards local develop only when not checked out anywhere; preserves divergent/dirty checkouts |
+| `worktree-create <agent> <branch> [--base <base>] [--issue <iid>] [--no-issue]` | Create worktree (issue-keyed; --base for non-develop cutoffs) |
 | `worktree-list` | List active worktrees |
 | `worktree-remove <worktree-id>` | Remove worktree (worktree-id = agent or agent-issue) |
+| `worktree-cleanup <agent> [--delete-branch]` | **HARD GATE** — verify linked MR, prune orphans, remove merged/closed worktree, optionally delete local branch |
+| `worktree-cleanup --all` | Sweep all worktrees in the current repo, remove those whose linked MR is merged/closed (Emma/periodic audit) |
+| `worktree-check-stale [--agent A] [--cleanup]` | Report worktrees whose linked MR is merged/closed or prunable orphan; `--cleanup` to prune |
+| `worktree-owner <worktree-id> [new-owner]` | View or update worktree owner DNA (commit attribution) |
 | `mr-create <project> <agent> <src> <tgt> <title> [desc]` | Create MR as agent |
 | `mr-list <project>` | List open MRs |
 | `mr-comment <project> <iid> <agent> <msg>` | Comment on MR as agent |
 | `mr-approve <project> <iid> <agent>` | Approve MR as agent |
-| `mr-status <project> <iid>` | Check MR merge status (open/merged/closed/cannot_merge) — used for merge verification |
+| `mr-unapprove <project> <iid> <agent>` | Revoke the caller's own approval on an MR (self-revocation only — GitLab does not allow revoking another user's approval) |
+| `mr-update <project> <iid> <agent> <title> [desc]` | Update MR title and description (pass empty title to keep current) |
+| `mr-status <project> <iid>` | Report merge readiness, pipeline evidence, and approvals independently (fail-closed) — used for merge verification |
+| `mr-show <project> <iid> [--raw]` | Read MR description and authoritative status fields through the wrapper |
+| `project-approvals <project> [agent]` | Read project-level approval settings (approvals required, reset-on-push, named approvers/groups); read-only |
+| `pipeline-jobs <project> <pipeline-id>` | List jobs and failure reasons for a pipeline |
+| `pipeline-job-trace <project> <job-id>` | Fetch a job trace (may contain sensitive build output; fetch only when needed) |
+| `pipeline-job-retry <project> <job-id> [<agent>]` | Retry a single failed job (same SHA); attributed to the named agent, default `emma` — flaky-CI remediation only, never for real code failures |
+| `mr-notes <project> <iid> [agent]` | List non-system comments on an MR (read-only, shows up to 100 notes); defaults to emma's PAT when no agent is named |
+| `issue-notes <project> <iid> [agent]` | List non-system comments on an issue (read-only, shows up to 100 notes); defaults to emma's PAT |
+| `mr-check-eligible <project>` | List MRs meeting approval eligibility using per-MR pipeline evidence; unknown evidence fails closed |
+| `mr-auto-approve <project>` | Auto-approve all eligible MRs (records approvals under Emma's identity via the `emma` PAT) |
+| `mr-merge <project> <iid> <agent>` | Merge MR as agent (via GitLab API) |
+| `mr-close <project> <iid> <agent>` | Close MR without merging (e.g. superseded/obsolete) |
 | `issue-audit <project>` | List issues still open whose linked MRs are merged — used for post-merge audit |
 | `oe-scope <agent> [--task-type] [--issue] [--desc]` | Read/update per-worktree .oe-scope file (compaction-resilient context anchor) |
 | `sync <worktree-id>` | Rebase worktree on latest `origin/develop` |
@@ -306,8 +525,14 @@ When a request **names a role** (Emma, Marcus, Daniel, ...) **and** context matc
 ## 📚 STANDARDS AUTHORITY
 
 1. `coding-standards/` — global source of truth
-2. `<repo>/.ai/standards/*` — repo overrides (extend, never contradict)
+2. `<repo>/.ai/standards/*` — repo overrides (extend, never contradict). **Deviation-only convention**: only repos that deviate from OElite patterns maintain a `.ai/` directory. Non-deviating repos must NOT carry one — it duplicates the canon and causes drift.
 3. `uranus/arc-agents/standards/` — mirror only (may drift)
+
+**`.ai/` Directory Constraints**:
+- **Allowed**: `<repo>/.ai/standards/*.md` — repo-specific coding standard overrides
+- **FORBIDDEN**: `<repo>/.ai/issues/`, `<repo>/.ai/tasks/`, `<repo>/.ai/plans/`, or any local issue/task tracking files
+- **FORBIDDEN**: Issue tickets, task descriptions, or work-item files in `.ai/` (see `PROHIBITED-PATTERNS.md` §7)
+- All issue management MUST go through GitLab server via `issue-create` CLI
 
 ---
 

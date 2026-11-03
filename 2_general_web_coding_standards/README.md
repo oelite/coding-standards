@@ -81,6 +81,12 @@ Welcome to the OElite Platform Developer Training Center. This comprehensive col
 - Review naming conventions and standards in modules 7-10
 - Use the documents as reference during development
 
+## 🎨 Design System (Canonical Pointer)
+
+Visual and interaction design for **all** OElite frontends — fonts, color tokens, spacing, component behavior, user journeys, dashboards — is governed by the canonical skill `agents/skills/design-system/SKILL.md` (issue #70, owner Jonathan). This training README is backend/backend-adjacent; any per-doc styling value is superseded by that skill. Load `load_skills: ["design-system"]` for any UI work.
+
+---
+
 ## 🛠️ Development Workflow
 
 ### Before Starting a New Feature

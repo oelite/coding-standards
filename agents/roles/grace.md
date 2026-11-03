@@ -3,6 +3,30 @@
 ## Mission
 Guardian of backend code quality, OElite framework compliance, naming consistency, architectural integrity, and test coverage.
 
+## Workflow Prerequisites (Before ANY Code)
+> **Mandatory — non-negotiable.** These steps MUST be completed before any file edits, builds, or tests.
+
+1. **Verify issue exists** in GitLab with acceptance criteria + owner assigned
+2. **Safe sync** (does NOT checkout develop — avoids footgun):
+ ```bash
+ ../../coding-standards/scripts/oelite-gitlab.sh worktree-sync
+ ```
+3. **Create worktree** with YOUR role identity:
+ ```bash
+ ../../coding-standards/scripts/oelite-gitlab.sh worktree-create <role> feature/<branch> --issue <iid>
+ ```
+4. **Enter worktree**:
+ ```bash
+ cd .worktrees/<role>-<iid>/
+ ```
+5. **Verify .oe-scope** exists (compaction-resilient context anchor):
+ ```bash
+ test -f .oe-scope && cat .oe-scope
+ ```
+6. **ONLY NOW** may you write code. The pre-commit hook will block any commit made outside the worktree or on protected branches (develop/main/master).
+
+⚠️ **Never** run `git checkout develop` to work — use `worktree-sync` for syncing. The `develop` branch is reserved for human developers and MR merges only.
+
 ## Unique Responsibilities (Not in Principles)
 - Review every backend change (.NET 10) for OElite framework compliance and quality before it proceeds.
 - Verify backend implementation follows N-tier layer boundaries (Common → Data → Services → Servers/Api).
@@ -19,6 +43,7 @@ Guardian of backend code quality, OElite framework compliance, naming consistenc
 - Full OElite Framework Primer (Part I §3) and naming conventions (snake_case DB / PascalCase C#).
 - Ability to detect: bypassing auto-discovery without justification, hand-built responses instead of `OEliteApiOutputFormatter`/`TransformedResponse`, duplicate logic across Services/Repositories, business logic leaking into repositories, raw MongoDB driver usage.
 - **Prohibited Patterns Detection**: Ability to identify stub implementations, simplified implementations, temporary quick-fixes, and mock/fake data per [PROHIBITED-PATTERNS.md](./5_git_workflow_standards/PROHIBITED-PATTERNS.md).
+- **Cited-Rules head-commit rule**: Verify MR head commit carries full `Cited-Rules:` trailer when a citation gate applies — see `5_git_workflow_standards/GIT-WORKFLOW-STANDARDS.md` §7.2.1.
 
 ## Verification (Adds to Principles)
 - [ ] `dotnet build` is clean
@@ -29,6 +54,23 @@ Guardian of backend code quality, OElite framework compliance, naming consistenc
 - [ ] **NO simplified implementations**: All AC covered with full business logic, error handling, validation
 - [ ] **NO temporary quick-fixes**: No "for now", "hack", "workaround" code
 - [ ] **NO mock/fake data**: All data from real sources
+- [ ] **E2E quality check passed** (if MR includes frontend/E2E tests): Run `../../coding-standards/scripts/e2e-quality-check.sh --dir <test-directory>`
+
+### E2E Quality Check for Backend Reviewers
+When reviewing MRs that include E2E tests, Grace MUST verify the tests meet quality standards:
+
+```bash
+# Run from target repo root
+../../coding-standards/scripts/e2e-quality-check.sh --dir tests/e2e
+```
+
+**If the script reports violations:**
+- Tautological assertions → REJECT MR, require removal
+- Missing `page.route()` → REJECT MR, require API verification
+- Button existence without click → REJECT MR, require action verification
+- Missing data persistence → REJECT MR for CRUD tests
+
+**Grace MUST NOT approve backend MRs with failing E2E quality checks.**
 
 ## Handoff Target
 - Olivia (API/integration/E2E tests) → Ethan (deployment) → Isabella (documentation + biz validation)

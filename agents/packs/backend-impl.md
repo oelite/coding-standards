@@ -3,13 +3,33 @@
 ## Who Loads This
 Daniel (primary), Marcus (architecture review reference)
 
+## Workflow Prerequisites (Before ANY Code)
+> **Mandatory — non-negotiable.** These steps MUST be completed before any file edits, builds, or tests.
+
+1. **Verify issue exists** in GitLab with acceptance criteria + owner assigned
+2. **Safe sync** (does NOT checkout develop — avoids footgun):
+   ```bash
+   ../../coding-standards/scripts/oelite-gitlab.sh worktree-sync
+   ```
+3. **Create worktree** with YOUR role identity:
+   ```bash
+   ../../coding-standards/scripts/oelite-gitlab.sh worktree-create <role> feature/<branch> --issue <iid>
+   ```
+4. **Enter worktree**:
+   ```bash
+   cd .worktrees/<role>-<iid>/
+   ```
+5. **Verify .oe-scope** exists (compaction-resilient context anchor):
+   ```bash
+   test -f .oe-scope && cat .oe-scope
+   ```
+6. **ONLY NOW** may you write code. The pre-commit hook will block any commit made outside the worktree or on protected branches (develop/main/master).
+
+⚠️ **Never** run `git checkout develop` to work — use `worktree-sync` for syncing. The `develop` branch is reserved for human developers and MR merges only.
+
 ## Standards to Read (via tools)
 - `coding-standards/1_dotNet_coding_standards/` — files 02, 03, 04, 05, 06, 09, 12, 13, 14
-- Target repo `.ai/standards/coding-standards.md` (if exists)
-- Target repo `.ai/standards/architecture-standards.md` (if exists)
-- Target repo `.ai/standards/testing-standards.md` (if exists)
-- Target repo `.ai/standards/security-standards.md` (if exists, for auth/security work)
-- Target repo `.ai/standards/workflow-standards.md` (if exists)
+- Target repo `.ai/standards/*.md` (deviation-only — most repos do NOT have `.ai/`; skip unless the repo is listed in `AGENTS.md` STANDARDS AUTHORITY §2)
 
 ## Implementation Flow (6-Step)
 1. **UI Ops / API contract** — understand the operation needed
@@ -33,12 +53,12 @@ Daniel (primary), Marcus (architecture review reference)
 - **Integration tests**: Every repository method + every controller action using `WebApplicationFactory<T>` against REAL Docker containers
 - **Mark**: `[Trait("Category", "Integration")]` + `[Category("SkipCI")]`
 - **Coverage**: ≥70% line coverage for all new code
-- **Pre-commit gate**: `docker compose -f docker-compose.dev.yml up -d` → `dotnet test --filter "Category=Integration"` → ALL pass locally
+- **Pre-commit gate**: `cd infrastructure/oelite-stack && ./oelite-stack.sh up && ./oelite-stack.sh health` → `dotnet test --filter "Category=Integration"` → ALL pass locally
 - **No mocked persistence**: never mock `IRestme`, `DataRepository<T>`, `MongoDbCentre`, or any persistence-layer component
 
 ## Infrastructure Requirements
-- Request `docker-compose.dev.yml` from Ethan for new repos
-- Port conflict check: `docker ps` + `lsof -i :<port>` before `compose up`
+- **Use the shared local infrastructure** (`infrastructure/oelite-stack/`) — no per-repo compose files needed. See `1_dotNet_coding_standards/16-SHARED-LOCAL-INFRASTRUCTURE.md` for connection strings and setup.
+- Port conflict check: `docker ps` + `lsof -i :<port>` before bringing up stack
 - Remap ports in compose — NEVER kill existing containers
 - Confirm all required containers healthy before tests
 
@@ -63,9 +83,16 @@ Daniel (primary), Marcus (architecture review reference)
 ## Handoff Target
 - Grace (code review) → Maya (if auth/CRUD) → Victor (if perf/data) [can be parallel] → Olivia (testing) → Ethan (deploy) → Isabella (docs + biz validation)
 
+## Peer-Integration References
+When implementing peer integration, profile configuration, or credential handling, load:
+- `1_dotNet_coding_standards/17-LOCAL-DEV-PEER-INTEGRATION.md` — profile/registry mechanics, Keychain static path
+- `1_dotNet_coding_standards/18-DYNAMIC-PEER-CREDENTIALS.md` — normative dynamic credential (token minting) spec
+- `1_dotNet_coding_standards/CONFIGURATION-VALIDATION.md` — fail-fast profile-resolution validation spec + acceptance tests
+- `1_dotNet_coding_standards/SECURITY-PATTERNS.md` — credential storage and minting security patterns
+
 ## Verification Checklist
 - [ ] `dotnet build <project> --configuration Release` → 0 errors
-- [ ] `docker compose -f docker-compose.dev.yml up -d` → all services healthy
+- [ ] `./oelite-stack.sh health` → all services healthy
 - [ ] `dotnet test --filter "Category=Integration"` → ALL pass
 - [ ] `dotnet test --collect:"XPlat Code Coverage"` → ≥70% new code
 - [ ] Service starts, health endpoint 200

@@ -3,24 +3,64 @@
 ## Mission
 Guarantee reproducible builds, healthy containers, and reliable deployments across environments.
 
+## Workflow Prerequisites (Before ANY Code)
+> **Mandatory — non-negotiable.** These steps MUST be completed before any file edits, builds, or tests.
+
+1. **Verify issue exists** in GitLab with acceptance criteria + owner assigned
+2. **Safe sync** (does NOT checkout develop — avoids footgun):
+ ```bash
+ ../../coding-standards/scripts/oelite-gitlab.sh worktree-sync
+ ```
+3. **Create worktree** with YOUR role identity:
+ ```bash
+ ../../coding-standards/scripts/oelite-gitlab.sh worktree-create <role> feature/<branch> --issue <iid>
+ ```
+4. **Enter worktree**:
+ ```bash
+ cd .worktrees/<role>-<iid>/
+ ```
+5. **Verify .oe-scope** exists (compaction-resilient context anchor):
+ ```bash
+ test -f .oe-scope && cat .oe-scope
+ ```
+6. **ONLY NOW** may you write code. The pre-commit hook will block any commit made outside the worktree or on protected branches (develop/main/master).
+
+⚠️ **Never** run `git checkout develop` to work — use `worktree-sync` for syncing. The `develop` branch is reserved for human developers and MR merges only.
+
 ## Unique Responsibilities (Not in Principles)
 - Docker / Docker Compose images, GitLab CI pipelines (`.gitlab-ci.yml` per repo), K8s deployment validation, environment consistency, and observability wiring.
-- **Local development infrastructure**: Create and maintain `docker-compose.dev.yml` per repo for local infrastructure (MongoDB, Redis, ClickHouse, OpenSearch, RabbitMQ, Kafka, MinIO, etc.) — see Part I §7 for the full policy. Consult with Daniel/Sophia to understand each repo's infrastructure dependencies and provide sensible defaults (ports, volumes, health checks).
-- **CI/CD pipeline test filtering**: Configure all `.gitlab-ci.yml` pipelines to skip data-layer integration tests. CI/CD environments do NOT permit Docker/container spawning. Use test category filters (e.g. `dotnet test --filter "Category!=Integration"`) to run only unit tests and build verification in CI. Data-layer integration tests run locally against Docker containers (developer responsibility) or in dedicated staging environments. See Part I §7.1.
-- **Port conflict handling**: Before spinning up any `docker-compose.dev.yml`, ALWAYS check for port conflicts with existing containers/services. If a port is already in use, remap the conflicting service to a different available port — NEVER kill or stop existing containers to free a port. Document the actual port mapping in repo-specific setup guides. See Part I §7.2.
+- **Environment promotion ownership** (`GIT-WORKFLOW-STANDARDS.md` §2.1.2): Ethan creates ALL promotion MRs (`develop → uat`, `uat → main`), creates the REL-XXX release issue at promotion time, and executes Production deploys (manual gate on `main`). Ethan configures protected branches for `develop`/`uat`/`main` in every repo per the §2.1.1 runbook and verifies with `project-approvals`.
+- **Artifact-continuity stewardship**: Ethan owns and maintains the `verify-uat-deployed.sh` check (reference implementation in `infrastructure/oelite-stack/README.md`), rolling it out to every deployable repo's CI and ensuring `deploy_prod` fails closed when the SHA was never deployed to UAT.
+- **Deployment observability** (`5_git_workflow_standards/DEPLOYMENT-OBSERVABILITY-STANDARD.md`): Ethan owns post-deploy health checks, rollout failure detection and rollback decisions (§2.1.3 authority), deploy-board review cadence, alerting/acknowledgment SLAs, and the post-deploy health comment required before REL issue closure.
+- **Shared local infrastructure (machine-wide singleton)**: Maintain the `infrastructure/oelite-stack/` stack in the coding-standards repo — the single source of truth for local dev infra. See `1_dotNet_coding_standards/16-SHARED-LOCAL-INFRASTRUCTURE.md` for the full policy. **No new per-repo `docker-compose.dev.yml` files may be created.** The shared stack provides MongoDB (sharded RS), Redis, ClickHouse, Kafka, RabbitMQ, MinIO. Per-project isolation is achieved via namespaces (databases, buckets, vhosts) in the app's connection string, not separate containers.
+- **CI/CD pipeline test filtering**: Configure all `.gitlab-ci.yml` pipelines so unit tests always run, and data-layer integration tests run wherever the runner provides ephemeral services. Two compliant paths: (a) CI `services:` — ephemeral, runner-side MongoDB/Redis containers scoped to one job (NOT a per-repo compose file, NOT `docker run`, NOT a persistent shared stack — Gate E compliant), or (b) locally against the shared oelite-stack (developer responsibility). If neither is available, integration tests are filtered out of CI (`dotnet test --filter "Category!=Integration"`) and reported as a CI gap rather than silently skipped. Data-layer integration tests must never rely on mock persistence. See Part I §7.1.
+- **Port assignment (canonical)**: All shared services bind to fixed canonical ports (27017 mongos, 6379 redis, 8123 clickhouse, 9092 kafka, 5672 rabbitmq, 9000 minio). Apps connect via `localhost:<port>` directly. There are no per-repo port remappings — conflicts are resolved at the compose level (only one stack runs per machine).
 - **Collaborate with Isabella** to ensure deployment/release documentation is complete and accurate in `docs/technical/deployment/` and `docs/releases/` — including Docker guides, K8s deployment procedures, CI/CD pipeline documentation, environment configuration, and release notes.
 
 ## Codebase Focus (Platform-Wide)
 - **Platform-wide DevOps responsibility**: Ethan is involved in ALL CI/CD, containerization, and deployment work across ALL repos — not limited to specific repos. This includes new repos created, existing repos revised, and any infrastructure decisions.
-- **Current focus areas** (examples, not limits): 80+ Dockerfiles, 22+ `.gitlab-ci.yml`, K8s manifests in `helios/core/k8s`, `helios/k8s`, `mercury/runners/k8s`, `uranus/origin-auth/k8s`, `uranus/orion/k8s`, `uranus/lattice/k8s`, `venus/*`; `uranus/ci-builder` shared build image; monitoring stack at `helios/kortex/deployment/prometheus/`; `docker-compose.dev.yml` files across active repos.
+- **Current focus areas** (examples, not limits): 80+ Dockerfiles, 22+ `.gitlab-ci.yml`, K8s manifests in `helios/core/k8s`, `helios/k8s`, `mercury/runners/k8s`, `uranus/origin-auth/k8s`, `uranus/orion/k8s`, `uranus/lattice/k8s`, `venus/*`; `uranus/ci-builder` shared build image; monitoring stack at `helios/kortex/deployment/prometheus/`; the shared `infrastructure/oelite-stack/` local dev infrastructure.
 - **Mandatory involvement**: Any new repo creation, CI/CD pipeline setup, Docker/K8s configuration, deployment strategy changes, or local development infrastructure setup require Ethan's involvement.
 
 ## Verification (Adds to Principles)
-- `docker build -f <Dockerfile> .` succeeds (use `docker compose -f docker-compose.dev.yml up` where compose exists — helios/core, stella, lattice, hermes, quantrix, obelisk, kortex, oesterling).
-- `docker compose -f docker-compose.dev.yml up` starts all local infrastructure services without errors; each service passes its health check.
-- **Port conflict check**: Before running `docker compose up`, verify no port conflicts with existing containers (see Part I §7.2). If conflicts exist, remap ports in `docker-compose.dev.yml` — NEVER kill existing containers.
+- `docker build -f <Dockerfile> .` succeeds.
+- `cd infrastructure/oelite-stack && ./oelite-stack.sh up` starts the shared local infrastructure; all services pass health checks.
+- `cd infrastructure/oelite-stack && ./oelite-stack.sh init` initializes MongoDB sharding (configsvr×3 + shard1 RS + mongos) and creates per-project databases/buckets.
+- **Health check**: `./oelite-stack.sh health` returns OK for MongoDB (via mongos), Redis, ClickHouse, Kafka, RabbitMQ, MinIO.
+- **Verify singleton**: `docker ps --filter "name=oelite-"` shows exactly the services defined in `docker-compose.shared.yml`. No stray per-repo containers with custom port remapping.
+- **Gate E active**: `oelite-guard.sh` blocks creating a per-repo compose file that declares a shared service (exit 2), and blocks `docker run <shared-service>` outside the shared stack directory.
 - Containers start without crashing; health endpoint responds 200.
 - For K8s: `kubectl rollout status deployment/<name> -n oelite-<env>` succeeds.
 
+## Shared Stack Recovery Duty
+- **Any agent (not just Ethan) recovering a down shared service**: run `./oelite-stack.sh health` → `./oelite-stack.sh up` → `./oelite-stack.sh init` → `./oelite-stack.sh health`. **Never** start a per-repo container as a workaround.
+- **Ethan-specific**: when a shared service is broken and the shared stack will not come up, file a GitLab issue on `oelite/coding-standards` — do not create a per-repo container in any app repo.
+
 ## Handoff Target
 - Isabella (documentation + business validation)
+
+## Peer-Registry & Health References
+When working on the peer registry, UAT peer availability, or peer health tooling, load:
+- `infrastructure/oelite-stack/config/peer-registry.yml` — central peer endpoint/credential-mode registry (Ethan-owned)
+- `infrastructure/oelite-stack/UAT-AVAILABILITY-RUNBOOK.md` — UAT peer availability SLAs, CI token minting, local quick reference
+- `scripts/tools/peers-health/` — peers-health utility (reachability + version + `--auth` + `--strict`)

@@ -466,7 +466,7 @@ public class Program
         builder.Services.AddOElitePathResolver("myapp");
         builder.Services.AddRestmeRedisCache(options =>
         {
-            options.ConnectionString = builder.Configuration["oelite:data:redis:platform"];
+            options.ConnectionString = builder.Configuration["oelite:data:redis"];
             options.InstanceName = "myapp:";
         });
 

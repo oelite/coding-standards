@@ -3,8 +3,34 @@
 ## Who Loads This
 Isabella (primary), Emma (requirements reference)
 
+## Workflow Prerequisites (Before ANY Code)
+> **Mandatory — non-negotiable.** These steps MUST be completed before any file edits, builds, or tests.
+
+1. **Verify issue exists** in GitLab with acceptance criteria + owner assigned
+2. **Safe sync** (does NOT checkout develop — avoids footgun):
+   ```bash
+   ../../coding-standards/scripts/oelite-gitlab.sh worktree-sync
+   ```
+3. **Create worktree** with YOUR role identity:
+   ```bash
+   ../../coding-standards/scripts/oelite-gitlab.sh worktree-create <role> feature/<branch> --issue <iid>
+   ```
+4. **Enter worktree**:
+   ```bash
+   cd .worktrees/<role>-<iid>/
+   ```
+5. **Verify .oe-scope** exists (compaction-resilient context anchor):
+   ```bash
+   test -f .oe-scope && cat .oe-scope
+   ```
+6. **ONLY NOW** may you write code. The pre-commit hook will block any commit made outside the worktree or on protected branches (develop/main/master).
+
+⚠️ **Never** run `git checkout develop` to work — use `worktree-sync` for syncing. The `develop` branch is reserved for human developers and MR merges only.
+
 ## Standards to Read (via tools)
 - `coding-standards/6_documentation_standards/DOC-STANDARDS.md`
+- `coding-standards/6_documentation_standards/REQUIREMENTS-AUTHORITY.md` (when touching factual requirements)
+- `coding-standards/agents/skills/requirements-authority/SKILL.md`
 - `coding-standards/0_project_planning_standards/`
 - Target repo `README.md`
 
@@ -54,21 +80,14 @@ Isabella (primary), Emma (requirements reference)
 - Update screenshots when UI changes
 
 ## Documentation Triggers (When to Update)
-- New repo added
-- Repo deprecated
-- Stack change
-- Build/test/health command changes
-- New OElite framework pattern
-- Repo starts/stops using OElite patterns
-- New coding standard
-- `.ai/standards/` changed
-- Health endpoint path/port changes
-- New feature implemented
-- New release deployed
+- **Approved factual requirement/rule/workflow/user-journey change** → amend canonical requirements docs via `REQUIREMENTS-AUTHORITY.md`; reconcile derived documents.
+- **New feature implemented without a factual requirement change** → update technical/API/config docs, user guides, and release docs; status in GitLab. Do NOT modify BRD/SRS/rulebook/stories to record implementation.
+- New repo added; repo deprecated; stack/build/test/health command changes; new OElite framework pattern; repo starts/stops using OElite patterns; new coding standard; `.ai/standards/` changed (deviation-only repos); health endpoint path/port changes; new release deployed.
 
 ## Verification Checklist
 - [ ] Standard header format on every doc
 - [ ] BRD/SRS/user stories updated BEFORE development starts if requirements changed
+- [ ] Factual documents contain no implementation status, issue/MR state, code paths, or delivery tracking; `python3 scripts/check-requirements-authority.py --staged` passes when they were touched
 - [ ] API docs updated for every endpoint change
 - [ ] User guides include Playwright screenshots
 - [ ] README links to all docs

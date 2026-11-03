@@ -1,2 +1,17 @@
 .worktrees/
 .DS_Store
+.oe-scope
+.env
+.mongo.key
+*.key
+
+# .NET build artifacts (peers-health tool)
+scripts/tools/**/bin/
+scripts/tools/**/obj/
+
+# Remote cluster configurations (contain sensitive credentials, kubeconfigs, and environment cluster definitions)
+# High-privilege operators place per-environment clusters under infrastructure/oelite-stack/clusters/<ENV>/
+infrastructure/oelite-stack/clusters/
+
+
+.git-worktree-owner

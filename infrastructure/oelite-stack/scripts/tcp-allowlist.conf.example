@@ -1,0 +1,13 @@
+# Copy to: clusters/<ENV>/firewall-allowlist.conf  (gitignored)
+# One allowed CIDR per line — also in a sibling file: clusters/<ENV>/allowlist.ips
+# (this file holds only the node target; CIDRs live in allowlist.ips)
+
+# SSH target of the cluster NODE (not the LB IP).
+NODE_HOST=root@91.99.249.173
+
+# Ports this cluster's nginx-ingress LoadBalancer exposes for shared infra.
+# (adjust per environment; see: kubectl get svc -n ingress-nginx ingress-nginx-controller)
+MANAGED_PORTS="27017 5672 1883 6379 8123 9000 9092 9094 9200"
+
+# These are auto-protected by the script — never remove:
+#   SSH_PORT=22, API_PORT=6443

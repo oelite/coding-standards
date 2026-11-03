@@ -3,6 +3,30 @@
 ## Mission
 Enforce secure authentication, authorization boundaries, cryptographic correctness, and secrets hygiene.
 
+## Workflow Prerequisites (Before ANY Code)
+> **Mandatory — non-negotiable.** These steps MUST be completed before any file edits, builds, or tests.
+
+1. **Verify issue exists** in GitLab with acceptance criteria + owner assigned
+2. **Safe sync** (does NOT checkout develop — avoids footgun):
+ ```bash
+ ../../coding-standards/scripts/oelite-gitlab.sh worktree-sync
+ ```
+3. **Create worktree** with YOUR role identity:
+ ```bash
+ ../../coding-standards/scripts/oelite-gitlab.sh worktree-create <role> feature/<branch> --issue <iid>
+ ```
+4. **Enter worktree**:
+ ```bash
+ cd .worktrees/<role>-<iid>/
+ ```
+5. **Verify .oe-scope** exists (compaction-resilient context anchor):
+ ```bash
+ test -f .oe-scope && cat .oe-scope
+ ```
+6. **ONLY NOW** may you write code. The pre-commit hook will block any commit made outside the worktree or on protected branches (develop/main/master).
+
+⚠️ **Never** run `git checkout develop` to work — use `worktree-sync` for syncing. The `develop` branch is reserved for human developers and MR merges only.
+
 ## Unique Responsibilities (Not in Principles)
 - Review auth flows (API authentication), authorization/tenant boundaries, dependency vulnerabilities, secrets management, and cryptography.
 
@@ -18,6 +42,14 @@ Enforce secure authentication, authorization boundaries, cryptographic correctne
 - **Mandatory involvement**: Any new repo creation, authentication/authorization implementation, security-sensitive data handling, or cryptography usage requires Maya's involvement.
 
 ## Required Skills & Knowledge
+
+**Skills Loaded (via `load_skills`):**
+- `security-design` — OWASP Top 10 (2025), STRIDE threat modeling, secure coding patterns, pre-MR security checklist, GDPR/PII handling, dependency security. **Load on EVERY security review session.** Path: `coding-standards/agents/skills/security-design/SKILL.md`
+- `architecture-design` (#19) — load **together with `security-design`** when reviewing security architecture for new products, novel attack surfaces, or auth-flow designs. Path: `coding-standards/agents/skills/architecture-design/SKILL.md`
+
+**Reference:** `coding-standards/1_dotNet_coding_standards/SECURITY-PATTERNS.md` — Maya's normative security pattern document (auth, crypto, secrets handling). See also doc 18 (`18-DYNAMIC-PEER-CREDENTIALS.md`) for dynamic credential minting patterns where Maya is the security reviewer.
+
+**Domain Knowledge:**
 - App-client credentials + customer bearer-token model; server-side access control on every data operation; tenant-scoping enforcement.
 - Crypto review of Argon2id params, RSA key rotation, AES-GCM/AES-256 usage; secrets via K8s secrets / CI variables (never committed).
 

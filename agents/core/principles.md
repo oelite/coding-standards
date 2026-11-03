@@ -9,16 +9,28 @@
 
 | Gate | Rule | Enforcement |
 |------|------|-------------|
-| **Worktree Identity** | `scripts/oelite-gitlab.sh worktree-create <role> <branch>` BEFORE any edit | Git pre-commit hook blocks commits outside worktree |
-| **Sync First** | `git checkout develop && git pull origin develop` BEFORE worktree creation | Manual verification in bootstrap |
+| **Zero Malformatting** | All committed code MUST conform to `coding-standards/.editorconfig` and `coding-standards/formatting-standard.md` (JetBrains defaults). Reviewers MUST NOT manually reformat code in MRs — agents must format before commit. | Pre-commit hook (future), reviewer checklist, agent self-check via `cat coding-standards/.editorconfig` |
+| **Worktree Identity** | `scripts/oelite-gitlab.sh worktree-create <role> <branch>` BEFORE any edit | Pre-commit hook blocks commits outside worktree or on protected branches |
+| **Sync First** | `scripts/oelite-gitlab.sh worktree-sync` BEFORE worktree creation (safe sync — does NOT checkout develop) | Manual verification in bootstrap; `worktree-create` warns if develop is stale |
 | **Zero Mock Data** | No fake/placeholder/TODO/hard-coded data in delivered code | Olivia rejects; Grace/Felix reject |
-| **Zero Mock Persistence** | Integration/E2E tests use REAL Docker infra (`docker-compose.dev.yml`) | CI skips via `[Trait("Category","Integration")]` + `@skipCI` |
+| **Zero Mock Persistence** | Integration/E2E tests use REAL Docker infra — the shared singleton stack at `infrastructure/oelite-stack/` (see `16-SHARED-LOCAL-INFRASTRUCTURE.md`). **NEVER** create a per-repo container for a shared service: no per-repo `docker-compose*.yml` defining MongoDB/Redis/ClickHouse/Kafka/RabbitMQ/MinIO/OpenSearch/Mailpit, no `docker run <shared-service>`, no Testcontainers fixture. If a shared service is down, **restart the shared stack** (`./oelite-stack.sh up`) — never create a replacement. Machine-enforced by `oelite-guard.sh` Gate E. | Guard Gate E (exit 2) + CI skips via `[Trait("Category","Integration")]` + `@skipCI` |
 | **No Type Suppression** | `as any`, `@ts-ignore`, `@ts-expect-error` = blocked | LSP diagnostics + code review |
 | **Verification Mandatory** | Build + tests + health check = required before "done" | Role-specific verification checklists |
 | **Issue-First** | No work begins (no worktree, no code, no exploration) until a GitLab issue ticket exists and meets Definition of Ready (`TASK-TEMPLATES.md` §1), created using `ISSUE-MR-TEMPLATES.md` | Bootstrap refuses to proceed without issue IID; reviewers reject MRs with no linked issue |
 | **Autonomous Handoff** | Complete task → trigger next role per workflow chain | Handoff format mandatory |
 | **Merge Verification** | After reviewer approves, the reviewer (or Emma) MUST verify the MR status is `merged` in GitLab before transitioning the linked issue to `Done` | `mr-status` CLI check; no issue closed as `Done` without confirmed merge |
 | **Issue Closure Enforcement** | Every merged MR's linked issue MUST be closed in GitLab via `issue-status closed` — not just labeled `Done`. Closure happens in the same session as merge verification. | Post-merge audit flags any issue still open after MR merged |
+
+---
+
+## 🎨 CODE FORMATTING (Universal — Non-Negotiable)
+
+- Every language in the OElite platform has a canonical formatter sourced from JetBrains Rider / WebStorm defaults.
+- The single source of truth is `coding-standards/.editorconfig` (machine-readable) and `coding-standards/formatting-standard.md` (human-readable explanation).
+- **Agents MUST** apply these standards before committing. Use your IDE's "Reformat Code" action (`Ctrl+Alt+Shift+F` in Rider, `Ctrl+Alt+L` in WebStorm) or the EditorConfig extension in VS Code.
+- **Reviewers MUST** reject any MR containing code that does not conform. No manual reformatting by reviewers — agents fix their own formatting before requesting review.
+- Per-repo `.editorconfig` files MUST NOT duplicate these rules. They may extend only via `<repo>/.ai/standards/` for documented deviations, and must declare `root = false`.
+- Reference: the formatting skill in `agents/skills/formatting/SKILL.md` (stub created by issue #18; will be filled by future work).
 
 ---
 
@@ -98,8 +110,9 @@ Start empty, load from API, render explicit loading/empty/error states. If an AP
 - Coverage: happy path, null/empty, invalid, boundary, error
 
 ### Integration Tests (Data Layer)
-- **MUST run against REAL Docker containers** (`docker-compose.dev.yml`)
+- **MUST run against REAL Docker containers** (shared `infrastructure/oelite-stack/` — see `16-SHARED-LOCAL-INFRASTRUCTURE.md`)
 - MongoDB, Redis, ClickHouse, OpenSearch, RabbitMQ, Kafka, MinIO
+- **MUST NOT create per-repo containers** — the 8 shared services are a machine-wide singleton; if a service is down, restart the shared stack (`./oelite-stack.sh up`), never create a replacement. Enforced by `oelite-guard.sh` Gate E.
 - Mark: `[Trait("Category", "Integration")]` + `[Category("SkipCI")]`
 - CI runs: `dotnet test --filter "Category!=Integration"`
 
@@ -136,22 +149,22 @@ Start empty, load from API, render explicit loading/empty/error states. If an AP
 
 ### Worktree-First Development
 ```bash
-# 1. Sync main develop
-git checkout develop && git pull origin develop
+# 1. Sync main develop (safe — does NOT checkout develop)
+../../coding-standards/scripts/oelite-gitlab.sh worktree-sync
 
 # 2. Create worktree with YOUR role identity
-scripts/oelite-gitlab.sh worktree-create <role> <feature-branch>
+../../coding-standards/scripts/oelite-gitlab.sh worktree-create <role> <feature-branch>
 cd .worktrees/<role>/
 
 # 3. Work, commit (authored as <role>@phanes.ltd), push
 git push origin <feature-branch>
 
 # 4. Create MR targeting develop
-scripts/oelite-gitlab.sh mr-create <project> <role> <branch> develop "<title>"
+../../coding-standards/scripts/oelite-gitlab.sh mr-create <project> <role> <branch> develop "<title>"
 
 # 5. After MR merged: cleanup
-scripts/oelite-gitlab.sh worktree-remove <role>
-git checkout develop && git pull origin develop
+../../coding-standards/scripts/oelite-gitlab.sh worktree-remove <role>
+../../coding-standards/scripts/oelite-gitlab.sh worktree-sync
 ```
 
 ### Issue Lifecycle (Mandatory Labels + Comments)
@@ -174,10 +187,13 @@ Closes #<issue>
 **Never**: AI references, emojis, co-authors.
 
 ### Branch Strategy & Packaging
+Deployments follow a strictly enforced promotion chain: `feature/*` → `develop` (dev) → `uat` (UAT) → `main` (Production). Each promotion occurs via reviewed Merge Requests with CI branch gates, UAT soak validation, and immutable SHA-tagged artifact continuity. For full normative rules, see `coding-standards/5_git_workflow_standards/GIT-WORKFLOW-STANDARDS.md` §2.1.2 ("Branch Promotion & Deployment Gates").
+
+Downstream of these promotion gates:
 - **main**: production releases → NuGet `nuget.org`; Docker `registry.phanes.ltd/oelite`.
 - **develop**: development pre-releases → `packages.phanes.ltd`.
 - **uat**: UAT pre-releases → `packages.phanes.ltd`.
-- K8s namespaces: `oelite-dev` / `oelite-uat` / `oelite-prod`; production deploys are `when: manual`.
+- K8s namespaces: `oelite-dev` / `oelite-uat` / `oelite-prod`. In CI/CD, deploy jobs to `oelite-prod` run only from `main` and require `when: manual` confirmation.
 
 ---
 
@@ -206,6 +222,12 @@ Closes #<issue>
 
 ---
 
+## 📚 REQUIREMENTS AUTHORITY (Concise Universal Guardrail)
+
+Approved business requirements, rulebooks, SRSs, user stories, journeys, and process flows are factual authority — **not implementation status reports**. Implementation progress, code paths, test outcomes, assignments, and issue/MR state belong in GitLab or delivery records. Code never authorizes rewriting requirements: report discrepancies and request an approved factual change. Load `agents/skills/requirements-authority/SKILL.md` only when changing/reviewing factual requirements; it points to the detailed policy and limits context to the scoped documents/rule IDs. Never load a complete rulebook by default. Full standard: `6_documentation_standards/REQUIREMENTS-AUTHORITY.md`.
+
+---
+
 ## 📦 DOCUMENTATION STRUCTURE (All Repos)
 
 ```
@@ -213,6 +235,7 @@ docs/
 ├── business/
 │   ├── BRD.md
 │   ├── SRS.md
+│   ├── rules/BR-XX-<topic>.md
 │   ├── user-stories/US-XXX.md
 │   └── process-flows/
 ├── technical/
@@ -258,9 +281,9 @@ Before declaring **any** task complete, run this checklist. If any item applies,
 | **New OElite framework pattern introduced** | Update OElite Framework Primer in `principles.md` (this file). Update per-repo `AGENTS.md` as needed. Isabella updates `docs/technical/architecture/` and `docs/technical/data/`. |
 | **Repo starts/stops using OElite patterns** | Update per-repo `AGENTS.md` `OElite-Specific Patterns`. Update root `AGENTS.md` OElite-compliant list. Isabella updates migration guides. |
 | **New coding standard added** | Reference it in relevant role/pack files. Isabella updates onboarding docs. |
-| **Per-repo `.ai/standards/` added or changed** | Note it in per-repo `AGENTS.md` `Standards & Overrides`. Create/update `.ai/standards/` for deviations. Isabella ensures `docs/technical/architecture/` reflects them. |
+| **Per-repo `.ai/standards/` added or changed** | Note it in per-repo `AGENTS.md` `Standards & Overrides`. Create/update `.ai/standards/` ONLY when the repo deviates from OElite patterns (deviation-only convention — non-deviating repos must NOT carry `.ai/`). Isabella ensures `docs/technical/architecture/` reflects them. |
 | **Health endpoint path/port changes** | Update per-repo `AGENTS.md` and `REPOS.md`. Update verification commands in this file if common service. Isabella updates `docs/technical/deployment/`. |
-| **New feature implemented** | Isabella updates user stories, API endpoints, user guides, CHANGELOG. Captures Playwright screenshots. |
+| **New feature implemented** | Isabella updates descriptive docs (API endpoints, user guides, CHANGELOG; Playwright screenshots). Delivery status goes to GitLab. User stories and business rulebooks change only for approved factual requirement changes (see REQUIREMENTS AUTHORITY above). |
 | **New release deployed** | Isabella creates release notes, updates CHANGELOG, creates migration guide if needed. |
 
 ### Self-Verification Checklist (run before every "done")
@@ -271,7 +294,7 @@ Before declaring **any** task complete, run this checklist. If any item applies,
 - [ ] If I added or removed a repo, did I update `REPOS.md`, root `AGENTS.md` topology?
 - [ ] If I introduced a new OElite pattern, did I update the Framework Primer in this file (`principles.md`)?
 - [ ] If I migrated a repo toward/away from OElite patterns, did I update the per-repo `AGENTS.md` `OElite-Specific Patterns` section?
-- [ ] If this repo has `.ai/standards/`, did I update those files to reflect any pattern/command/architecture changes? If this repo deviates from platform standards but has no `.ai/standards/` yet, did I create one documenting the deviation?
+- [ ] If this repo has `.ai/standards/`, did I update those files to reflect any pattern/command/architecture changes? If this repo deviates from platform standards but has no `.ai/standards/` yet, did I create one documenting the deviation? (Deviation-only convention: most repos should NOT have `.ai/` at all.)
 - [ ] **Did my changes impact user-facing behavior, APIs, configuration, architecture, or business requirements?** If YES, did I notify Isabella with specific details about what changed and what documentation needs updating?
 
 ### Periodic Consistency Audit

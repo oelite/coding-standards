@@ -3,11 +3,41 @@
 ## Who Loads This
 Olivia (primary), Daniel (backend testing reference), Sophia (frontend testing reference)
 
+## Workflow Prerequisites (Before ANY Code)
+> **Mandatory — non-negotiable.** These steps MUST be completed before any file edits, builds, or tests.
+
+1. **Verify issue exists** in GitLab with acceptance criteria + owner assigned
+2. **Safe sync** (does NOT checkout develop — avoids footgun):
+   ```bash
+   ../../coding-standards/scripts/oelite-gitlab.sh worktree-sync
+   ```
+3. **Create worktree** with YOUR role identity:
+   ```bash
+   ../../coding-standards/scripts/oelite-gitlab.sh worktree-create <role> feature/<branch> --issue <iid>
+   ```
+4. **Enter worktree**:
+   ```bash
+   cd .worktrees/<role>-<iid>/
+   ```
+5. **Verify .oe-scope** exists (compaction-resilient context anchor):
+   ```bash
+   test -f .oe-scope && cat .oe-scope
+   ```
+6. **ONLY NOW** may you write code. The pre-commit hook will block any commit made outside the worktree or on protected branches (develop/main/master).
+
+⚠️ **Never** run `git checkout develop` to work — use `worktree-sync` for syncing. The `develop` branch is reserved for human developers and MR merges only.
+
+## Skills Loaded (via `load_skills`)
+
+```markdown
+load_skills: ["ux-design", "ui-usability", "frontend-design", "design-system", "security-design"]
+```
+
 ## Standards to Read (via tools)
 - `coding-standards/1_dotNet_coding_standards/02` (acceptance flow)
 - `coding-standards/5_git_workflow_standards/TASK-TEMPLATES.md` (E2E requirements)
 - `coding-standards/5_git_workflow_standards/PROHIBITED-PATTERNS.md` (Insufficient E2E Coverage section)
-- Target repo `.ai/standards/testing-standards.md` (if exists)
+- Target repo `.ai/standards/testing-standards.md` (deviation-only — skip unless repo is in AGENTS.md STANDARDS AUTHORITY §2)
 - User stories from `docs/business/user-stories/` (source of truth)
 
 ## Testing Levels
@@ -17,12 +47,135 @@ Olivia (primary), Daniel (backend testing reference), Sophia (frontend testing r
 - Cover: happy path, null/empty, invalid, boundary, error
 - Every service method with business logic needs a unit test
 
+### 🚨 Meaningful Assertion Mandate (NEW — Hard Gate)
+**Every E2E test assertion MUST prove the code works, not just that the code exists.**
+
+#### FORBIDDEN Assertions (Always Pass, No Verification Value)
+These assertions are **EXPRESSLY FORBIDDEN** in all OElite E2E tests:
+- `expect(page.locator("body")).toBeVisible()` — body is always visible
+- `expect(page.locator("html")).toBeVisible()` — html is always visible
+- `expect(page).toHaveURL()` — no expected URL provided
+- `expect(count).toBeGreaterThanOrEqual(0)` — always true
+- Any assertion on a guaranteed-to-exist element without verifying specific state
+
+#### MANDATORY Assertion Patterns
+Every assertion must fall into one of these categories:
+
+| Category | What It Proves | Example |
+|----------|---------------|---------|
+| **Data correctness** | API data renders correctly | `expect(page.locator('h1')).toContainText('Users')` |
+| **Action outcome** | Click/input produced expected result | `await button.click(); await expect(dialog).toBeVisible()` |
+| **State transition** | UI moved from state A to state B | `expect(skeleton).toBeVisible(); await waitForData(); expect(table).toBeVisible()` |
+| **Error handling** | Error state renders correctly | `expect(errorBanner).toContainText('Failed to load')` |
+| **Business logic** | Business rule is enforced | `expect(expressOption).not.toBeVisible()` when order < $50 |
+| **Persistence** | Data survives refresh | `await page.reload(); await expect(data).toBeVisible()` |
+| **API verification** | API was actually called | `expect(apiCalls.length).toBeGreaterThan(0)` via `page.route()` |
+
+#### Detection
+Reviewers MUST run: `grep -rn 'expect.*body.*toBeVisible\|expect.*html.*toBeVisible\|expect.*\.toHaveURL()' tests/`
+If ANY results, the MR MUST be rejected.
+
+### 🚨 E2E Quality Enforcement Tool (MANDATORY)
+
+**Olivia MUST use `e2e-quality-check.sh` to automate E2E quality verification.**
+
+#### Location
+```bash
+coding-standards/scripts/e2e-quality-check.sh
+```
+
+#### Usage
+```bash
+# Run against auto-detected test directory
+./scripts/e2e-quality-check.sh
+
+# Run against specific test directory
+./scripts/e2e-quality-check.sh --dir tests/e2e
+
+# Run in CI mode (exit with error if violations found)
+./scripts/e2e-quality-check.sh --ci
+
+# Run with auto-fix (removes tautological assertions)
+./scripts/e2e-quality-check.sh --fix
+
+# Verbose output
+./scripts/e2e-quality-check.sh --verbose
+```
+
+#### What the Script Checks
+| Check | What It Detects | Action Required |
+|-------|-----------------|-----------------|
+| **Tautological assertions** | `expect(body).toBeVisible()`, `expect(html).toBeVisible()`, `expect(page).toHaveURL()` without expected URL | REMOVE — these always pass |
+| **API call verification** | Tests that navigate but don't use `page.route()` | ADD `page.route()` interception to prove API was called |
+| **Button-works verification** | Tests that check button existence without clicking | ADD click + outcome verification |
+| **AC traceability** | Tests without US-XXX/AC-YYY references | ADD acceptance criterion reference |
+| **Data persistence** | Tests without `page.reload()` verification for CRUD | ADD persistence chain |
+
+#### When Olivia MUST Run This Script
+1. **Before approving any MR** with E2E tests — Gate 7 enforcement
+2. **After receiving test files from Daniel/Sophia** — immediate quality check
+3. **Before marking an issue as "tested"** — final verification
+
+#### Exit Codes
+- `0` = All checks passed
+- `1` = Violations found (CI mode)
+- `2` = Script error (missing directory, etc.)
+
+#### Integration with Olivia's Workflow
+```
+Gate 7 Workflow:
+1. Receive MR with E2E tests
+2. Run: ./scripts/e2e-quality-check.sh --dir tests/e2e
+3. If exit code 1 → REJECT MR with specific violations
+4. If exit code 0 → Proceed with test execution verification
+5. Run: npx playwright test --reporter=line
+6. Verify all tests pass + coverage mapping
+```
+
+### 🚨 API Call Verification Mandate (NEW — Hard Gate)
+Every E2E test for a data-driven page MUST use `page.route()` to intercept and verify API calls:
+
+```typescript
+// MANDATORY pattern for every data-driven test
+const apiCalls: string[] = [];
+await page.route('**/v1.0/users*', (route) => {
+  apiCalls.push(route.request().url());
+  route.continue();
+});
+await page.goto('/users');
+await page.waitForLoadState('networkidle');
+expect(apiCalls.length).toBeGreaterThan(0);
+expect(apiCalls[0]).toContain('/v1.0/users');
+```
+
+### 🚨 Button-Works-Not-Just-Exists Mandate (NEW — Hard Gate)
+Every interactive element test MUST:
+1. Click the element
+2. Verify the expected outcome
+
+```typescript
+// ❌ FORBIDDEN
+await expect(page.locator('button:has-text("Delete")')).toBeVisible();
+
+// ✅ MANDATORY
+await page.locator('button:has-text("Delete")').click();
+await expect(page.locator('[role="dialog"]')).toBeVisible();
+```
+
+### 🚨 Data Persistence Chain Mandate (NEW — Hard Gate)
+Every CRUD test MUST verify data survives page refresh:
+1. Create record via UI → verify in list
+2. **Refresh page** (`page.reload()`)
+3. **Verify record STILL appears** (proves backend persistence)
+
 ### Integration Tests (Data Layer)
 - **REAL Docker containers** — zero mocks
+- **Run against the SHARED singleton stack** (`infrastructure/oelite-stack/` — see `16-SHARED-LOCAL-INFRASTRUCTURE.md`)
+- **NEVER create a per-repo container** for MongoDB/Redis/ClickHouse/Kafka/RabbitMQ/MinIO/OpenSearch/Mailpit: no per-repo `docker-compose*.yml`, no `docker run <shared-service>`, no Testcontainers fixture. If a shared service is down, **restart the shared stack** (`./oelite-stack.sh up`) — never create a replacement. Enforced by `oelite-guard.sh` Gate E.
 - Every repository method + controller action
 - Mark: `[Trait("Category", "Integration")]` + `[Category("SkipCI")]`
 - CI runs: `dotnet test --filter "Category!=Integration"`
-- Confirm containers healthy before running tests
+- Confirm containers healthy before running tests: `./oelite-stack.sh health`
 
 ### E2E Browser Tests (Playwright)
 - **MANDATORY for all web apps**
@@ -37,6 +190,16 @@ Olivia (primary), Daniel (backend testing reference), Sophia (frontend testing r
    6. Interactive Component Pattern
    7. No-Op Detection
    8. Execution Evidence
+
+### Visual Regression Coverage for Consumer Surfaces (MANDATORY)
+
+Text/role-selector assertions alone do not protect the *rendered look* of consumer-facing UI (feeds, media cards, galleries, marketing pages). For every consumer-facing surface, the e2e suite MUST include visual regression evidence in addition to functional selectors:
+
+- **Screenshot assertions** (`page.screenshot()` / `toHaveScreenshot()` with a baseline) for each consumer surface's primary states — populated, empty, and (where reachable) error — at minimum the mobile breakpoint. Baselines live in-repo (`e2e/__screenshots__/`) and are reviewed like code.
+- **Layout-shift guard**: consumer media surfaces assert on fixed aspect-ratio slots (element bounding box) so media loading cannot reflow the card.
+- **Chip/trust-surface posture**: shape-coded accessibility chips (colour-blind-safe per product requirements) get an explicit screenshot baseline — a colour-only regression must fail the suite.
+- Tooling is IDE-agnostic (Playwright capture, browser devtools, or an IDE visual-QA skill such as OpenCode's `visual-qa`); the capability is mandatory, the tool is not.
+- API-level (headless HTTP) specs do not satisfy this for consumer surfaces — they verify contracts, not rendering.
 
 ### Business Logic Validation in UI (MANDATORY — New Gate 9)
 
@@ -209,7 +372,8 @@ Every feature must document:
 - [ ] Test count meets Gate 3 minimums
 - [ ] No-op tests rejected
 - [ ] All user story acceptance criteria covered
-- [ ] Docker infrastructure confirmed healthy before tests
+- [ ] Docker infrastructure confirmed healthy before tests (`./oelite-stack.sh health` exit 0)
+- [ ] **No per-repo shared-service containers started** — tests ran against the shared stack (`docker ps --filter "name=oelite-"` shows only the singleton)
 - [ ] Business logic validation tests cover all business rules
 - [ ] Accessibility tests pass (aXe scan, keyboard nav, ARIA, contrast)
 - [ ] User journey tests cover happy path, branching, error recovery, permission-based, cancellation

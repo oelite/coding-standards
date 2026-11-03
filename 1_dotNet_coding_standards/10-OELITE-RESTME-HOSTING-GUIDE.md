@@ -40,10 +40,10 @@ public class Program
             instanceName: "myapp:"
         );
 
-        // Option 2: Configuration-based setup
+        // Option 2: Configuration-based setup (FLAT config pattern)
         builder.Services.AddRestmeRedisCache(options =>
         {
-            options.ConnectionString = builder.Configuration["oelite:data:redis:platform"];
+            options.ConnectionString = builder.Configuration["oelite:data:redis"];
             options.InstanceName = "myapp:";
         });
 
@@ -89,10 +89,10 @@ public class Program
     {
         var builder = WebApplication.CreateBuilder(args);
 
-        // Redis for distributed caching
+        // Redis for distributed caching (FLAT config pattern)
         builder.Services.AddRestmeRedisCache(options =>
         {
-            options.ConnectionString = builder.Configuration["oelite:data:redis:platform"];
+            options.ConnectionString = builder.Configuration["oelite:data:redis"];
             options.InstanceName = "myapp:";
         });
 

@@ -3,13 +3,40 @@
 ## Who Loads This
 Jonathan (primary), Sophia (design spec reference), Felix (design fidelity review reference)
 
+## Workflow Prerequisites (Before ANY Code)
+> **Mandatory — non-negotiable.** These steps MUST be completed before any file edits, builds, or tests.
+
+1. **Verify issue exists** in GitLab with acceptance criteria + owner assigned
+2. **Safe sync** (does NOT checkout develop — avoids footgun):
+   ```bash
+   ../../coding-standards/scripts/oelite-gitlab.sh worktree-sync
+   ```
+3. **Create worktree** with YOUR role identity:
+   ```bash
+   ../../coding-standards/scripts/oelite-gitlab.sh worktree-create <role> feature/<branch> --issue <iid>
+   ```
+4. **Enter worktree**:
+   ```bash
+   cd .worktrees/<role>-<iid>/
+   ```
+5. **Verify .oe-scope** exists (compaction-resilient context anchor):
+   ```bash
+   test -f .oe-scope && cat .oe-scope
+   ```
+6. **ONLY NOW** may you write code. The pre-commit hook will block any commit made outside the worktree or on protected branches (develop/main/master).
+
+⚠️ **Never** run `git checkout develop` to work — use `worktree-sync` for syncing. The `develop` branch is reserved for human developers and MR merges only.
+
 ## Standards to Read (via tools)
 - `coding-standards/4_react_nextjs_coding_standards/12-NEXTJS-CODING-STANDARDS.md` (UI Library Policy, Mobile-First, Typography, Theme)
 - `coding-standards/3_angular_coding_standards/11-ANGULAR-CODING-STANDARDS.md` (legacy app design patterns)
 - `coding-standards/2_general_web_coding_standards/README.md`
 - `coding-standards/agents/core/principles.md` (Frontend Stack, Shadcn/ui priority)
-- Target repo `.ai/standards/design-standards.md` (if exists)
+- Target repo `.ai/standards/design-standards.md` (deviation-only — skip unless repo is in AGENTS.md STANDARDS AUTHORITY §2)
 - Target repo `README.md` (app-specific theming)
+
+## Skills to Load
+- `load_skills: ["frontend-design", "design-system", "ui-usability", "ux-design", "security-design"]` — frontend-design for design aesthetic, tokens, Shadcn patterns, typography, responsive, animation, brand consistency, and consumer-media anatomy (§9.7); design-system for canonical ecosystem design defaults (typography, color tokens, spacing, component behavior, journeys, dashboard patterns); ui-usability for the pre-design analysis (§1), feature-type playbooks (§3), and validation strategy (§4) that decide WHAT to build before HOW to style it; ux-design for WCAG/heuristic detail; security-design for auth/PII/payment patterns.
 
 ---
 
@@ -35,6 +62,7 @@ Every feature with frontend impact MUST produce ALL of the following before Soph
 | Deliverable | Format | Description |
 |-------------|--------|-------------|
 | User Journey Map | Markdown document | Step-by-step user flow across pages, including decision points, branching, error recovery paths |
+| Competitive Reference / Moodboard | Image collage + notes — **consumer-facing products only** | 3–5 reference apps/screens with explicit adopt/avoid notes; anchors the visual direction before any screen is built (e.g., a social video app anchors to its genre references). Implementation that ships without this anchor is how "no feel at all" consumer UI gets built |
 | Wireframes / Layout Spec | Mermaid diagram or visual mockup | Page layout, component placement, information hierarchy |
 | Navigation Flow | Mermaid state diagram | Page-to-page transitions, redirects, modal triggers |
 | Interaction State Spec | Text table | All states per component: default, hover, focus, active, disabled, loading, empty, error, success |
@@ -275,6 +303,7 @@ Every list/data component MUST have designed empty state:
 
 - [ ] User journey map covers all roles and permissions
 - [ ] All edge cases and error flows documented
+- [ ] Consumer-facing products: competitive reference/moodboard approved (visual direction anchored before implementation)
 - [ ] Wireframes cover all states (default, loading, empty, error, edge)
 - [ ] Responsive behavior defined at all breakpoints
 - [ ] Accessibility requirements documented per component

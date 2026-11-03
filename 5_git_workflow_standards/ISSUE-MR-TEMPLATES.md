@@ -9,7 +9,9 @@
 
 ## Overview
 
-This document defines the standard GitLab issue and merge request templates for all OElite repositories. These templates MUST be installed in every active repository under `<repo>/.gitlab/`.
+This document defines the standard GitLab issue and merge request templates for all OElite repositories. 
+
+> **⚠️ One-time setup distinction**: Installing these template files as `.gitlab/issue_templates/*.md` in each repo is a **one-time repository initialization task**. Creating a new issue ticket during daily workflow uses the CLI: `scripts/oelite-gitlab.sh issue-create`. See [Installation](#1-installation) for details.
 
 The templates enforce consistent, detailed, and verifiable task information so that agents can execute work without re-clarification.
 
@@ -21,12 +23,25 @@ The templates enforce consistent, detailed, and verifiable task information so t
 2. [Issue Template: Feature](#2-issue-template-feature)
 3. [Issue Template: Bug](#3-issue-template-bug)
 4. [Issue Template: Task](#4-issue-template-task)
+   - [4.5 Issue Template: Release (REL-XXX)](#45-issue-template-release-rel-xxx)
 5. [Merge Request Template](#5-merge-request-template)
 6. [Required Labels Reference](#6-required-labels-reference)
 
 ---
 
 ## 1. Installation
+
+> **⚠️ ONE-TIME REPO SETUP ONLY**: Installing `.gitlab/` template files is a repository 
+> initialization task (done once per repo), NOT part of daily issue creation.
+> 
+> To create a **new issue ticket** on the remote GitLab server during daily workflow, use:
+> ```bash
+> ../../coding-standards/scripts/oelite-gitlab.sh issue-create <project> <agent> "<title>" "<description>"
+> ```
+> 
+> The templates below define the **content format** for issue descriptions. Do NOT create 
+> `.gitlab/issue_templates/` files as part of feature implementation — that is a one-time 
+> infrastructure setup.
 
 Every active OElite repository MUST contain the following files:
 
@@ -36,9 +51,11 @@ Every active OElite repository MUST contain the following files:
     ├── issue_templates/
     │   ├── Feature.md
     │   ├── Bug.md
-    │   └── Task.md
+    │   ├── Task.md
+    │   └── Release.md
     └── merge_request_templates/
-        └── Default.md
+        ├── Default.md
+        └── Release-Promotion.md
 ```
 
 To install:
@@ -67,6 +84,58 @@ To install:
 - [ ] **AC-001**: GIVEN <context> WHEN <action> THEN <observable outcome>
 - [ ] **AC-002**: GIVEN <context> WHEN <action> THEN <observable outcome>
 - [ ] **AC-003**: GIVEN <context> WHEN <action> THEN <observable outcome>
+
+## Testing Strategy
+- [ ] **Unit tests**: Cover service/business logic layer
+- [ ] **Integration tests**: Cover API endpoints + data layer against real Docker infra
+- [ ] **E2E tests** (mandatory if frontend-facing): Cover user journeys via Playwright
+- [ ] **No mock/fake data**: All tests use real infrastructure (per OElite standards)
+- [ ] **Edge cases covered**: Error states, loading states, empty states, permission boundaries
+
+## E2E Test Requirements (Mandatory for UI / User-Journey Tasks)
+
+If this feature involves **UI components, user interactions, or multi-step workflows**, the following E2E coverage is **mandatory**:
+
+### API Integration
+- [ ] Request payload verification against expected schema
+- [ ] Response data mapping correctly renders in UI
+- [ ] API error handling displays user-friendly messages
+- [ ] Loading states during API calls
+- [ ] Network verification via Playwright `page.route()`
+
+### UI Layout & Design
+- [ ] Responsive breakpoints: mobile (375px), tablet (768px), desktop (1024px+)
+- [ ] Design token compliance (colors, spacing, typography via CSS vars / tailwind tokens)
+- [ ] Component library compliance (Shadcn/ui or equivalent — no reinvented primitives)
+- [ ] Accessibility: ARIA labels, roles, focus states, keyboard navigation
+
+### Interactive Elements
+- [ ] All button/link actions trigger expected outcomes
+- [ ] Client-side form validation displays correctly
+- [ ] Server-side validation errors display in UI
+- [ ] Loading → success/error → empty state transitions
+
+### Full-Stack Journeys
+- [ ] Data persists across page refreshes
+- [ ] Role-based access control enforced (if applicable)
+- [ ] Multi-step workflows: create → edit → delete round-trip
+- [ ] UI changes reflect in database after API calls
+- [ ] Login/logout/session timeout behaviors (if auth-gated)
+
+### E2E Evidence
+- [ ] Playwright execution output (all tests pass)
+- [ ] Screenshots/videos for critical user journeys
+- [ ] No JS errors/warnings in browser console
+- [ ] Each E2E test maps to a specific AC (US-XXX/AC-YYY)
+
+**Failure Condition**: If ANY E2E requirement above is not met, the implementation is **INCOMPLETE** and the MR MUST be rejected.
+
+## Implementation Quality Requirements
+- [ ] **NO stub implementations**: Every method has complete logic (no `NotImplementedException`, empty bodies, or `// TODO` placeholders)
+- [ ] **NO simplified implementations**: All edge cases, error flows, validation, and business rules implemented per AC
+- [ ] **NO temporary quick-fixes**: All solutions are production-ready (no "quick fix", "workaround", "hack" comments)
+- [ ] **NO mock/fake/placeholder data**: All data from real APIs/databases (no hardcoded test data in production code)
+- [ ] **Full test coverage**: Unit + integration + E2E tests verify all acceptance criteria
 
 ## Source References
 - User Story: `docs/business/user-stories/US-<NNN>-<feature>.md`
@@ -171,10 +240,17 @@ All acceptance criteria MUST be verified against source code per [AC-VERIFICATIO
 
 ## Verification
 - [ ] Bug no longer reproducible with steps above
-- [ ] Unit test added
+- [ ] Unit test added (covers the specific defect)
 - [ ] Integration test added (if data-layer related)
-- [ ] E2E test added (if user-facing)
+- [ ] E2E test added (if user-facing — mandatory for UI bug fixes)
 - [ ] No regressions in related functionality
+
+## Testing Strategy
+- [ ] **Regression test**: A test that reproduces the original bug and verifies the fix
+- [ ] **Unit tests**: Cover the fixed logic path
+- [ ] **Integration tests**: If the bug spans API ↔ data layer
+- [ ] **E2E tests** (mandatory if UI-facing): Verify the user journey that was broken now works
+- [ ] **Edge cases**: Test around the boundary conditions that triggered the bug
 
 ## Related Issues
 - Caused by: #<NNN>
@@ -203,6 +279,22 @@ All acceptance criteria MUST be verified against source code per [AC-VERIFICATIO
 - [ ] <Criterion 1>
 - [ ] <Criterion 2>
 - [ ] <Criterion 3>
+
+## Testing Strategy
+- [ ] **Unit tests**: Cover service/business logic layer
+- [ ] **Integration tests**: Cover API endpoints + data layer (if applicable)
+- [ ] **E2E tests** (mandatory if frontend-facing): Cover user journeys
+- [ ] **Edge cases covered**: Error paths, boundary conditions, permission scenarios
+
+## E2E Test Requirements (Mandatory for UI / User-Journey Tasks)
+
+If this task involves **UI components, user interactions, or multi-step workflows**, the E2E coverage from the Feature template applies. See [Feature template](#2-issue-template-feature) for the full E2E checklist.
+
+## Implementation Quality Requirements
+- [ ] **NO stub implementations**: Every method has complete logic
+- [ ] **NO simplified implementations**: All edge cases and validation implemented
+- [ ] **NO temporary quick-fixes**: Production-ready only
+- [ ] **NO mock/fake/placeholder data**: Real APIs/databases only
 
 ## Source References
 - User Story: `docs/business/user-stories/US-<NNN>-<feature>.md`
@@ -246,6 +338,59 @@ All acceptance criteria MUST be verified against source code per [AC-VERIFICATIO
 
 ---
 
+## 4.5 Issue Template: Release (REL-XXX)
+
+**File**: `.gitlab/issue_templates/Release.md`
+
+A Release (REL-XXX) issue bundles a set of feature/bug issues into a single deployable release for the develop → uat → main promotion chain (GIT-WORKFLOW-STANDARDS.md §2.1.2). It is created by Ethan or Emma at promotion time and is the canonical location for UAT soak sign-offs.
+
+```markdown
+## Title
+[REL-XXX] <Sprint / release name> — promotion to UAT and Production
+
+## Release Scope
+List of bundled issues and their merge status:
+- [ ] #<iid> — <feature/bug title> (merged into develop)
+- [ ] #<iid> — <feature/bug title> (merged into develop)
+
+## Release Notes
+<Business-facing summary of what ships in this release. Used for the release-notes page and stakeholder comms.>
+
+## Promotion Plan
+- [ ] `develop → uat` promotion MR created (references this issue)
+- [ ] `uat → main` release MR created after UAT soak gate satisfied
+
+## UAT Soak Checklist (§2.1.2 rule 3 — ALL mandatory before uat → main)
+- [ ] UAT deployment pipeline green on the exact SHA being promoted
+- [ ] UAT health check passed (`./oelite-stack.sh cluster UAT health` or service health endpoint)
+- [ ] Olivia validation sign-off recorded **on this release issue**
+- [ ] Isabella business validation sign-off recorded **on this release issue**
+- [ ] Same SHA-tagged image confirmed for `deploy_prod` (artifact continuity — no rebuilds)
+
+## Observability Evidence (DEPLOYMENT-OBSERVABILITY-STANDARD.md §6 — required closure input)
+- [ ] Post-deploy health comment recorded **on this issue** by Ethan/Emma: deployed SHA, rollout completion evidence, health-check result, incidents (or "none")
+
+## Rollback Plan
+- Rollback owner: <agent/role>
+- Image tag to roll back to: `<sha-tag>` (immutable SHA tag from `develop` merge)
+- Rollback procedure: `kubectl rollout undo deployment/<name> -n oelite-prod` (see GIT-WORKFLOW-STANDARDS.md §2.1.3)
+- DB migration rollback plan: <forward-only + compensating migration | n/a>
+
+## Go/No-Go Decision
+- Decision owner: <human business owner or Emma delegate>
+- Go/No-Go recorded on this issue: YES / NO
+
+## Deploy Verification Steps
+- [ ] Production deploy MR merged and verified via `mr-status`
+- [ ] `kubectl rollout status deployment/<name> -n oelite-prod` succeeded
+- [ ] Health endpoint returns 200 post-deploy
+- [ ] Release notes published (Isabella)
+
+/label ~"Release"
+```
+
+---
+
 ## 5. Merge Request Template
 
 **File**: `.gitlab/merge_request_templates/Default.md`
@@ -281,7 +426,27 @@ Closes #<issue-iid>
 - [ ] Health endpoint verified if service is runnable
 
 ### E2E Test Coverage Verification (For UI Features - Olivia Mandate)
+
+**🚨 MANDATORY: Run E2E Quality Check Script Before Approving MR**
+
+```bash
+# Run from target repo root
+../../coding-standards/scripts/e2e-quality-check.sh --dir tests/e2e
+
+# For CI pipelines
+../../coding-standards/scripts/e2e-quality-check.sh --ci
+```
+
+The script automates detection of prohibited patterns. Exit code `1` = violations found → MR MUST be rejected.
+
+#### E2E Test Quality Checklist
+- [ ] **E2E quality check script passed**: Zero violations from `e2e-quality-check.sh`
 - [ ] **API integration tests**: Verify request payloads, response data mapping, error handling, loading states
+- [ ] **`page.route()` API interception**: Every data-driven test intercepts and verifies API calls (MANDATORY — see PROHIBITED-PATTERNS.md §5)
+- [ ] **No tautological assertions**: Zero `expect(body).toBeVisible()`, `expect(html).toBeVisible()`, or `toHaveURL()` without expected URL
+- [ ] **Button-works verification**: Every interactive element tested by clicking AND verifying outcome (not just existence)
+- [ ] **Data persistence chain**: CRUD tests verify data survives `page.reload()` (proves backend persistence)
+- [ ] **Cross-component business logic**: Conditional fields, derived values, and field interactions tested
 - [ ] **UI layout tests**: Verify responsive breakpoints, design token compliance, Shadcn component usage
 - [ ] **Interactive element tests**: Verify all buttons/links, form validation, keyboard navigation, focus management
 - [ ] **Full-stack tests**: Verify data persistence, authentication/authorization, multi-step workflows
@@ -291,6 +456,7 @@ Closes #<issue-iid>
 - [ ] **State management tests**: Cache invalidation, optimistic updates, stale data handling, error boundary in cache
 - [ ] **Playwright evidence captured**: Screenshots/videos for critical journeys, network logs, console verification
 - [ ] **Coverage mapping**: Each E2E test maps to user story acceptance criteria (US-XXX/AC-YYY)
+- [ ] **Console log verification**: No JS errors or warnings in browser console during test execution
 
 **REVIEWER MANDATE**: If ANY stub/fake/simplified/temporary implementation is detected, the MR MUST be rejected with specific citations. Approval without verifying full implementation is a code review failure.
 
@@ -323,10 +489,52 @@ curl -f http://localhost:<port>/health
 
 ### Post-Approval Actions (Reviewer or Emma)
 - [ ] **Merge verified**: `mr-status <project> <mr-iid>` confirms `merged` state
+- [ ] **Worktree cleaned up**: `worktree-cleanup <agent> --delete-branch` ran successfully in the same session as merge verification (per `GIT-WORKFLOW-STANDARDS.md` §1.8 — hard gate). Verify with `worktree-list` showing no entries for the implementing agent.
 - [ ] **Issue labeled `Done`** (after Isabella business validation)
 - [ ] **Issue closed in GitLab**: `issue-status <project> <issue-iid> emma closed` — in same session as merge verification
 
 /label ~"PR Review"
+```
+
+### 5.1 Merge Request Template: Release Promotion
+
+**File**: `.gitlab/merge_request_templates/Release-Promotion.md`
+
+Use for `develop → uat` and `uat → main` promotion MRs per `GIT-WORKFLOW-STANDARDS.md` §2.1.2.
+
+```markdown
+## Release Issue
+Closes #<release-iid>
+
+## Promotion
+- [ ] Direction: `develop → uat` (release candidate) / `uat → main` (production release)
+- [ ] Source branch is the ONLY permitted source (`uat` ← `develop`; `main` ← `uat`) — §2.1.2
+
+## Included Changes
+<Release notes: merged issues, story refs (US-XXX/BUG-XXX), known issues.>
+
+## Deployment Gates (§2.1.2)
+
+### For develop → uat:
+- [ ] `develop` CI pipeline green on merge SHA
+- [ ] Image tagged with commit SHA in registry (artifact continuity)
+- [ ] `deploy_uat` job configured with `rules: if $CI_COMMIT_BRANCH == "uat"`
+
+### For uat → main (UAT soak gate — ALL mandatory):
+- [ ] UAT deployment pipeline green on the exact SHA being promoted
+- [ ] UAT health check passed (`./oelite-stack.sh cluster UAT health` / service health endpoints)
+- [ ] Olivia E2E/validation sign-off recorded on the release issue
+- [ ] Isabella business validation recorded on the release issue
+- [ ] `deploy_prod` deploys the same SHA-tagged image — no rebuilds
+- [ ] Production deploy is `when: manual` + branch-gated to `main`
+
+## Rollback Plan
+<Image tag to roll back to; `kubectl rollout undo` procedure.>
+
+## Reviewer
+Ethan (or Emma). Implementing agents MUST NOT create promotion MRs.
+
+/label ~"PR Review" ~"Release"
 ```
 
 ---
@@ -344,6 +552,7 @@ Every OElite GitLab project MUST have the following labels:
 | `Done` | `#3CB371` | MR merged + business validation passed | Emma |
 | `Blocked` | `#FF0000` | External dependency blocking progress | Assignee |
 | `Bug` | `#DC3545` | Defect or regression | Emma / Reporter |
+| `Release` | `#6F42C1` | Promotion/release MR or release issue | Ethan / Emma |
 | `Priority::Critical` | `#FF0000` | Must be resolved immediately | Emma |
 | `Priority::High` | `#FF8C00` | Significant business impact | Emma |
 | `Priority::Medium` | `#FFD700` | Normal priority | Emma |
@@ -362,5 +571,8 @@ Every OElite GitLab project MUST have the following labels:
 
 | Date | Author | Version | Changes |
 |------|--------|---------|---------|
+| 2026-07-23 | Sisyphus | 1.2.0 | Added Testing Strategy, E2E Test Requirements, and Implementation Quality Requirements to Feature template; added Testing Strategy to Bug template; added Testing Strategy + Implementation Quality Requirements to Task template; added console log verification to MR E2E checklist |
 | 2026-07-22 | Orchestrator / Isabella | 1.1.0 | Added AC verification checklist from AC-VERIFICATION-PROCESS.md to all templates |
 | 2026-06-29 | Emma / Isabella | 1.0.0 | Created dedicated ISSUE-MR-TEMPLATES.md for GitLab issue and MR templates |
+| 2026-09-02 | Isabella (per TASK-008) | 1.3.0 | Added `worktree-cleanup` step to MR Post-Approval Actions — hard-gate enforcement for post-merge cleanup per `GIT-WORKFLOW-STANDARDS.md` §1.8 |
+| 2026-11-02 | Ethan (per TASK-91) | 1.4.0 | Added §5.1 Release Promotion MR template — `develop → uat → main` promotion MRs with UAT soak gate and artifact-continuity checklist per `GIT-WORKFLOW-STANDARDS.md` §2.1.2; installation tree updated |

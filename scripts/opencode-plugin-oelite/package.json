@@ -1,0 +1,19 @@
+{
+  "name": "opencode-plugin-oelite",
+  "version": "1.0.0",
+  "description": "OElite guard — wire oelite-guard.sh into OpenCode's tool.execute.before hook for cross-IDE parity with Claude Code's PreToolUse guard.",
+  "type": "module",
+  "main": "./index.js",
+  "scripts": {
+    "build": "tsc",
+    "prepare": "npm run build"
+  },
+  "devDependencies": {
+    "typescript": "^5.4.0",
+    "@types/node": "^20.0.0"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "private": true
+}

@@ -3,20 +3,112 @@
 # Source this file to load GitLab PATs from macOS Keychain into environment variables.
 # Usage: source scripts/oelite-gitlab-env.sh
 # NEVER commit this file with actual tokens — it reads from Keychain at runtime.
+#
+# Features:
+#   - Parallel PAT validation (all 12 agents validated simultaneously)
+#   - PAT validity cache (skips re-validation within TTL, default 5 minutes)
+#   - Pipe guard (prevents subshell sourcing that loses exports)
+#
+# IMPORTANT: Do NOT pipe this script through `tail` or any command.
+# Piping creates a subshell and ALL exported PATs are lost in the parent shell.
+# Use `source script.sh 2>/dev/null` to suppress output instead.
 
 OELITE_GITLAB_HOST="https://code.phanes.ltd"
 OELITE_GITLAB_API="$OELITE_GITLAB_HOST/api/v4"
 
+# === PIPE GUARD ===
+# Detect if this script is running in a subshell (piped output).
+# When piped, `source` runs in a subshell and exports never reach the parent.
+# We detect this by checking if we're not the main shell process.
+# zsh: $$ is the PID of the shell, $ZSH_SUBSHELL indicates subshell depth.
+if [[ "$ZSH_SUBSHELL" -gt 0 ]]; then
+  echo "[FATAL] oelite-gitlab-env.sh was sourced in a subshell (detected via pipe)." >&2
+  echo "        Piping 'source' through 'tail', 'grep', or any command" >&2
+  echo "        creates a subshell. All exported PATs are LOST in the parent shell." >&2
+  echo "" >&2
+  echo "        CORRECT:  source scripts/oelite-gitlab-env.sh" >&2
+  echo "        QUIET:    source scripts/oelite-gitlab-env.sh 2>/dev/null" >&2
+  echo "        WRONG:    source scripts/oelite-gitlab-env.sh 2>&1 | tail -1" >&2
+  echo "" >&2
+  echo "        Exiting with no PATs loaded. Fix your sourcing pattern." >&2
+  return 1 2>/dev/null || exit 1
+fi
+
 # Toggle PAT validation. Skipping is faster but lets stale tokens through.
 _validate_pats="${OELITE_VALIDATE_PATS:-true}"
+
+# PAT validity cache TTL in seconds (default: 300 = 5 minutes)
+# Set OELITE_PAT_CACHE_TTL=0 to disable caching.
+_pat_cache_ttl="${OELITE_PAT_CACHE_TTL:-300}"
+_pat_cache_file="${TMPDIR:-/tmp}/oelite-pat-validity-$(id -u)"
 
 _agents=(emma marcus daniel sophia jonathan olivia ethan maya victor grace felix isabella)
 _loaded=0
 _invalid=0
 _missing=0
+_revalidated=0  # number of agents re-validated live (subset or all of cache hit)
+
+# ── Cache helpers ──
+_pat_cache_age() {
+  local file="$1"
+  if [[ -f "$file" ]]; then
+    local mtime
+    mtime=$(stat -f %m "$file" 2>/dev/null || echo 0)
+    echo $(( $(date +%s) - mtime ))
+  else
+    echo -1
+  fi
+}
+
+_pat_cache_get() {
+  local agent="$1"
+  [[ -f "$_pat_cache_file" ]] && grep "^${agent}:" "$_pat_cache_file" 2>/dev/null | cut -d: -f2
+}
+
+# ── Determine if cache is fresh ──
+_cache_fresh=false
+if [[ "$_validate_pats" == "true" && "$_pat_cache_ttl" -gt 0 ]]; then
+  local _cache_age
+  _cache_age=$(_pat_cache_age "$_pat_cache_file")
+  if [[ "$_cache_age" -ge 0 && "$_cache_age" -lt "$_pat_cache_ttl" ]]; then
+    _cache_fresh=true
+  fi
+fi
+
+# ── Keychain Session Self-Heal ──
+# When OpenCode or other apps relaunch, child processes may lose their
+# SECURITYSESSIONID and be unable to attach to securityd. The error is
+# "SecKeychainSearchCreateFromAttributes: One or more parameters passed to a
+# function were not valid" — identical to a missing/locked keychain.
+# We detect this once at startup and attempt a lightweight re-attach.
+_keychain_healthy=true
+# Only attempt keychain re-attach when running on macOS (security CLI exists).
+# On Linux CI runners, keychain access is unavailable by design; skip gracefully.
+if command -v security >/dev/null 2>&1; then
+  if ! security find-generic-password -s "oelite-gitlab-emma" -a "oelite" -w >/dev/null 2>&1; then
+    _keychain_healthy=false
+    echo "[WARN] Keychain PAT lookup failed for emma — attempting securityd re-attach..." >&2
+    if security unlock-keychain -p "" ~/Library/Keychains/login.keychain-db 2>/dev/null; then
+      if security find-generic-password -s "oelite-gitlab-emma" -a "oelite" -w >/dev/null 2>&1; then
+        echo "[INFO] Keychain session re-attached successfully" >&2
+        _keychain_healthy=true
+      fi
+    fi
+    if [[ "$_keychain_healthy" != "true" ]]; then
+      echo "[ERROR] Keychain access unavailable — PATs cannot be loaded" >&2
+      echo "        Verify: security find-generic-password -s oelite-gitlab-emma -a oelite -w" >&2
+      return 1 2>/dev/null || exit 1
+    fi
+  fi
+fi
+
+# ── Phase 1: Load all PATs from Keychain (sequential) ──
+# Keychain access is fast when warm (~10-50ms per call) and cannot be safely
+# parallelized (Keychain may lock). We load all PATs first, then validate
+# in parallel if needed.
+typeset -A _pats
 
 for agent in $_agents; do
-  var_name="OELITE_PAT_${agent:u}"
   pat=$(security find-generic-password -s "oelite-gitlab-$agent" -a "oelite" -w 2>/dev/null) || true
   if [[ -z "$pat" ]]; then
     echo "[WARN] PAT not found in Keychain for: $agent (service: oelite-gitlab-$agent, account: oelite)" >&2
@@ -24,30 +116,144 @@ for agent in $_agents; do
     continue
   fi
 
+  _pats[$agent]=$pat
+
+  var_name="OELITE_PAT_${agent:u}"
+  alias_name="OELITE_PAT_${agent[1]:u}${agent[2,-1]:l}"
   export "${var_name}=$pat"
-
-  local alias_name="OELITE_PAT_${agent[1]:u}${agent[2,-1]:l}"
   export "${alias_name}=$pat"
-
-  _valid=true
-
-  if [[ "$_validate_pats" == "true" ]]; then
-    # Validate token by calling /user. GitLab returns 401 for invalid tokens.
-    _status=$(curl -s -o /dev/null -w "%{http_code}" --header "PRIVATE-TOKEN: $pat" "$OELITE_GITLAB_API/user" 2>/dev/null) || true
-    if [[ "$_status" != "200" ]]; then
-      echo "[FAIL] PAT for $agent is invalid or expired (HTTP $_status on /api/v4/user). Remove from Keychain and re-add." >&2
-      unset "$var_name"
-      unset "$alias_name"
-      _valid=false
-      _invalid=$((_invalid + 1))
-    fi
-    unset _status
-  fi
-
-  if $_valid; then
-    _loaded=$((_loaded + 1))
-  fi
 done
+
+# ── Phase 2: Validate PATs (cached, parallel, or skipped) ──
+_cache_entries=()
+
+if [[ "$_validate_pats" == "true" ]]; then
+  if [[ "$_cache_fresh" == "true" ]]; then
+    # ── Cache hit: use cached validation results, skip curl entirely ──
+    # Only entries explicitly marked "valid" are trusted from cache.
+    # Missing, empty, or "invalid" cache entries trigger live re-validation for
+    # that specific agent so transient failures never permanently lock out a PAT.
+    local _tmpdir
+    _tmpdir=$(mktemp -d)
+    local -a _revalidate_pids _revalidate_agents
+
+    for agent in ${(k)_pats}; do
+      cached=$(_pat_cache_get "$agent")
+      if [[ "$cached" == "valid" ]]; then
+        _loaded=$((_loaded + 1))
+        _cache_entries+=("$agent:valid")
+      else
+        _revalidated=$((_revalidated + 1))
+        # Cache miss, empty entry, or previously cached failure — re-validate live.
+        (
+          _status=$(curl -s -o /dev/null -w "%{http_code}" \
+            --header "PRIVATE-TOKEN: ${_pats[$agent]}" \
+            "$OELITE_GITLAB_API/user" 2>/dev/null) || true
+          echo "$_status" > "$_tmpdir/$agent"
+        ) &
+        _revalidate_pids+=($!)
+        _revalidate_agents+=("$agent")
+      fi
+    done
+
+    # Wait for live re-validation jobs (if any spawned)
+    if (( ${#_revalidate_pids[@]} > 0 )); then
+      for pid in $_revalidate_pids; do
+        wait "$pid" 2>/dev/null || true
+      done
+
+      for agent in $_revalidate_agents; do
+        local _status=""
+        [[ -f "$_tmpdir/$agent" ]] && _status=$(< "$_tmpdir/$agent")
+        if [[ "$_status" == "200" ]]; then
+          _loaded=$((_loaded + 1))
+          _cache_entries+=("$agent:valid")
+        else
+          # PAT failed live check — unset it so callers don't use a broken token.
+          # HTTP 401 = genuine invalid PAT; everything else = transient failure.
+          var_name="OELITE_PAT_${agent:u}"
+          alias_name="OELITE_PAT_${agent[1]:u}${agent[2,-1]:l}"
+          unset "$var_name"
+          unset "$alias_name"
+          if [[ "$_status" == "401" ]]; then
+            _invalid=$((_invalid + 1))
+            echo "[FAIL] PAT for $agent is invalid or expired (HTTP 401). Remove from Keychain and re-add." >&2
+            # Do NOT cache a genuine 401 as valid — next live check will confirm.
+            # We simply omit the entry so the next source triggers re-validation again.
+          else
+            echo "[WARN] PAT for $agent failed live validation (HTTP ${_status:-curl-err}). Will retry on next load." >&2
+          fi
+        fi
+      done
+
+      # Write cache: only include agents whose live check returned 200.
+      # Transient failures and 401s are excluded from cache so they re-validate next time.
+      local -a _valid_cache_entries
+      for entry in "${_cache_entries[@]}"; do
+        [[ "$entry" == *":valid" ]] && _valid_cache_entries+=("$entry")
+      done
+      if (( ${#_valid_cache_entries[@]} > 0 )); then
+        printf '%s\n' "${_valid_cache_entries[@]}" | sort > "$_pat_cache_file"
+      fi
+
+      rm -rf "$_tmpdir"
+    fi
+  else
+    # ── Cache miss: validate all PATs in parallel ──
+    local _tmpdir
+    _tmpdir=$(mktemp -d)
+    typeset -a _pids
+
+    for agent in ${(k)_pats}; do
+      (
+        _status=$(curl -s -o /dev/null -w "%{http_code}" --header "PRIVATE-TOKEN: ${_pats[$agent]}" "$OELITE_GITLAB_API/user" 2>/dev/null) || true
+        echo "$_status" > "$_tmpdir/$agent"
+      ) &
+      _pids+=($!)
+    done
+
+    # Wait for all validation jobs to complete
+    for pid in $_pids; do
+      wait "$pid" 2>/dev/null || true
+    done
+
+    # Collect results and write cache
+    local -a _valid_entries
+    for agent in ${(k)_pats}; do
+      local _status=""
+      [[ -f "$_tmpdir/$agent" ]] && _status=$(< "$_tmpdir/$agent")
+      if [[ "$_status" == "200" ]]; then
+        _loaded=$((_loaded + 1))
+        _valid_entries+=("$agent:valid")
+      else
+        var_name="OELITE_PAT_${agent:u}"
+        alias_name="OELITE_PAT_${agent[1]:u}${agent[2,-1]:l}"
+        unset "$var_name"
+        unset "$alias_name"
+        if [[ "$_status" == "401" ]]; then
+          _invalid=$((_invalid + 1))
+          echo "[FAIL] PAT for $agent is invalid or expired (HTTP 401). Remove from Keychain and re-add." >&2
+        else
+          echo "[WARN] PAT for $agent failed live validation (HTTP ${_status:-curl-err}). Will retry on next load." >&2
+        fi
+        # Transient failures are NOT cached — they re-validate next time.
+        # Genuine 401s are NOT cached either — next live check will confirm.
+      fi
+    done
+
+    # Write cache: only successful validations. Never cache failures.
+    if (( ${#_valid_entries[@]} > 0 )); then
+      printf '%s\n' "${_valid_entries[@]}" | sort > "$_pat_cache_file"
+    fi
+
+    rm -rf "$_tmpdir"
+  fi
+else
+  # Validation disabled — just count all loaded PATs
+  for agent in ${(k)_pats}; do
+    _loaded=$((_loaded + 1))
+  done
+fi
 
 export OELITE_GITLAB_HOST OELITE_GITLAB_API
 
@@ -55,7 +261,17 @@ if [[ $_missing -gt 0 || $_invalid -gt 0 ]]; then
   echo "[WARN] PAT load summary — loaded: $_loaded, missing: $_missing, invalid: $_invalid" >&2
   echo "Run 'security find-generic-password -s oelite-gitlab-<agent> -a oelite -w' to inspect a PAT." >&2
 else
-  echo "[OK] $_loaded GitLab PATs loaded and validated."
+  if [[ "$_cache_fresh" == "true" ]]; then
+    if (( _revalidated == 0 )); then
+      echo "[OK] $_loaded GitLab PATs loaded and validated (cache hit, TTL ${_pat_cache_ttl}s)." >&2
+    elif (( _revalidated == ${#_pats[@]} )); then
+      echo "[OK] $_loaded GitLab PATs loaded and validated (cache was stale/empty — all re-validated)." >&2
+    else
+      echo "[OK] $_loaded GitLab PATs loaded and validated (cache hit; ${_revalidated} agent(s) re-validated)." >&2
+    fi
+  else
+    echo "[OK] $_loaded GitLab PATs loaded and validated." >&2
+  fi
 fi
 
-unset _agents _loaded _invalid _missing _validate_pats _valid agent var_name alias_name pat
+unset _agents _loaded _invalid _missing _revalidated _validate_pats _pat_cache_ttl _pat_cache_file _cache_age _cache_fresh _cache_entries _pats _pids _revalidate_pids _revalidate_agents _tmpdir _valid_entries _status agent var_name alias_name pat cached

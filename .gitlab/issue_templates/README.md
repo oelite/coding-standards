@@ -1,10 +1,18 @@
 # GitLab Issue Templates
 
+> **⚠️ ONE-TIME REPO SETUP ONLY**: These files are for repository initialization. 
+> Do NOT copy or create `.gitlab/issue_templates/` files during feature implementation.
+> 
+> To create a new issue ticket, use the CLI:
+> ```bash
+> ../../coding-standards/scripts/oelite-gitlab.sh issue-create <project> <agent> "<title>" "<description>"
+> ```
+
 These templates are the golden standard for all OElite repositories.
 
 ## Usage
 
-Copy the `.gitlab/issue_templates/` and `.gitlab/merge_request_templates/` directories into each OElite repo, or configure GitLab to use a shared template repository.
+Copy the `.gitlab/issue_templates/` and `.gitlab/merge_request_templates/` directories into each OElite repo during **initial setup only**, or configure GitLab to use a shared template repository.
 
 ## Templates
 

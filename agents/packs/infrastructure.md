@@ -3,10 +3,36 @@
 ## Who Loads This
 Ethan (primary), Marcus (architecture review)
 
+## Workflow Prerequisites (Before ANY Code)
+> **Mandatory — non-negotiable.** These steps MUST be completed before any file edits, builds, or tests.
+
+1. **Verify issue exists** in GitLab with acceptance criteria + owner assigned
+2. **Safe sync** (does NOT checkout develop — avoids footgun):
+   ```bash
+   ../../coding-standards/scripts/oelite-gitlab.sh worktree-sync
+   ```
+3. **Create worktree** with YOUR role identity:
+   ```bash
+   ../../coding-standards/scripts/oelite-gitlab.sh worktree-create <role> feature/<branch> --issue <iid>
+   ```
+4. **Enter worktree**:
+   ```bash
+   cd .worktrees/<role>-<iid>/
+   ```
+5. **Verify .oe-scope** exists (compaction-resilient context anchor):
+   ```bash
+   test -f .oe-scope && cat .oe-scope
+   ```
+6. **ONLY NOW** may you write code. The pre-commit hook will block any commit made outside the worktree or on protected branches (develop/main/master).
+
+⚠️ **Never** run `git checkout develop` to work — use `worktree-sync` for syncing. The `develop` branch is reserved for human developers and MR merges only.
+
 ## Standards to Read (via tools)
 - `coding-standards/1_dotNet_coding_standards/05,11`
 - `coding-standards/5_git_workflow_standards/GIT-WORKFLOW-STANDARDS.md`
-- Target repo `.gitlab-ci.yml`, `Dockerfile`, `docker-compose*.yml`, `k8s/`, `NuGet.config`
+- Target repo `.gitlab-ci.yml`, `Dockerfile`, `k8s/`, `NuGet.config`
+- `infrastructure/oelite-stack/` — the shared local development infrastructure (canonical reference)
+- `coding-standards/1_dotNet_coding_standards/16-SHARED-LOCAL-INFRASTRUCTURE.md` — the standard
 
 ## Scope
 - Docker / Docker Compose images
@@ -14,21 +40,26 @@ Ethan (primary), Marcus (architecture review)
 - K8s deployment validation
 - Environment consistency
 - Observability wiring
-- Local development infrastructure (`docker-compose.dev.yml`)
+- **Deployment observability** — post-deploy health checks, rollout failure detection, alerting paths, environment/deploy-board cadence: see `5_git_workflow_standards/DEPLOYMENT-OBSERVABILITY-STANDARD.md`
+- **Shared local development infrastructure** (`infrastructure/oelite-stack/`) — machine-wide singleton, NOT per-repo
 
 ## Docker Compose Standards
-- Standardized versions (verified 2026-06-20):
-  - MongoDB: `mongo:8.0`
+- Standardized versions (verified 2026-06-20, applied to the shared stack):
+  - MongoDB: `mongo:8.2` (sharded replica set: configsvr×3 + shard1 + mongos)
   - Redis: `redis:8.8-alpine`
   - ClickHouse: `clickhouse/clickhouse-server:26.5`
   - Kafka: `confluentinc/cp-kafka:8.3.0` (NOT `apache/kafka`)
   - RabbitMQ: `rabbitmq:4.3-management-alpine`
-  - OpenSearch: `opensearchproject/opensearch:3.7`
-  - MinIO: `minio/minio:RELEASE.2025-09-07T16-13-09Z`
+  - OpenSearch: `opensearchproject/opensearch:3.7.0`
+  - OpenSearch Dashboards: `opensearchproject/opensearch-dashboards:3.7.0` (profile: ui)
+  - MinIO: `cgr.dev/chainguard/minio:latest` (Chainguard free MinIO; community images removed from docker.io/quay.io Oct 2026)
+  - Mailpit: `axllent/mailpit:v1.30.2`
 - **Never use `latest` tags**
 - Minimal service principle: only include services actively consumed by app code (verified by `.csproj` references and actual source usage)
-- **Version Update Process**: When a new major/minor version is released, Ethan verifies compatibility with OElite.Restme providers; update this section in AGENTS.md, then update all `docker-compose.dev.yml` files in the codebase; all repos MUST converge within the same release cycle.
-- Port conflict handling: check before starting, remap if needed — NEVER kill existing containers
+- **Version Update Process**: When a new major/minor version is released, Ethan verifies compatibility with OElite.Restme providers; update the shared `infrastructure/oelite-stack/docker-compose.shared.yml`; all repos converge automatically because they share the stack.
+- **No per-repo `docker-compose.dev.yml` files** — the shared stack owns MongoDB, Redis, ClickHouse, Kafka, RabbitMQ, MinIO, OpenSearch, Mailpit, and their UIs. Per-repo compose files are prohibited (see standard 16).
+- **Never create a second instance of a shared service** — not via a compose file, not via `docker run`, not via Testcontainers. If a service is down, recover it with `./oelite-stack.sh up` (idempotent); if that fails, escalate to Ethan via GitLab issue. Machine-enforced by `oelite-guard.sh` Gate E.
+- **App-only compose files are still fine** — a `docker-compose.yml` that runs your app, nginx, or an app-specific UI is not a violation. Mailpit is a shared service; only the singleton stack may run it.
 
 ## CI/CD Pipeline Requirements
 - Stage pattern: `version → build → test → pack/deploy → build_docker → deploy_k8s`
@@ -37,12 +68,21 @@ Ethan (primary), Marcus (architecture review)
 - Registries:
   - NuGet: `nuget.org` (main) / `packages.phanes.ltd` (develop/uat)
   - Docker: `registry.phanes.ltd/oelite`
-- K8s namespaces: `oelite-{dev,uat,prod}`; prod is `when: manual`
+- K8s namespaces: `oelite-{dev,uat,prod}`; prod deploys run only from `main` under `when: manual`
+- **Branch-gated deploy jobs (mandatory):** every deploy job MUST declare an explicit `rules:` clause bound to its branch and a GitLab `environment:` declaration.
+  - `deploy_uat`: `rules: [ if: '$CI_COMMIT_BRANCH == "uat"' ]`, `environment: { name: uat, url: https://uat.phanes.ltd }`
+  - `deploy_prod`: `rules: [ if: '$CI_COMMIT_BRANCH == "main"' ]` + `when: manual`, `environment: { name: production, url: https://www.oelite.io }`
+  - A deploy job with no branch `rules:` MUST NOT exist; a manual button on the wrong branch must never render.
+- **Artifact continuity (mandatory):** Docker images are built ONCE (tagged with the commit SHA) when the MR merges into `develop`. `deploy_uat` and `deploy_prod` deploy that exact SHA tag — never rebuild per environment. `deploy_prod` MUST fail if the image SHA was not previously deployed to UAT (`verify-uat-deployed.sh` guard).
+- **Normative source:** `coding-standards/5_git_workflow_standards/GIT-WORKFLOW-STANDARDS.md` §2.1.2 ("Branch Promotion & Deployment Gates").
 
 ## Verification Checklist
 - [ ] `docker build -f <Dockerfile> .` succeeds
-- [ ] `docker compose -f docker-compose.dev.yml up` starts all services; health checks pass
-- [ ] No port conflicts (remapped if needed)
+- [ ] `cd infrastructure/oelite-stack && ./oelite-stack.sh up && ./oelite-stack.sh init` starts all shared services; health checks pass
+- [ ] `curl http://localhost:9200/_cluster/health` shows OpenSearch yellow/green status
+- [ ] No per-repo `docker-compose.dev.yml` was added (grep across monorepo)
+- [ ] **No per-repo shared-service containers running**: `docker ps --filter "name=oelite-"` shows only the shared stack; no stray `*-test-mongodb` / `apex-*` / `kortex-*` / `core-*` / `hermes-*` containers
+- [ ] **Gate E active**: creating a per-repo compose file with a shared service is blocked (exit 2)
 - [ ] Health endpoint responds 200
 - [ ] K8s rollout status succeeds
 - [ ] CI pipeline configured to skip integration/E2E tests

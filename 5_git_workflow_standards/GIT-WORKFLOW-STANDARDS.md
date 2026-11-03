@@ -8,11 +8,12 @@ The OElite team consists of 12 members (10 AI agents + human developers) who wor
 
 ### Key Principles
 
-- **`develop` is the single source of truth.** The local `develop` branch is always a mirror of `origin/develop`. Agents pull before starting work and pull after MR merges. No local-only commits accumulate.
+- **`develop` is the single source of truth.** `worktree-sync` refreshes `origin/develop` and fast-forwards local `develop` only when it is not checked out and the update is a safe fast-forward. Checked-out, dirty, or divergent local checkouts are preserved. Agents sync before starting work and after MR merges.
 - **Worktree isolation.** AI agents work in isolated git worktrees, never in the main working directory.
 - **MR-Centric Model.** All code enters `develop` through GitLab Merge Requests. Agents push their feature branch, create an MR, and the MR is reviewed and merged via GitLab. No local merges — GitLab is the integration point.
 - **Review before merge.** Code review is a gate, not an afterthought. No code enters `develop` without required approvals. GitLab enforces this natively.
 - **Auto-merge on approval.** When an MR is approved and the CI pipeline succeeds, GitLab auto-merges and auto-deletes the feature branch. This eliminates manual merge steps.
+- **Environment promotion chain.** Deployments always follow `develop → uat → main` via promotion MRs. Code reaches Production only after it has been deployed to and validated in UAT. No direct pushes or bypass MRs to `uat` or `main`.
 - **Parallel by design.** Directory-level ownership and worktree isolation let multiple agents work simultaneously without stepping on each other. GitLab handles concurrent MRs natively.
 
 ---
@@ -21,11 +22,11 @@ The OElite team consists of 12 members (10 AI agents + human developers) who wor
 
 **This is a non-negotiable gate. No work begins until this step is completed.**
 
-Before ANY task begins — including research, exploration, planning, or code review — the main directory's `develop` branch MUST be pulled from remote:
+Before ANY task begins — including research, exploration, planning, or code review — `origin/develop` MUST be refreshed from remote. Local `develop` is advanced only when not checked out anywhere and a fast-forward is safe; checked-out or divergent refs are preserved:
 
 ```bash
 # HARD GATE — execute before any task, including reading code or creating a worktree
-git checkout develop && git pull origin develop
+../../coding-standards/scripts/oelite-gitlab.sh worktree-sync
 ```
 
 ### Why This Exists
@@ -40,10 +41,10 @@ When agents push feature branches and create MRs, they need to branch from the l
 
 | Scenario | Action |
 |----------|--------|
-| Starting a new task session | `git checkout develop && git pull origin develop` — mandatory first step |
+| Starting a new task session | `../../coding-standards/scripts/oelite-gitlab.sh worktree-sync` — safe sync, never checks out develop; worktrees branch from the refreshed `origin/develop` |
 | Switching between tasks | Re-sync before creating a new worktree |
-| Emma doing planning | Pull `origin/develop` before creating tasks or assigning issues |
-| Human developer working | Already on `develop` — pull before any commit |
+| Emma doing planning | Refresh `origin/develop` before creating tasks or assigning issues |
+| Human developer working | Already on `develop` — pull before any commit: `git checkout develop && git pull origin develop` |
 
 **Failure to sync before starting work means the agent branches from stale `develop`, increasing merge conflicts and rebases required.**
 
@@ -51,20 +52,20 @@ When agents push feature branches and create MRs, they need to branch from the l
 
 ## 1.6 Post-Merge Sync (After MR Merged)
 
-After an MR is merged into `develop` (via GitLab), the local `develop` must be synced before starting new work:
+After an MR is merged into `develop` (via GitLab), refresh `origin/develop` before starting new work. As in §1.5, checked-out or divergent local `develop` is preserved:
 
 ```bash
 # After your MR is merged (or any MR is merged)
-git checkout develop && git pull origin develop
+../../coding-standards/scripts/oelite-gitlab.sh worktree-sync
 ```
 
 ### Sync Responsibilities
 
 | Role | Responsibility |
 |------|---------------|
-| **Any agent** | MUST sync `develop` after their MR is merged and before starting a new task |
-| **Emma** (Product Coordinator) | MUST sync `develop` before starting any planning session or creating tasks |
-| **Human developers** | MUST sync `develop` before any commit or push |
+| **Any agent** | MUST refresh `origin/develop` after their MR is merged and before starting a new task; local `develop` may remain pinned |
+| **Emma** (Product Coordinator) | MUST refresh `origin/develop` before starting any planning session or creating tasks; local `develop` may remain pinned |
+| **Human developers** | MUST sync `develop` before any commit or push (`git checkout develop && git pull origin develop`) |
 
 ### Stale `develop` Detection
 
@@ -123,6 +124,74 @@ scripts/oelite-gitlab.sh issues <project>
 
 ---
 
+## 1.8 Mandatory Worktree Cleanup (Hard Gate)
+
+**This is a non-negotiable gate. No worktree may remain on disk after the MR that justified it has been merged.**
+
+After `mr-status` confirms an MR is `merged` (or `closed`), the linked worktree and local feature branch MUST be removed **in the same session as the merge verification** — before the agent picks up the next task. Leaving worktrees behind is a prohibited pattern (see `PROHIBITED-PATTERNS.md` §9).
+
+**Machine enforcement (A1/A2):** As of this revision, `oelite-gitlab.sh` enforces this gate in two places: (1) `worktree-create` hard-blocks when the agent has a stale merged/closed worktree (§A1 preflight); (2) `mr-merge` auto-removes the merged source branch's local worktree on confirmed merge (§A2). The reviewer-reject path (§1.8 §9) is now machine-blocked at next-task creation time; Emma's periodic `worktree-cleanup --all` sweep remains the human-coordinated backstop for MRs merged outside these tools (e.g., Web UI).
+
+### Why This Exists
+
+Without an enforced cleanup gate:
+
+- **Local disk fills up** with duplicate working copies of the repo. A 5 GB monorepo × N stale worktrees per agent × 12 agents = silent disk exhaustion.
+- **`worktree-list` output is unreliable** — agents cannot see at a glance which worktrees are in-flight vs. abandoned. Orphans (e.g., `prunable gitdir file points to non-existent location`) appear alongside active work and confuse the status report.
+- **Stale local feature branches accumulate** and leak to `origin` if the `remove_source_branch` flag was missed at MR creation. Remote branch count grows unboundedly.
+- **Reviewer chain breaks**: A reviewer picking up a stale worktree cannot tell which MR it belonged to and may run tests against already-merged code.
+
+### Required Sequence After Merge Verification
+
+The merge verification step (see §8.2.1) MUST be followed immediately by cleanup, in the same session:
+
+```bash
+# 1. Verify merge (existing — §8.2.1)
+scripts/oelite-gitlab.sh mr-status <project> <mr-iid>
+# Must show: merged (or closed)
+
+# 2. MANDATORY: clean up the worktree and local branch
+#    (note: GitLab already auto-deletes the REMOTE branch via the
+#     remove_source_branch flag set in mr-create; this step removes
+#     the LOCAL branch and the worktree directory)
+scripts/oelite-gitlab.sh worktree-cleanup <agent> --delete-branch
+
+# 3. Sync local develop for next task (existing — §1.6)
+scripts/oelite-gitlab.sh worktree-sync
+
+# 4. THEN start the next task
+scripts/oelite-gitlab.sh worktree-create <agent> <branch> --issue <iid>
+```
+
+### Cleanup Responsibilities
+
+| Role | Responsibility |
+|------|---------------|
+| **Any agent** | MUST run `worktree-cleanup <agent> --delete-branch` in the same session as `mr-status` confirming merge, before starting the next task |
+| **Reviewer** | MUST include "Worktree cleaned up" in the MR approval comment (see `ISSUE-MR-TEMPLATES.md` Post-Approval Actions) |
+| **Emma** | MUST run `worktree-cleanup --all` periodically across active repos to sweep any leftovers |
+| **Isabella** | MUST run `worktree-check-stale` during post-merge issue audit and escalate to Emma if orphans found |
+
+### What `worktree-cleanup` Does
+
+`worktree-cleanup` (and its `--all` / `--check-stale` variants) is a single subcommand that:
+
+1. Iterates every worktree in `.worktrees/<agent>-*` (or all worktrees for `--all`).
+2. For each worktree, queries GitLab for the MR whose `source_branch` matches the worktree's current branch.
+3. Removes the worktree if the MR is `merged` or `closed` (with `git worktree prune` for orphan / `prunable` state, then `git worktree remove --force`).
+4. Deletes the local feature branch (`git branch -D`) when `--delete-branch` is passed.
+5. Reports any worktree whose MR is still `open` (kept) or unknown (kept with a warning).
+
+### Failure to Comply
+
+| Scenario | Consequence |
+|----------|-------------|
+| Agent leaves worktree after merge, picks up new task | Reviewer MUST reject the next MR's handoff with: "Worktree from prior task not cleaned up. Run `worktree-cleanup <agent> --delete-branch` first." |
+| Reviewer approves MR without confirming cleanup | Audit finding; escalates to Emma for coaching |
+| Multiple `prunable` orphans accumulate in a repo | `worktree-cleanup --all` is mandatory; one-time migration per repo |
+
+---
+
 ## 2. Team Identity Registry
 
 Every team member has a unique GitLab identity. AI agents commit under the team member's GitLab identity configured in their worktree — **never under the AI executor's own name**. All GitLab operations (comments, MRs, approvals) use the configured team member's personal access token (PAT).
@@ -157,8 +226,134 @@ Every team member has a unique GitLab identity. AI agents commit under the team 
 
 | Branch | Purpose | Who Commits |
 |--------|---------|-------------|
-| `develop` | Integration branch. All MRs target this. | Only via merged MRs. Never direct commits. |
-| `main` | Production-ready releases. | Only via release MRs from `develop`. |
+| `develop` | Integration branch. All MRs target this. Auto-deploys to the dev environment. | Only via merged MRs. Never direct commits. |
+| `uat` | Release-candidate branch. Deploys to the UAT k8s cluster (`oelite-uat`). | Only via promotion MRs from `develop`. Never direct commits. |
+| `main` | Production-ready releases. Deploys to the Production k8s cluster (`oelite-prod`). | Only via promotion MRs from `uat`. Never direct commits. |
+
+### 2.1.1 Protected Branches (Server-Side Enforcement)
+
+**GitLab protected branches MUST be configured for `develop`, `uat`, and `main`** as a second layer of defense beyond the pre-commit hook:
+
+- `develop`: Protected against direct pushes. Only MR merges allowed. Allows force push? **No**.
+- `uat`: Protected against direct pushes. Only MR merges from `develop` allowed (CI gate enforces source branch — §2.1.2). Allows force push? **No**.
+- `main`: Protected against direct pushes. Only MR merges from `uat` allowed (CI gate enforces source branch — §2.1.2). Allows force push? **No**.
+
+This prevents accidental direct commits even if an agent bypasses the pre-commit hook. Configure in GitLab: **Settings > Repository > Protected Branches**.
+
+#### Protected-branch setup runbook (per repo — owner: Ethan, at repo provisioning)
+
+| Setting | `develop` | `uat` | `main` |
+|---------|-----------|-------|--------|
+| Allowed to merge | Reviewers/Maintainers | Ethan, Emma | Ethan or human owner |
+| Allowed to push and merge | No one (MR only) | No one (MR only) | No one (MR only) |
+| Allowed to force push | No | No | No |
+| Pipelines must succeed | Yes | Yes | Yes |
+| Approvals required | Per change type (§7.3) | ≥1 | ≥1 |
+
+**Verification** (after configuration): read back the settings via `scripts/oelite-gitlab.sh project-approvals <project>`, and confirm a direct push to each protected branch is rejected (`git push origin <branch>` from a scratch commit must fail server-side).
+
+### 2.1.2 Branch Promotion & Deployment Gates (Hard Gate)
+
+**This is a non-negotiable gate. No environment is deployed from the wrong branch, and no environment is skipped.**
+
+CI/CD pipelines deploy Docker images directly to the UAT and Production k8s clusters (see `infrastructure/oelite-stack/README.md`). To guarantee that every change passes through dev → UAT → Production in order, the promotion chain is machine-enforced:
+
+```
+feature/* ──MR──▶ develop ──promotion MR──▶ uat ──release MR──▶ main
+   dev deploy      (CI)        UAT deploy      (gates)     PROD deploy (manual)
+```
+
+#### Rules
+
+1. **Promotion MRs only.** MRs targeting `uat` MUST originate from `develop`. MRs targeting `main` MUST originate from `uat`. Feature branches, hotfix branches, and any other source MUST NOT target `uat` or `main` directly.
+2. **CI-enforced branch gating.** Every deploy job MUST declare an explicit `rules:` clause bound to its branch and a GitLab `environment:` declaration. A deploy job that has no branch rule MUST NOT exist. A manual button on the wrong branch must never appear.
+3. **UAT soak gate.** A `uat → main` release MR MUST NOT be merged until: (a) the UAT deployment pipeline on the `uat` branch is green, (b) the UAT health check passed (`./oelite-stack.sh cluster UAT health` or the service health endpoint), and (c) Olivia/Isabella validation is recorded on the release issue. This is the deployment analogue of the Olivia-before-`Ready to Merge` chain (§8.3). (health checks defined in DEPLOYMENT-OBSERVABILITY-STANDARD.md §3) (minimum one business day of UAT residency, as defined in DEPLOYMENT-OBSERVABILITY-STANDARD.md §3.2)
+4. **Artifact continuity.** Docker images are built ONCE (tagged with the commit SHA) when the MR merges into `develop`. `deploy_uat` and `deploy_prod` deploy that exact SHA tag — never rebuild per environment. `deploy_prod` MUST fail if the image SHA was not previously deployed to UAT. This makes it structurally impossible for code to reach Production that never passed UAT. Canonical implementation: `coding-standards/scripts/verify-uat-deployed.sh` (backends: `kubectl` | `gitlab`; self-test via `--test`).
+5. **Traceability.** Promotion MRs MUST reference a release issue (e.g., `[REL-00X] Promote to UAT — sprint N release`) created via `issue-create`. Use the Release Promotion MR template (`ISSUE-MR-TEMPLATES.md` §5.1).
+6. **Ownership.** Promotion MRs are created by **Ethan** (or Emma) via `scripts/oelite-gitlab.sh mr-create <project> ethan develop uat "..."`. Implementing agents never create promotion MRs.
+
+#### Hotfix path (rule 6a)
+
+For a Critical production incident, the hotfix path is:
+
+1. Branch `hotfix/<BUG-XXX>-<short-description>` **from `develop`** (never from `main` or `uat`).
+2. Fix in a worktree per the standard protocol (§4); the fix MR targets `develop` and passes the normal review chain.
+3. After the fix merges to `develop`, promote through the **same chain** — `develop → uat → main` via promotion MRs. Hotfixes never target `uat`/`main` directly.
+4. **UAT soak compression**: the UAT soak gate (rule 3) MAY be compressed only with **explicit human business-owner authorization recorded on the release issue**. It is never skipped silently; an unauthorized skip is a workflow violation.
+5. If Production is already affected, execute the rollback standard (§2.1.3) in parallel with the hotfix chain.
+
+### 2.1.3 Rollback Standard
+
+Every deployable service MUST support rollback to the last known-good release:
+
+| Rule | Detail |
+|------|--------|
+| **Immutable tags** | Deploy by immutable SHA-tagged image only (§2.1.2 rule 4). Never deploy `latest` or mutable tags to `uat`/`main` environments. |
+| **Rollback procedure** | `kubectl --kubeconfig <env-kubeconfig> -n <namespace> rollout undo deploy/<name>` — restores the previous ReplicaSet. Verify with `kubectl rollout status`. |
+| **DB migrations** | Forward-only migrations REQUIRE a compensating migration before the release MR merges; the release issue (§8.7) records the migration + compensation pair. Never roll back an app past an unreversed breaking migration. |
+| **Rollback authority** | Ethan executes rollbacks; the human business owner (or Emma's delegate) authorizes Production rollbacks. UAT rollbacks are at Ethan's discretion. |
+| **Incident comms** | The release issue (§8.7) records what was rolled back, why, and the follow-up plan — this is the incident log of record. |
+
+#### CI/CD deploy job requirements (machine enforcement)
+
+```yaml
+deploy_uat:
+  stage: deploy_k8s
+  image: bitnami/kubectl:latest
+  environment:
+    name: uat
+    url: https://uat.phanes.ltd
+  rules:
+    - if: '$CI_COMMIT_BRANCH == "uat"'          # HARD GATE: only deploys from uat branch
+  script:
+    - kubectl --kubeconfig "$PHANES_K8S" -n oelite-uat apply -f k8s/
+    - kubectl --kubeconfig "$PHANES_K8S" -n oelite-uat rollout status deploy/<name>
+
+deploy_prod:
+  stage: deploy_k8s
+  image: bitnami/kubectl:latest
+  environment:
+    name: production
+    url: https://www.oelite.io
+  rules:
+    - if: '$CI_COMMIT_BRANCH == "main"'          # HARD GATE: only deploys from main branch
+      when: manual                               # manual gate ON TOP of branch gate
+  script:
+    - ./scripts/verify-uat-deployed.sh "$CI_COMMIT_SHA"   # artifact continuity check — fails if SHA never deployed to UAT
+    - kubectl --kubeconfig "$OElite_K8S" -n oelite-prod apply -f k8s/
+    - kubectl --kubeconfig "$OElite_K8S" -n oelite-prod rollout status deploy/<name>
+```
+
+- `$CI_COMMIT_BRANCH == "uat"` / `"main"` is the machine gate: a manual Production button on any other branch simply never renders.
+- `when: manual` alone is NOT a gate — it must always be paired with the branch rule.
+- `environment:` declarations give GitLab Environments/Deploy Boards visibility of what is deployed where.
+
+#### Promotion MR creation
+
+```bash
+# Release issue first (Issue-First applies to promotions too)
+scripts/oelite-gitlab.sh issue-create oelite/<family>/<repo> ethan \
+  "[REL-00X] Release sprint N to UAT" "<release notes>"
+
+# Promote develop → uat
+scripts/oelite-gitlab.sh mr-create oelite/<family>/<repo> ethan develop uat \
+  "[REL-00X] Promote to UAT — sprint N release" "Closes #<release-iid>"
+
+# After UAT validation recorded, promote uat → main
+scripts/oelite-gitlab.sh mr-create oelite/<family>/<repo> ethan uat main \
+  "[REL-00X] Release sprint N to Production" "Closes #<release-iid>"
+```
+
+#### Enforcement
+
+| Scenario | Action |
+|----------|--------|
+| MR targeting `uat` from a non-`develop` source branch | CI gate job fails; reviewer MUST reject |
+| MR targeting `main` from a non-`uat` source branch | CI gate job fails; reviewer MUST reject |
+| `deploy_uat` job without branch `rules:` | Prohibited — `.gitlab-ci.yml` is a gated file (§4.2); reviewer MUST reject |
+| `uat → main` MR merged without UAT validation recorded | Release issue NOT closed; escalation to Emma |
+| Production deploy of an SHA never deployed to UAT | `verify-uat-deployed.sh` fails the pipeline; deploy blocked |
+| Direct push to `uat` or `main` | Blocked by GitLab protected branches (§2.1.1) |
 
 ### 2.2 Feature Branches
 
@@ -210,7 +405,7 @@ review/felix-US-015-checkout-payment-flow
 6. Reviewer reviews, approves or requests changes
 7. If changes requested: agent fixes, pushes, reviewer re-reviews
 8. On approval + CI green: MR auto-merges, feature branch auto-deleted
-9. Agent syncs local develop: git checkout develop && git pull origin develop
+9. Agent syncs local develop: scripts/oelite-gitlab.sh worktree-sync
 ```
 
 ---
@@ -231,6 +426,7 @@ All worktrees live inside the repo under `.worktrees/`:
 
 ```
 helios/core/.worktrees/daniel/
+helios/nexus/.worktrees/marcus-18/
 jupiter/ec-nx-01/.worktrees/sophia/
 uranus/origin-auth/.worktrees/maya/
 ```
@@ -248,6 +444,7 @@ Each agent gets **ONE worktree per issue** per repo. The worktree path includes 
 ```
 helios/core/.worktrees/daniel-42/       # Daniel working on issue #42
 helios/core/.worktrees/daniel-57/       # Daniel working on issue #57 (parallel)
+helios/nexus/.worktrees/marcus-18/      # Marcus working on issue #18
 jupiter/ec-nx-01/.worktrees/sophia-15/  # Sophia working on issue #15
 ```
 
@@ -269,21 +466,27 @@ This ensures commits are attributed to the correct agent regardless of the host 
 ### 3.4 Worktree Lifecycle (MR-Centric Model)
 
 ```
-1. SYNC      git checkout develop && git pull origin develop (Main dir)
+1. SYNC      scripts/oelite-gitlab.sh worktree-sync (safe — does NOT checkout develop)
 2. CREATE    scripts/oelite-gitlab.sh worktree-create <agent> <branch> --issue <iid>
              → Creates .worktrees/<agent>-<iid>/ with auto-generated .oe-scope
+             → Pre-commit hook installed automatically (worktree + branch guard)
 2.5 SCOPE    scripts/oelite-gitlab.sh oe-scope <agent>-<iid> --task-type <type> --desc "<desc>"
 3. WORK      cd .worktrees/<agent>-<iid>/ && make changes && commit
              → After compaction: cat .oe-scope to restore context
 4. PUSH      git push origin <branch>
-5. MR        scripts/oelite-gitlab.sh mr-create <project> <agent> <branch> develop "<title>"
+5. MR        scripts/oelite-gitlab.sh mr-create <project> <agent> <source-branch> develop "<title>" "[description]"
 6. REVIEW    Reviewer reviews → approves or requests changes
 7. FIX       If changes requested: fix in worktree → push → re-review
 8. MERGE     Auto-merge on approval + CI green (GitLab)
-9. SYNC      git checkout develop && git pull origin develop (Main dir)
-10. CLEANUP  scripts/oelite-gitlab.sh worktree-remove <agent>-<iid>
-             → .oe-scope deleted with worktree
+8.5 VERIFY   scripts/oelite-gitlab.sh mr-status <project> <mr-iid>   # MUST show: merged
+9. CLEANUP   ⛔ HARD GATE: scripts/oelite-gitlab.sh worktree-cleanup <agent> --delete-branch
+             → Removes .worktrees/<agent>-<iid>/ and local feature branch
+             → Prunes any prunable orphans
+             → See §1.8 for rationale and enforcement
+10. SYNC     scripts/oelite-gitlab.sh worktree-sync (prepare for next task)
 ```
+
+**Step 9 is a hard gate.** An agent MUST NOT proceed to step 10 (or start the next task) without running `worktree-cleanup`. See §1.8 for full rationale.
 
 ### 3.5 Stale Worktree Policy
 
@@ -301,8 +504,31 @@ scripts/oelite-gitlab.sh worktree-list
 Review the output for worktrees with no recent activity. If a worktree is stale, remove it:
 
 ```bash
-scripts/oelite-gitlab.sh worktree-remove <agent>
+scripts/oelite-gitlab.sh worktree-cleanup <agent> --delete-branch
 ```
+
+### 3.6 Forbidden: Native IDE/AI Worktree Tools (Hard Gate)
+
+**AI agents MUST NOT use built-in worktree tools** (Claude Code `EnterWorktree`, OpenCode worktree, VS Code worktree, or any other IDE-native worktree mechanism).
+
+These tools create worktrees under `.claude/worktrees/` or equivalent paths that:
+- Bypass OElite naming conventions (no `<role>-<iid>` pattern)
+- Lack `.oe-scope` context anchors (breaks compaction resilience)
+- Skip owner DNA setup (`<role>@phanes.ltd` not configured)
+- Omit pre-commit hook enforcement (worktree + branch protection)
+- Are invisible to `oelite-gitlab.sh worktree-list` and related management commands
+- Are unknown to the rest of the team — no one can tell who owns what
+
+**The only valid worktree creation command:**
+
+```bash
+scripts/oelite-gitlab.sh worktree-create <agent> <branch> --issue <iid>
+```
+
+**Enforcement:**
+- The OElite guard (`oelite-guard.sh`) blocks code edits in `.claude/worktrees/` and other non-OElite paths — work created there is rejected at write time
+- Agents spawning subagents MUST include in the subagent prompt: `"NEVER use EnterWorktree or any built-in worktree tool. Only use oelite-gitlab.sh worktree-create."`
+- Stale `.claude/worktrees/` entries should be cleaned up when discovered, and the root cause eliminated (ensure subagent prompts forbid the tool)
 
 ---
 
@@ -336,7 +562,7 @@ Some files are shared across the codebase and can only be modified by **one agen
 - `NuGet.config`
 - Shared interfaces (e.g., `IOEliteService.cs`, `BaseEntity.cs`)
 - `AGENTS.md` / `CLAUDE.md` / `README.md`
-- `.ai/standards/` files
+- `.ai/standards/` files (deviation-only repos only)
 - `.editorconfig`
 - Solution files (`.sln`)
 
@@ -462,7 +688,7 @@ Git worktrees have **independent working directories and indexes**. When the hum
 - No agent process is interrupted. No files change under any agent.
 - Multiple agents can be working simultaneously — none are affected.
 
-The coordination happens via **GitLab MRs**. Agents push their feature branch, create an MR, and the MR is reviewed and merged via GitLab. The local `develop` is synced via `git pull origin develop` after MR merges.
+The coordination happens via **GitLab MRs**. Agents push their feature branch, create an MR, and the MR is reviewed and merged via GitLab. After MR merges, agents refresh `origin/develop` via `worktree-sync`; checked-out or divergent local `develop` remains unchanged.
 
 #### The Two Sync Points
 
@@ -494,8 +720,8 @@ This is always safe. It never disrupts any agent worktree.
 # 1. Source environment
 source scripts/oelite-gitlab-env.sh
 
-# 2. Sync main develop with remote (start of task)
-git checkout develop && git pull origin develop
+# 2. Sync main develop with remote (start of task) — safe, does NOT checkout develop
+scripts/oelite-gitlab.sh worktree-sync
 
 # 3. Create worktree (replace 42 with actual issue number)
 scripts/oelite-gitlab.sh worktree-create daniel feature/US-001-auth-token-refresh --issue 42
@@ -503,6 +729,7 @@ scripts/oelite-gitlab.sh worktree-create daniel feature/US-001-auth-token-refres
 # 4. Work in the worktree
 cd .worktrees/daniel-42/
 # ... edit files, commit ...
+# Pre-commit hook automatically enforces worktree isolation and branch protection
 
 # 5. Push feature branch to remote
 git push origin feature/US-001-auth-token-refresh
@@ -518,7 +745,7 @@ scripts/oelite-gitlab.sh mr-create <project> daniel feature/US-001-auth-token-re
 scripts/oelite-gitlab.sh worktree-remove daniel-42
 
 # 9. Sync local develop for next task
-git checkout develop && git pull origin develop
+scripts/oelite-gitlab.sh worktree-sync
 ```
 
 #### What If the Human Has Uncommitted Changes?
@@ -580,6 +807,31 @@ All project management happens in GitLab at https://code.phanes.ltd. The CLI too
 - The MR description should reference the issue it addresses.
 - Reviewers are assigned based on the workflow chain defined in `AGENTS.md`.
 
+### 7.2.1 Citation Placement — Head-Commit Superset (BR-24-003 Support Pattern)
+
+> **Citation placement — head-commit superset (BR-24-003 support pattern).** Because GitLab truncates `CI_MERGE_REQUEST_DESCRIPTION` at approximately 2048 characters, citation content read from the MR description is not reliable. For any MR whose pipeline validates cited rule IDs (e.g. the `validate-cited-rules` BR-24-003 gate), the MR **head commit message MUST carry the complete superset of rule citations required for the change** — every `BR-NN-NNN` ID and any required markers (e.g., the BR-24-049 "Maya review" marker). Additionally, the "Rulebook references" section of the MR description SHOULD list the same citations within the first ~2000 characters so they remain human-readable. Authors MUST NOT rely on citations placed deeper in the description; the gate computes `cited = head-commit-message ∪ MR description`, and only the head-commit component is deterministic. Applies to all MR pipelines in repos with citation gates; failure case: a fresh pipeline passes locally but fails (or silently omits citations) because the description was truncated.
+
+**Root cause (proven 2026-10-26, origin-auth BR-24-003 wave):** GitLab truncates `CI_MERGE_REQUEST_DESCRIPTION` at ~2048 characters. The `validate-cited-rules` gate reads `cited = head_commit_message ∪ MR_description`, so citations placed deeper in the description are invisible to CI even when the snapshot is fresh (MR updated_at 12:57:14 → pipeline created 12:57:20 = fresh, just truncated). Reproduction: truncating the description at 2000/2048/2500 chars reproduces the pipeline's cited set exactly; 1024/4096 do not.
+
+**Example head-commit trailer:**
+
+```
+Implement token introspection hardening
+
+- Add tenant scoping to introspection endpoint
+- Add revocation blacklist tests
+
+Cited-Rules: BR-24-003, BR-24-049
+```
+
+**Enforcement:**
+
+| Scenario | Action |
+|----------|--------|
+| MR citations appear only after character ~2048 of the description | Head commit MUST carry the full citation set (`Cited-Rules:` trailer) — the gate still passes |
+| Head commit carries no citations and description is truncated | Gate silently omits citations — reviewer MUST reject the MR and require a `Cited-Rules:` head-commit trailer |
+| Repo has no citation-validation CI gate | Pattern is recommended hygiene but not enforced |
+
 ### 7.3 Approvals
 
 - Reviewers approve via `scripts/oelite-gitlab.sh mr-approve` using their own PAT.
@@ -638,13 +890,14 @@ Every status change MUST be accompanied by:
 scripts/oelite-gitlab.sh mr-status <project> <mr-iid>
 ```
 
-Output shows one of: `open`, `merged`, `closed`, `cannot_merge`.
+The report shows MR state (`opened`, `merged`, or `closed`) separately from **Merge Readiness**, **CI Pipeline**, and **Approvals**. Unknown evidence is not a pass; mergeability does not prove CI success or approval.
 
-| MR Status | Action |
+| MR State / Evidence | Action |
 |-----------|--------|
 | `merged` | Proceed to label issue `Done` and close (see §8.2.2) |
-| `open` | Do NOT label `Done` — investigate why auto-merge hasn't occurred; may need manual merge or pipeline fix |
-| `cannot_merge` | Rebase the branch: `scripts/oelite-gitlab.sh sync <agent>`, push, then re-check |
+| `opened` | Do NOT label `Done` — inspect each readiness axis and investigate the actual blocker |
+| Merge readiness blocked by conflicts | Rebase the branch: `scripts/oelite-gitlab.sh sync <agent>`, push, then re-check; other blockers require their own remediation |
+| Pipeline failed or unknown | Inspect `mr-show`, `pipeline-jobs`, and `pipeline-job-trace`; missing, skipped, or stale pipeline evidence is not success. Confirm the failed job ran on the MR head SHA, fix the root cause, push, and re-check; only retry a single failed job via `pipeline-job-retry` when the failure is a verified flake (transient infra/network), and record the retry evidence in the merge check — a retried job that passes does not by itself prove the code is green |
 | `closed` (unmerged) | MR was closed without merging — create a new MR or investigate |
 
 **The reviewer who approves the MR is responsible for verifying the merge.** If the reviewer cannot verify (session ended), Emma MUST verify before closing the issue.
@@ -708,7 +961,9 @@ This flags:
 
 #### Reviewer (Grace/Felix/Maya/Marcus/Victor)
 - Reviews MR within the workflow chain
-- Sets `Ready to Merge` label after approval + CI green
+- **MUST verify build + tests + health before approving** — pull the feature branch into your review worktree and run the implementer build/test/health commands. If the implementer handoff lacks actual build/test/health output, **REJECT the handoff** and demand evidence.
+- **MUST NOT set `Ready to Merge` until Olivia has validated.** The sequential chain is: Implementer → Reviewer → Olivia (E2E/testing) → Ethan (deploy) → Isabella (biz validation). If Olivia has not validated, set a comment "Review approved, awaiting Olivia E2E/validation" — do NOT set `Ready to Merge`.
+- Sets `Ready to Merge` label ONLY after approval + CI green + Olivia validation confirmed
 - **Verifies MR merge** via `mr-status` after approval — confirms GitLab actually merged the MR
 - If merge verified: transitions issue to `Done` (if Emma delegates) or notifies Emma to close
 - If changes requested: comment with specific fixes, assignee returns to `In Progress`
@@ -748,6 +1003,8 @@ An issue is only `Done` when ALL are true:
 - [ ] No `Blocked` label remaining
 - [ ] **Issue closed in GitLab** via `issue-status closed` (not just labeled `Done`)
 - [ ] **Post-merge audit passed**: `issue-audit` confirms no orphaned open issues for this MR
+- [ ] **Worktree cleaned up**: `scripts/oelite-gitlab.sh worktree-cleanup <agent> --delete-branch` ran successfully in the same session as the merge verification — see §1.8
+- [ ] **(Release/promotion changes only)** UAT soak gate satisfied per §2.1.2: UAT pipeline green, UAT health check passed, Olivia/Isabella validation recorded on the release issue
 
 ### 8.5 Issue Comment Templates
 
@@ -792,6 +1049,24 @@ Blocked by: [specific dependency or issue]
 | `issue-status <project> <iid> <agent> <opened\|closed>` | Open or close issue | Emma: close after Done; reopen if regression found |
 
 **Note:** Label changes (In Progress, PR Review, Ready to Merge, Blocked) are managed via GitLab UI or API. The CLI `issue-status` command handles the binary open/close state.
+
+### 8.7 Release Issue Lifecycle (REL-XXX)
+
+Release issues (REL-XXX, created from the Release issue template — `ISSUE-MR-TEMPLATES.md` §4.5) bundle merged feature/bug issues into a single deployable release and follow the promotion chain in §2.1.2. This subsection defines their lifecycle; bundled feature issues follow the standard §8 lifecycle independently — the release issue does NOT replace or gate their individual transitions.
+
+**Creation:** Ethan or Emma creates the REL issue at promotion time (§2.1.2 rule 5), via `issue-create` with the Release template.
+
+**Transitions:**
+
+| Transition | Trigger | Who |
+|------------|---------|-----|
+| → `In Progress` | `develop → uat` promotion MR created | Ethan (promotion MR owner) |
+| → `Ready to Merge` | UAT soak gate satisfied (§2.1.2 rule 3): UAT pipeline green, UAT health passed, Olivia + Isabella sign-offs recorded ON THE RELEASE ISSUE | Reviewer (Ethan or Emma), after verifying sign-offs |
+| → `Done` + **Closed** | Production deploy verified (`mr-status` confirms the `uat → main` MR merged) AND post-deploy health check passed | Emma |
+
+**Sign-offs:** Olivia's and Isabella's UAT validations are recorded as comments **on the release issue** — this is the canonical location. The Release Promotion MR template (§5.1) checkboxes reference these comments; they are evidence pointers, not alternative record locations.
+
+**Closure:** Emma closes the REL issue via `issue-status closed` after prod verification, applying the same-session closure rule (§8.2.2): verification and closure happen in the same session.
 
 ---
 
@@ -842,6 +1117,10 @@ scripts/oelite-gitlab.sh issue-comment oelite/helios/core 42 daniel "Implementat
 | `scripts/oelite-gitlab.sh worktree-create <agent> <branch> [base] [--issue <iid>] [--no-issue]` | Create worktree (issue-keyed or legacy) |
 | `scripts/oelite-gitlab.sh worktree-list` | List all active worktrees in the current repo |
 | `scripts/oelite-gitlab.sh worktree-remove <worktree-id>` | Remove a worktree (worktree-id = agent or agent-issue) |
+| `scripts/oelite-gitlab.sh worktree-cleanup <agent> [--delete-branch]` | **HARD GATE** — verify MR state, prune orphans, remove merged/closed worktrees, optionally delete local branch. See §1.8. |
+| `scripts/oelite-gitlab.sh worktree-cleanup --all` | Sweep all worktrees in the current repo; remove those whose linked MR is merged/closed. For periodic Emma/Isabella audits. |
+| `scripts/oelite-gitlab.sh worktree-check-stale [--agent <agent>] [--cleanup]` | Report worktrees with no commits in >24h or whose MR is merged/closed. Dry-run by default; `--cleanup` to auto-remove. |
+| `scripts/oelite-gitlab.sh worktree-owner <worktree-id> [new-owner]` | View or update worktree owner DNA (commit attribution). |
 | `scripts/oelite-gitlab.sh oe-scope <worktree-id> [--task-type T] [--issue I] [--desc D]` | Read or update per-worktree `.oe-scope` context anchor |
 
 **Parameters:**
@@ -883,10 +1162,10 @@ scripts/oelite-gitlab.sh worktree-list
 **Examples:**
 
 ```bash
-git checkout develop && git pull origin develop   # Sync main directory
-scripts/oelite-gitlab.sh sync daniel              # Rebase agent branch
-scripts/oelite-gitlab.sh status                   # Check status
-scripts/oelite-gitlab.sh worktree-remove daniel   # Cleanup after MR merged
+scripts/oelite-gitlab.sh worktree-sync                # Sync develop (safe — no checkout)
+scripts/oelite-gitlab.sh sync daniel                   # Rebase agent branch
+scripts/oelite-gitlab.sh status                        # Check status
+scripts/oelite-gitlab.sh worktree-remove daniel-42     # Cleanup after MR merged
 ```
 
 ### 9.5 GitLab Operations (Agent + Human)
@@ -904,10 +1183,18 @@ GitLab operations are available to both agents and humans. **Agents perform thei
 | `scripts/oelite-gitlab.sh mr-list <project>` | List open MRs | Anyone |
 | `scripts/oelite-gitlab.sh mr-comment <project> <iid> <agent> <message>` | Comment on an MR | Reviewer |
 | `scripts/oelite-gitlab.sh mr-approve <project> <iid> <agent>` | Approve an MR | Assigned reviewer |
-| `scripts/oelite-gitlab.sh mr-status <project> <iid>` | Check MR merge status (open/merged/closed/cannot_merge) | Reviewer or Emma — merge verification |
+| `scripts/oelite-gitlab.sh mr-unapprove <project> <iid> <agent>` | Revoke the caller's own approval on an MR (self-revocation only) | Any agent — approval correction |
+| `scripts/oelite-gitlab.sh mr-status <project> <iid>` | Report merge readiness, pipeline evidence, and approvals independently (fail-closed) | Reviewer or Emma — merge verification |
+| `scripts/oelite-gitlab.sh mr-show <project> <iid> [--raw]` | Read MR description and authoritative status fields (including head pipeline) through the wrapper | Anyone — read-only inspection |
+| `scripts/oelite-gitlab.sh project-approvals <project> [agent]` | Read project-level approval settings (approvals required, reset-on-push, named approvers/groups) | Anyone — read-only inspection |
+| `scripts/oelite-gitlab.sh pipeline-jobs <project> <pipeline-id>` | List jobs and failure reasons for a pipeline | Reviewer — CI diagnosis |
+| `scripts/oelite-gitlab.sh pipeline-job-trace <project> <job-id>` | Fetch a job trace (may contain sensitive build output; fetch only when needed) | Reviewer — CI diagnosis |
+| `scripts/oelite-gitlab.sh pipeline-job-retry <project> <job-id> [<agent>]` | Retry a single failed job on its existing pipeline (same SHA), attributed to `<agent>` (default emma) | Implementer / reviewer — flaky CI remediation |
+| `scripts/oelite-gitlab.sh mr-notes <project> <iid> [agent]` | List non-system comments on an MR (read-only, shows up to 100 notes); defaults to emma's PAT | Anyone — read-only inspection |
+| `scripts/oelite-gitlab.sh issue-notes <project> <iid> [agent]` | List non-system comments on an issue (read-only, shows up to 100 notes); defaults to emma's PAT | Anyone — read-only inspection |
 | `scripts/oelite-gitlab.sh issue-audit <project>` | List issues still open whose linked MRs are merged | Isabella or Emma — post-merge audit |
-| `scripts/oelite-gitlab.sh mr-check-eligible <project>` | List MRs meeting auto-approval criteria | Emma or reviewer |
-| `scripts/oelite-gitlab.sh mr-auto-approve <project>` | Auto-approve all eligible MRs | Emma or reviewer |
+| `scripts/oelite-gitlab.sh mr-check-eligible <project>` | List MRs meeting approval eligibility using per-MR pipeline evidence; unknown evidence fails closed | Emma or reviewer |
+| `scripts/oelite-gitlab.sh mr-auto-approve <project>` | Auto-approve all eligible MRs (approvals are recorded under Emma's identity — the wrapper uses the `emma` PAT) | Emma or reviewer |
 
 ---
 
@@ -921,7 +1208,7 @@ An MR is eligible for auto-approval when **ALL** of the following conditions are
 
 | # | Criterion | Check Method |
 |---|-----------|-------------|
-| 1 | **CI Pipeline Passed** | All pipeline stages are green (`merge_status == "can_be_merged"`) |
+| 1 | **CI Pipeline Passed** | The per-MR head pipeline has an ID, `status == "success"`, and a SHA matching the MR head SHA. Missing, incomplete, skipped, or stale evidence fails closed. `merge_status == "can_be_merged"` is NOT CI evidence. |
 | 2 | **No Requested Changes** | No reviewer has requested changes on the MR |
 | 3 | **Implementer Verification Complete** | The implementing agent's verification is complete (build + tests pass) |
 | 4 | **No Scope Conflicts** | No other open MR overlaps with the same directory scope (Emma's directory ownership) |
@@ -940,7 +1227,8 @@ scripts/oelite-gitlab.sh mr-auto-approve oelite/helios/core
 
 ### 10.3 Auto-Approval Rules
 
-- **Auto-approval appears under the agent who runs the command** (not the implementing agent)
+- **Auto-approval is recorded under Emma's GitLab identity** — `mr-auto-approve` approves with the `emma` PAT, regardless of which agent runs the command
+- **CI evidence is separate from mergeability** — `merge_status`/`detailed_merge_status` describe conflicts and merge constraints only; eligibility reads the per-MR `head_pipeline` and fails closed when the evidence is missing
 - **Only one agent runs auto-approve per project at a time** — Emma coordinates who runs it (typically the reviewer whose turn it is: Grace for backend, Felix for frontend, Marcus for architecture)
 - **Auto-approved MRs are automatically merged by GitLab** and the source branch is auto-deleted (no manual steps needed)
 - **If any criterion fails**, the MR is listed as ineligible with the reason, and the reviewer must manually review it
@@ -1004,10 +1292,10 @@ Confirms all PATs are valid and can authenticate against GitLab.
 ### Step 3: Sync Main `develop` with Remote (Start of Task)
 
 ```bash
-git checkout develop && git pull origin develop
+scripts/oelite-gitlab.sh worktree-sync
 ```
 
-**This is the first critical sync point.** Ensures the main directory holds the latest remote state before creating a worktree.
+**This is the first critical sync point.** Refreshes `origin/develop` without switching branches. Local `develop` is fast-forwarded only when it is not checked out in any worktree and is not divergent; checked-out or divergent local refs are preserved. The pre-commit hook blocks commits on `develop` anyway.
 
 ### Step 4: Fetch Issues
 
@@ -1023,7 +1311,7 @@ Review open issues. Emma assigns issues to agents before work begins.
 scripts/oelite-gitlab.sh worktree-create <agent> <branch>
 ```
 
-This creates the worktree directory, checks out a new feature branch from the latest local `develop`, and sets the per-worktree git config (`user.name` and `user.email`).
+This creates the worktree directory, checks out a new feature branch from `origin/develop` by default, and sets the per-worktree git config (`user.name` and `user.email`). Refresh `origin/develop` first; a preserved local `develop` is not the default branch base.
 
 ### Step 6: Work in the Worktree
 
@@ -1044,7 +1332,7 @@ Push commits to the remote feature branch to back up work and enable MR creation
 ### Step 8: Create Merge Request
 
 ```bash
-scripts/oelite-gitlab.sh mr-create <project> <agent> <branch> develop "<title>" "[description]"
+scripts/oelite-gitlab.sh mr-create <project> <agent> <source-branch> develop "<title>" "[description]"
 ```
 
 Create an MR targeting `develop`. Include a descriptive title and optional description.
@@ -1067,8 +1355,8 @@ When the MR is approved and CI passes:
 # Clean up worktree (branch already deleted remotely)
 scripts/oelite-gitlab.sh worktree-remove <agent>
 
-# Sync local develop for next task
-git checkout develop && git pull origin develop
+# Sync local develop for next task (safe — no checkout)
+scripts/oelite-gitlab.sh worktree-sync
 ```
 
 ---
@@ -1313,7 +1601,7 @@ Before creating an MR, the agent **MUST** verify every item below. No MR should 
 
 ### Pre-MR Verification
 
-- [ ] Main `develop` pulled from remote (`git checkout develop && git pull origin develop`)
+- [ ] Local develop synced: `scripts/oelite-gitlab.sh worktree-sync`
 - [ ] Feature branch rebased on latest `origin/develop` (resolve conflicts if any)
 - [ ] Build passes in worktree (`dotnet build` / `npm run build` / `ng build`)
 - [ ] Tests pass (unit tests at minimum; integration tests if applicable)
@@ -1337,8 +1625,27 @@ Before creating an MR, the agent **MUST** verify every item below. No MR should 
 - [ ] **Issue labeled `Done`** (after Isabella business validation)
 - [ ] **Issue closed in GitLab**: `issue-status <project> <iid> emma closed` — in same session as merge verification
 - [ ] Worktree removed after MR merged: `scripts/oelite-gitlab.sh worktree-remove <agent>`
-- [ ] Local develop synced: `git checkout develop && git pull origin develop`
+- [ ] Local develop synced: `scripts/oelite-gitlab.sh worktree-sync`
 - [ ] **Post-merge audit**: `issue-audit <project>` run to confirm no orphaned open issues
+
+## 14.1 Pre-Promotion-MR Checklist (Promotion MRs only — §2.1.2)
+
+For `develop → uat` and `uat → main` promotion MRs, Ethan or Emma MUST verify:
+
+- [ ] Source branch is correct: `uat` ← `develop` only, `main` ← `uat` only (§2.1.2 rule 1)
+- [ ] Release issue (REL-XXX) exists and is referenced in the MR (`Closes #<rel-iid>`)
+- [ ] For `develop → uat`: `develop` CI pipeline green on the merge SHA, image tagged with commit SHA in registry
+- [ ] For `uat → main`: UAT soak gate satisfied (§2.1.2 rule 3) — UAT pipeline green, UAT health check passed (`./oelite-stack.sh cluster UAT health`), Olivia sign-off recorded **on the release issue**, Isabella sign-off recorded **on the release issue**
+- [ ] `deploy_uat`/`deploy_prod` jobs exist with branch `rules:` and `environment:` declarations (§2.1.2 rule 2)
+- [ ] Docker image SHA tag is the exact same one deployed to UAT — never rebuild per environment (§2.1.2 rule 4)
+
+### Post-Promotion-MR Actions
+
+- [ ] **Merge verified**: `mr-status <project> <mr-iid>` confirms `merged` state
+- [ ] UAT deployment pipeline succeeded on `uat` branch (for develop→uat)
+- [ ] Production deploy triggered manually and succeeded (for uat→main)
+- [ ] Release issue closed via `issue-status closed` (per §8.7)
+- [ ] Post-deploy health check passed on the target environment
 
 ---
 
@@ -1432,8 +1739,8 @@ The implementing agent addresses the feedback in the worktree, pushes new commit
 # Remove worktree (branch already auto-deleted by GitLab)
 scripts/oelite-gitlab.sh worktree-remove <agent>
 
-# Sync local develop for next task
-git checkout develop && git pull origin develop
+# Sync local develop for next task (safe — no checkout)
+scripts/oelite-gitlab.sh worktree-sync
 ```
 
 ### Q: What if my MR has conflicts with `develop`?
@@ -1468,6 +1775,10 @@ GitLab will re-evaluate mergeability automatically.
 | Jun 22 2026 | **Major Update**: Reverted to **MR-Centric Model**. Local Merge Model proved inconsistent for agentic teams — agents frequently skipped steps or performed them out of order, leading to stale local `develop` branches and unreviewed code accumulation. New workflow: agents push feature branches → create MRs → reviewers approve → GitLab auto-merges + auto-deletes branch. All code enters `develop` through reviewed MRs. Review is a gate, not an afterthought. |
 | Jun 29 2026 | **SCRUM/Dev Workflow Enhancement**: Added explicit GitLab issue lifecycle protocol at §8. Defined mandatory status labels (`To Do`, `In Progress`, `PR Review`, `Ready to Merge`, `Done`, `Blocked`), status transition rules, role responsibilities, SCRUM integration, issue comment templates, and definition-of-done checklist. Added `issue-status` CLI command. Emma owns issue assignment and closure; assignees update labels during workflow; reviewers set `Ready to Merge`; Isabella validates before `Done`. |
 | Jul 21 2026 | **Issue-First & Closure Enforcement**: Added §1.7 Issue-First hard gate — no work begins without a GitLab issue with full elaboration. Added §8.2.1 Merge Verification (mandatory `mr-status` check before labeling `Done`). Added §8.2.2 Issue Closure Enforcement (`issue-status closed` in same session as merge verification). Added §8.2.3 Post-Merge Issue Audit (`issue-audit` CLI). Updated §8.3 role responsibilities (Emma verifies merge + closes; Reviewer verifies merge; Isabella runs audit). Updated §8.4 Definition of Done with closure + audit checkboxes. Updated §14 Post-MR checklist with merge verification + closure steps. Added `mr-status` and `issue-audit` CLI commands. |
+| Sep 30 2026 | **Readiness & sync accuracy correction (BUG-045 / !57 review)**: §10.1 CI criterion now requires a matching head-SHA `head_pipeline` with `status == "success"` and fails closed — `merge_status == "can_be_merged"` is explicitly NOT CI evidence. §8.2.1 documents the three-axis `mr-status` report. §10.3 corrects auto-approval attribution (recorded under Emma's identity via the `emma` PAT). §1 Key Principles and §11 sync wording now match `worktree-sync`'s real behavior: refresh `origin/develop`, fast-forward local `develop` only when unchecked-out and non-divergent, preserve dirty/divergent checkouts. §9.5 adds the read-only `mr-show`, `pipeline-jobs`, and `pipeline-job-trace` commands. |
+| Nov 02 2026 | **Environment promotion chain (TASK-91)**: Added §2.1.2 Branch Promotion & Deployment Gates hard gate — codified `develop → uat → main` promotion MRs with source-branch restrictions, CI-enforced deploy-job branch `rules:` + `environment:` declarations, UAT soak gate before `uat → main` merges, SHA-tagged artifact continuity (prod deploys only images previously deployed to UAT), promotion MR ownership (Ethan/Emma), and Release Promotion MR template reference. §2.1/§2.1.1 updated to include `uat` as a protected permanent branch. §8.4 Definition of Done extended with release promotion checklist. |
+| Nov 02 2026 | **Promotion-gate propagation (TASK-92)**: Propagated §2.1.2 across the corpus per Isabella's documentation audit — §2.1.1 protected-branch setup runbook (per-branch merge roles, pipelines-must-succeed, approvals, verification); §2.1.2 hotfix path (rule 6a: `hotfix/*` from develop, same-chain promotion, soak compression only with recorded human authorization); new §2.1.3 Rollback Standard (immutable SHA tags, `kubectl rollout undo`, migration compensation, rollback authority, incident comms); new §8.7 Release Issue Lifecycle (REL-XXX transitions, canonical sign-off location, Emma closure rule); new §14.1 Pre-Promotion-MR checklist. Companion updates: `agents/core/principles.md` branch strategy, root `AGENTS.md` hard gates, `agents/packs/infrastructure.md` CI/CD requirements, `ISSUE-MR-TEMPLATES.md` §4.5 Release issue template + §6 `Release` label, role files (ethan/olivia/emma), oelite-stack README dedup. |
+| Nov 02 2026 | **Citation placement — head-commit superset (TASK-78)**: Added §7.2.1 — because GitLab truncates `CI_MERGE_REQUEST_DESCRIPTION` at ~2048 chars, the MR head commit message MUST carry the complete superset of cited rule IDs (e.g. `Cited-Rules: BR-24-003, BR-24-049`) for MRs running citation gates such as origin-auth's `validate-cited-rules`; MR descriptions SHOULD repeat citations within the first ~2000 chars for readability. Root-cause evidence (2026-10-26) recorded. Companion update: comment in `uranus/origin-auth/.gitlab-ci.yml` `validate-cited-rules` job referencing this section. |
 
 ---
 

@@ -1,0 +1,504 @@
+# OElite Shared Local Infrastructure Stack
+
+One-time machine setup. A **singleton** Docker Compose stack providing MongoDB (sharded replica set), Redis, ClickHouse, Kafka, RabbitMQ, MinIO, and OpenSearch, shared across **all** OElite repos and worktrees on this machine.
+
+Per-project isolation is achieved via **namespaces** (databases, buckets, vhosts), **not** separate container instances.
+
+## Why Singleton?
+
+| Problem | Solution |
+|---|---|
+| Every worktree spawns its own MongoDB → 9+ duplicates | One machine-wide MongoDB |
+| Per-repo `docker-compose.dev.yml` port conflicts | Fixed canonical ports (27017, 6379, 9092, ...) |
+| OElite.Restme change streams require replica set | Real sharded RS (configsvr×3 + shard1 + mongos) |
+| Production-only bugs (sharding, chunk migration) | Local dev matches production topology |
+
+## 🚨 Do NOT create a second instance of a shared service
+
+If a service below is **stopped, unhealthy, or missing**, the only correct action is to
+**restart this shared stack** — never to start a replacement container.
+
+| Service | Image used here |
+|---|---|
+| MongoDB | `mongo:8.0` |
+| Redis | `redis:8.8-alpine` |
+| ClickHouse | `clickhouse/clickhouse-server:26.5` |
+| Kafka | `confluentinc/cp-kafka:8.3.0` |
+| RabbitMQ | `rabbitmq:4.3-management-alpine` |
+| MinIO | `cgr.dev/chainguard/minio:latest` (Chainguard; zero-CVE, AGPL, no license required) |
+| OpenSearch | `opensearchproject/opensearch:3.7.0` |
+| Mailpit | `axllent/mailpit:v1.30.2` |
+
+Prohibited (enforced by `oelite-guard.sh` Gate E, exit code 2):
+
+- a `docker-compose*.yml` in an app repo declaring any of the services above
+- `docker run mongo:8.0 ...` (or any shared-service image, including `axllent/mailpit`) outside this directory
+- a Testcontainers fixture that starts its own MongoDB/Redis/etc.
+
+App-only compose files (your app image, nginx, an app-specific UI) are unaffected.
+Mailpit is a shared service — never run a per-repo Mailpit container; point your
+app's SMTP settings at `localhost:1025` and your tests at `http://localhost:8025`.
+
+## Quick Start
+
+```bash
+cd infrastructure/oelite-stack
+
+# 1. Start all services
+./oelite-stack.sh up
+
+# 2. Initialize sharding + per-project DBs + buckets (once)
+./oelite-stack.sh init
+
+# 3. Verify
+./oelite-stack.sh health
+```
+
+## Recovering a Down Service
+
+```bash
+cd infrastructure/oelite-stack
+
+./oelite-stack.sh health   # 1. which service is down?
+./oelite-stack.sh up       # 2. start/restart the shared stack (idempotent)
+./oelite-stack.sh init     # 3. one-time sharding + namespaces (idempotent)
+./oelite-stack.sh health   # 4. re-verify
+```
+
+`up` and `init` are both idempotent — re-run them freely. If the stack still will not
+come up (image pull failure, port conflict, corrupt volume), open a GitLab issue on
+`oelite/coding-standards` for **Ethan (DevOps)**. Do **not** work around it by starting
+a per-repo container.
+
+## Connection Strings
+
+All app code connects to these **fixed canonical endpoints**:
+
+| Service | Endpoint | Notes |
+|---|---|---|
+| MongoDB | `mongodb://localhost:27017/?directConnection=true` | via mongos (sharded) |
+| Redis | `localhost:6379` | SELECT db number per project |
+| ClickHouse | `localhost:8123` (HTTP) | Native TCP 9000 internal-only |
+| Kafka | `localhost:9092` | KRaft mode (no ZK) |
+| RabbitMQ | `localhost:5672` (AMQP), `15672` (UI) | User + pass in `.env` |
+| MinIO | `localhost:9000` (API), `9001` (Console) | User + pass in `.env` |
+| OpenSearch | `https://localhost:9200` | Single-node; admin credentials are in `.env` (`OPENSEARCH_PASSWORD`) |
+| Mailpit | `localhost:1025` (SMTP), `http://localhost:8025` (UI/API) | Shared test mailbox — filter by recipient |
+
+### Per-Project Onboarding
+
+The shared stack exposes only superuser credentials (in `.env`). Each project
+creates its own database, vhost, bucket, and per-project credentials during
+onboarding. Run the project-level init scripts from the project's own
+`.gitlab-ci.yml` or a project-local setup script:
+
+```bash
+# MongoDB — project DB + dedicated user (scoped to that DB only)
+./scripts/init-per-project-dbs.sh origin_auth
+
+# RabbitMQ — vhost + dedicated user
+# ⚠️ From the HOST machine (outside Docker) you must ensure RABBIT_HOST is set
+#    to 'localhost' — the script now defaults to 'localhost' (MR !79), but if your
+#    host environment has a legacy config pointing to the Docker-internal
+#    'oelite-rabbitmq' hostname, override it explicitly:
+#      set -a; source .env; set +a
+#      RABBIT_HOST=localhost ./scripts/init-rabbitmq.sh <project-slug>
+./scripts/init-rabbitmq.sh origin_auth
+
+# MinIO — project bucket + service-account key
+./scripts/init-minio.sh oelite-origin-auth
+```
+
+The scripts are idempotent and accept the project slug as the only argument.
+The MongoDB onboarding script reads the shared root credentials, creates or repairs
+the project user, and verifies SCRAM authentication through mongos before it prints
+a connection string. Authentication or provisioning errors stop the script.
+Project credentials are stored in the project's own gitignored secrets
+(`appsettings.init.json`, `.env`, etc.) — **never** in the shared
+`infrastructure/oelite-stack/.env`.
+
+#### RabbitMQ credential mapping rule (avoid ACCESS_REFUSED)
+
+The only RabbitMQ credentials in the shared `.env` are the **superuser** pair
+(`RABBITMQ_DEFAULT_USER` / `RABBITMQ_DEFAULT_PASS`). They are for stack
+administration and the management UI only — **never** point an application at
+the superuser. Each project connects with its own per-project identity,
+provisioned by `init-rabbitmq.sh`:
+
+| Item | Value |
+|---|---|
+| Vhost | `/oelite/<project-slug>` |
+| User | `oelite_<project-slug>` |
+| Password | `oelite_<project-slug>_dev` (or `RABBITMQ_PROJECT_PASSWORD` at onboarding) |
+| Connection string | `amqp://oelite_<slug>:oelite_<slug>_dev@localhost:5672/oelite/<project-slug>` |
+
+If a project's app fails to connect with `ACCESS_REFUSED` (wrong password after
+broker re-provisioning, rotated credentials, or a superuser password wired into
+the app config), repair the project identity — never rotate the superuser for
+this purpose:
+
+```bash
+./oelite-stack.sh repair-rabbitmq <project-slug>
+# e.g. ./oelite-stack.sh repair-rabbitmq hermes
+```
+
+This is the idempotent repair path: it (re-)creates the vhost, re-syncs the
+`oelite_<slug>` user password to the canonical onboarding value, re-grants
+`configure/write/read` on the vhost, and prints the connection string. It is
+safe to re-run at any time and never touches other projects' vhosts. Then
+export the printed per-project credentials in the project's environment
+(`RABBITMQ_USERNAME` / `RABBITMQ_PASSWORD` / `RABBITMQ_VHOST` for OElite apps)
+— not the stack superuser values.
+
+#### RabbitMQ post-provisioning health check
+
+`init-rabbitmq.sh <slug>` prints the project connection string, e.g.:
+
+```
+amqp://oelite_<slug>:oelite_<slug>_dev@localhost:5672/oelite/<slug>
+```
+
+Verify the vhost + user really exist before wiring them into app config
+(idempotent, safe to re-run):
+
+```bash
+set -a; source .env; set +a
+curl -sf -u "$RABBITMQ_DEFAULT_USER:$RABBITMQ_DEFAULT_PASS" \
+  "http://localhost:15672/api/vhosts" | grep '"name":"/oelite/<slug>"'
+curl -sf -u "$RABBITMQ_DEFAULT_USER:$RABBITMQ_DEFAULT_PASS" \
+  "http://localhost:15672/api/users"   | grep '"name":"oelite_<slug>"'
+```
+
+> **Detecting the guest:guest fallback in app logs**: if an app starts with
+> `queue.enabled` (or its project equivalent, e.g. `oelite:rabbitmq.enabled=true`)
+> but NO project connection string, it falls back to
+> `amqp://guest:guest@localhost:5672`. The shared broker rejects guest
+> credentials, the provider silently resolves to null, and fail-closed audit
+> paths (e.g. origin-auth BR-23-050) start throwing at runtime. Watch for the
+> app-specific startup warning (origin-auth emits `[TASK-1383]`) and for
+> `amqp://guest:guest` in connection logs.
+
+ClickHouse is provisioned from `CLICKHOUSE_ADMIN_USER` and
+`CLICKHOUSE_ADMIN_PASSWORD` in the shared `.env`; the compose service maps these
+to the image's `CLICKHOUSE_USER` and `CLICKHOUSE_PASSWORD` variables. Run
+`./scripts/init-clickhouse-users.sh` during stack initialization to verify the
+same credentials used by health checks. Existing stacks with
+conflicting legacy ClickHouse user storage must be repaired through the approved
+credential-rotation procedure; this check never deletes volumes or access data.
+
+## Debug / Monitoring UIs
+
+The shared stack includes web-based UIs for inspecting and monitoring all services. UIs start
+**by default** (via `--profile ui`). Disable them on resource-constrained machines:
+
+```bash
+# Start without UI containers (saves ~1 GB RAM)
+./oelite-stack.sh up --no-ui
+```
+
+| Service | URL | Tool | Description |
+|---|---|---|---|
+| Redis | http://localhost:5540 | RedisInsight | Key browser, CLI, slowlog, memory analyzer |
+| Kafka | http://localhost:8080 | Kafka UI | Topics, consumer groups, lag, message browser |
+| MongoDB | http://localhost:3141 | MongoStudio | Schema, collections, aggregation builder |
+| RabbitMQ | http://localhost:15672 | *(built-in management UI)* | Queues, exchanges, vhosts, message inspector |
+| MinIO | http://localhost:9001 | *(built-in console)* | Bucket browser, object inspector |
+| OpenSearch | http://localhost:5601 | OpenSearch Dashboards | Index browser, Dev Tools console, visualizations; sign in as `admin` using `OPENSEARCH_PASSWORD` |
+| Mailpit | http://localhost:8025 | *(built-in web UI)* | Captured SMTP messages, attachments, REST API — starts with the core stack (not `--profile ui`) |
+
+> **Mailpit mailbox is shared across all projects.** It has no per-project
+> namespaces — isolate test data by using unique recipient addresses
+> (e.g. `to:apex-test-<guid>@example.test`) and filtering the
+> [REST API](http://localhost:8025/api/v1/messages) by recipient.
+
+### Connecting UIs to Services
+
+- **RedisInsight**: Auto-discovers the Redis instance. If prompted, connect to `oelite-redis:6379` with password from `.env` (`REDIS_PASSWORD`).
+- **Kafka UI**: Cluster `oelite` is auto-configured in `docker-compose.shared.yml`.
+- **MongoStudio**: Connects to `oelite-mongos:27017` using root credentials from `.env`.
+  Set `MONGODB_ADMIN_ACCESS_KEY` in `.env` for admin access (generated on first `oelite-stack.sh up`).
+
+## Secrets Management
+
+**No credentials are committed to the repo.** Each developer generates random
+credentials on first `up` and stores them in a per-machine, gitignored file.
+
+| File | Committed? | Purpose |
+|---|---|---|
+| `.env.example` | yes | Schema + key names only (no values) |
+| `.env` | **no** (gitignored) | Real random credentials for THIS machine |
+| `.mongo.key` | **no** (gitignored) | MongoDB cluster auth key (binary, 756 bytes) |
+
+### How it works
+
+1. **First run** (`./oelite-stack.sh up` on a fresh clone):
+   - `./scripts/generate-secrets.sh` creates `.env` with random passwords
+     for: MongoDB root, ClickHouse admin, Redis, RabbitMQ, MinIO, OpenSearch.
+   - `chmod 600` is applied (owner read/write only).
+2. **Subsequent runs** — existing `.env` is preserved; credentials are NOT
+   regenerated unless you ask. This means your password stays the same across
+   restarts.
+3. **Per-service consumption** — every service container mounts `.env`
+   via `env_file: .env` in `docker-compose.shared.yml`.
+
+### Common operations
+
+```bash
+# View current credentials (SENSITIVE — do not share or commit)
+./scripts/generate-secrets.sh --print
+
+# Rotate ALL secrets (regenerates random passwords, requires service restart)
+./oelite-stack.sh secrets
+
+# Rotate just one secret manually
+./scripts/generate-secrets.sh --rotate
+
+# Full reset (removes volumes AND credentials)
+./oelite-stack.sh clean && ./oelite-stack.sh up && ./oelite-stack.sh init
+```
+
+### Adding a new service to the secrets flow
+
+If you add a service that needs a credential, edit `scripts/generate-secrets.sh`:
+add the key name to the `SECRETS=(...)` array at the bottom. Then add the
+key to `.env.example` (committed) with an empty value.
+
+## Topology
+
+```
+┌──────────────────────────────────────────────────────────────┐
+│  OElite Shared Stack (docker-compose.shared.yml)             │
+│                                                              │
+│  ┌─────────────────────────┐    ┌──────────────────────┐    │
+│  │ MongoDB Sharded RS      │    │ Redis 8.8            │    │
+│  │  configsvr×3 (27019)    │    │  localhost:6379      │    │
+│  │  shard1 (27018)         │    │  db 0..15 per proj   │    │
+│  │  mongos (27017)         │    └──────────────────────┘    │
+│  │  ↓ apps connect here    │                                 │
+│  └─────────────────────────┘    ┌──────────────────────┐    │
+│                                 │ ClickHouse 26.5      │    │
+│  ┌─────────────────────────┐    │  HTTP: 8123          │    │
+│  │ Kafka 8.3 (KRaft)       │    │  Native: internal    │    │
+│  │  localhost:9092         │    │  db per project      │    │
+│  │  topic prefix per proj  │    └──────────────────────┘    │
+│  └─────────────────────────┘                                 │
+│  ┌─────────────────────────┐    ┌──────────────────────────────┐    ┌─────────────────────┐    │
+│  │ MinIO (S3)              │    │ RabbitMQ 4.3               │    │ OpenSearch 2.x        │    │
+│  │  API: 9000, Console:9001│    │  AMQP: 5672                │    │  API: 9200           │    │
+│  │  bucket per project     │    │  Mgmt UI: 15672            │    └─────────────────────┘    │
+│  └─────────────────────────┘    │  vhost per project        │                        │
+│                                 └──────────────────────────────┘                        │
+└──────────────────────────────────────────────────────────────┘
+
+## Resource Budget
+
+| Service | Memory | CPU |
+|---|---|---|
+| mongo-configsvr×3 | 512 MB each | 0.5 each |
+| mongo-shard-1 (primary) | 512 MB | 1.0 |
+| mongo-shard-1 (secondary/arb) | 512 MB | 0.5 |
+| mongo-mongos | 512 MB | 0.5 |
+| redis | 512 MB | 0.5 |
+| clickhouse | 4096 MB | 1.5 |
+| kafka | 1024 MB | 1.0 |
+| rabbitmq | 512 MB | 0.5 |
+| minio | 512 MB | 0.5 |
+| opensearch | 1024 MB | 1.0 |
+| **UI Services** | | |
+| redisinsight | 256 MB | 0.25 |
+| kafka-ui | 512 MB | 0.25 |
+| mongostudio | 512 MB | 0.25 |
+| opensearch-dashboards | 512 MB | 0.25 |
+| mailpit | 128 MB | 0.1 |
+| **Total (all)** | **~10.9 GB** | **~8.9 cores** |
+| **Total (--no-ui)** | **~9.1 GB** | **~7.6 cores** |
+
+> **ClickHouse sizing** (issues/28): ClickHouse runs with a 4 GiB container limit,
+> a 3 GiB `max_server_memory_usage` cap, explicitly bounded caches, and jemalloc decay
+> tuning in `config/clickhouse/config.d/99-oelite-memory.xml`. A per-query bound remains
+> configured in `config/clickhouse/users.d/99-oelite-limits.xml`. This avoids the Code 241
+> OOM wedge caused by auto-sized caches consuming the old 2 GiB container budget. The
+> health check runs `SELECT 1`, so a memory-starved ClickHouse fails `./oelite-stack.sh
+> health` instead of reporting green.
+
+Tested on: 23 GB RAM, 8+ core machines. On 8 GB machines: use `--no-ui` flag to skip debug UIs.
+
+## Commands
+
+```bash
+./oelite-stack.sh up        # Start all services
+./oelite-stack.sh init      # Initialize MongoDB sharding (CSRS → shard → add-shard)
+./oelite-stack.sh down      # Stop all services
+./oelite-stack.sh health    # Health check
+./oelite-stack.sh status    # Show running containers
+./oelite-stack.sh logs      # Tail logs (optional: oelite-mongos)
+./oelite-stack.sh clean     # DELETE all data (irreversible!)
+```
+
+## Migration from Per-Repo `docker-compose.dev.yml`
+
+If your repo currently has a per-repo `docker-compose.dev.yml`:
+
+1. **Delete** the file (or move to `archive/` for reference).
+2. **Update** your app's `appsettings.init.json` connection string to use the shared stack.
+3. **Run the project onboarding scripts** to create your database, vhost, bucket:
+   - MongoDB: `./scripts/init-per-project-dbs.sh your-project`
+   - RabbitMQ: `./scripts/init-rabbitmq.sh your-project`
+   - MinIO: `./scripts/init-minio.sh oelite-your-project`
+4. **No code changes required** — connection string points to the same `localhost:27017` (now via mongos).
+
+## Need a Service the Stack Does Not Provide?
+
+Do not start it locally in a per-repo container. Open a GitLab issue on
+`oelite/coding-standards` for **Ethan (DevOps)** to add it to
+`docker-compose.shared.yml` with a canonical port and a per-project isolation
+mechanism. That is the only supported path for a new local-dev dependency.
+
+## CI/CD
+
+CI/CD pipelines **must not** spin up these services. Use `Category!=Integration` filter on `dotnet test`. See `coding-standards/1_dotNet_coding_standards/14-TESTING-STANDARDS.md` for the full test categorization rules.
+
+## Remote K8s Clusters (UAT / Production)
+
+Per-environment remote cluster configs live under `clusters/` and are **gitignored** (they contain kubeconfigs and credentials). Only high-privilege operators place these files locally; they are **never committed**.
+
+```
+infrastructure/oelite-stack/
+└── clusters/
+    ├── UAT/
+    │   ├── kubeconfig/           ← exactly ONE kubeconfig file (any filename)
+    │   └── cluster-config/       ← cluster bootstrap scripts + app manifests
+    │       ├── 1.k8s-metallb-public-ips.sh
+    │       ├── 2.storage-class.sh
+    │       ├── 3.cert-manager.sh
+    │       ├── 4.nginx-ingress.sh
+    │       ├── 5.private-registry-and-secrets.sh
+    │       ├── 6.apps-installs.sh
+    │       ├── metallb/ cert-manager/ ingress/ storage/
+    │       └── apps/ (mongodb, redis, clickhouse, kafka, rabbitmq, opensearch)
+    └── Production/
+        ├── kubeconfig/
+        └── cluster-config/
+```
+
+### oelite-stack.sh cluster helpers
+
+```bash
+cd infrastructure/oelite-stack
+
+./oelite-stack.sh cluster list                      # list environments
+./oelite-stack.sh cluster UAT kubectl get pods      # run kubectl against UAT
+./oelite-stack.sh cluster UAT health                # health summary of UAT
+./oelite-stack.sh cluster UAT audit                 # resource audit (nodes + top pods)
+./oelite-stack.sh cluster Production kubectl get nodes
+./oelite-stack.sh cluster UAT kubeconfig-path       # print resolved KUBECONFIG path
+```
+
+The helper resolves the single kubeconfig inside `clusters/<ENV>/kubeconfig/` (exactly one per environment, any filename) and exports `KUBECONFIG` for the command.
+
+### CI/CD kubeconfig injection
+
+CI/CD pipelines deploy to K8s using GitLab CI/CD variables, **not** local kubeconfig files:
+
+- `$OElite_K8S` — kubeconfig for the oelite.io cluster (Production)
+- `$PHANES_K8S` — kubeconfig for the phanes.ltd cluster (UAT)
+
+Store these as GitLab **file-type** CI/CD variables. In `.gitlab-ci.yml`:
+
+```yaml
+# ⚠️ HARD GATE §2.1.2: UAT deploys ONLY from the uat branch
+deploy_uat:
+  stage: deploy_k8s
+  image: bitnami/kubectl:latest
+  environment:
+    name: uat
+    url: https://uat.phanes.ltd
+  rules:
+    - if: '$CI_COMMIT_BRANCH == "uat"'          # HARD GATE: only deploys from uat branch
+  script:
+    - kubectl --kubeconfig "$PHANES_K8S" -n oelite-uat apply -f k8s/
+    - kubectl --kubeconfig "$PHANES_K8S" -n oelite-uat rollout status deploy/<name>
+
+# ⚠️ HARD GATE §2.1.2: Production deploys ONLY from the main branch + manual gate
+deploy_prod:
+  stage: deploy_k8s
+  image: bitnami/kubectl:latest
+  environment:
+    name: production
+    url: https://www.oelite.io
+  rules:
+    - if: '$CI_COMMIT_BRANCH == "main"'          # HARD GATE: only deploys from main branch
+      when: manual                               # manual gate ON TOP of branch gate
+  script:
+    - ./scripts/verify-uat-deployed.sh "$CI_COMMIT_SHA"   # artifact continuity check — fails if SHA never deployed to UAT
+    - kubectl --kubeconfig "$OElite_K8S" -n oelite-prod apply -f k8s/
+    - kubectl --kubeconfig "$OElite_K8S" -n oelite-prod rollout status deploy/<name>
+```
+
+Namespaces follow the platform convention: `oelite-dev`, `oelite-uat`, `oelite-prod`.
+
+#### Artifact continuity (SHA-tagged images)
+
+Images are built ONCE when the MR merges into `develop`:
+
+```yaml
+build_and_push:
+  stage: build
+  script:
+    - docker build -t registry.phanes.ltd/oelite/<service>:$CI_COMMIT_SHA .
+    - docker push registry.phanes.ltd/oelite/<service>:$CI_COMMIT_SHA
+  rules:
+    - if: '$CI_COMMIT_BRANCH == "develop"'
+```
+
+Both `deploy_uat` and `deploy_prod` MUST reference the exact same SHA tag — never rebuild per environment. The `verify-uat-deployed.sh` script in the Production deploy checks that the image SHA was previously deployed to UAT; if not, the pipeline fails. This makes it structurally impossible for code to reach Production that never passed UAT.
+
+#### verify-uat-deployed.sh (artifact continuity check)
+
+The canonical implementation is committed and versioned at **`coding-standards/scripts/verify-uat-deployed.sh`** (owned by Ethan). Copy it into each deployable repo's `scripts/` folder — or invoke it directly from a shared CI template — so `deploy_prod` fails closed when the image SHA was never deployed to UAT.
+
+```bash
+# Usage: verify-uat-deployed.sh <sha>
+./scripts/verify-uat-deployed.sh "$CI_COMMIT_SHA"
+```
+
+Behavior:
+- **`UAT_CHECK_BACKEND=kubectl`** (default): inspects the `oelite.io/sha` annotation on running deployments in the `oelite-uat` namespace, using `$PHANES_K8S` as the kubeconfig when set.
+- **`UAT_CHECK_BACKEND=gitlab`**: queries the GitLab Environments/Deployments API (`CI_API_V4_URL` + `CI_PROJECT_ID` + `GITLAB_TOKEN`/`CI_JOB_TOKEN`) for the project's `uat` environment deployment history.
+- **Empty/missing SHA** → usage error, exit 1.
+- **SHA absent from UAT** → clear error, exit 1 (fails closed). **SHA present** → success message, exit 0.
+- **`--test`** flag runs the built-in self-tests (kubectl + gitlab backends, present/absent/empty cases).
+- Idempotent and side-effect free — safe to run in CI.
+
+Alternatively, query the GitLab Environments API directly for the project's UAT deployment history. The key requirement: the Production deploy MUST fail if the SHA was never deployed to UAT.
+
+Namespaces follow the platform convention: `oelite-dev`, `oelite-uat`, `oelite-prod`; production deploys are `when: manual` on top of the `main`-branch gate (see `GIT-WORKFLOW-STANDARDS.md` §2.1.2).
+
+### Public TCP port allowlist (firewall)
+
+The nginx-ingress LoadBalancer exposes shared-infra TCP ports publicly (MongoDB 27017, RabbitMQ 5672/1883, Redis 6379, ClickHouse 8123/9000, Kafka 9092/9094, OpenSearch 9200). Services enforce their own credentials; add a node-level allowlist for defense-in-depth:
+
+```bash
+cd infrastructure/oelite-stack
+
+# 1. Operator-local config (gitignored): clusters/<ENV>/firewall-allowlist.conf + allowlist.ips
+#    Copy scripts/tcp-allowlist.conf.example → clusters/<ENV>/firewall-allowlist.conf
+
+# 2. Add your current public IP to the allowlist
+./scripts/tcp-allowlist.sh UAT add-my-ip
+
+# 3. Preview, then apply (keep an SSH session open while applying!)
+./scripts/tcp-allowlist.sh UAT dry-run
+./scripts/tcp-allowlist.sh UAT apply
+
+# 4. Verify
+./scripts/tcp-allowlist.sh UAT status
+```
+
+SSH (22) and the Kubernetes API (6443) are always protected and never denied by the tool. Denied ports keep working from cluster-internal pods — only external sources are filtered.
+
+## Related
+
+- Standard: `coding-standards/1_dotNet_coding_standards/16-SHARED-LOCAL-INFRASTRUCTURE.md`
+- Issue: `oelite/coding-standards#25` ([INFRA-002] Add OpenSearch)
+- Owner: **Ethan** (DevOps)
