@@ -130,13 +130,13 @@ In addition to the assertion count check, Olivia MUST run:
 grep -rn 'expect.*body.*toBeVisible\|expect.*html.*toBeVisible\|expect.*\.toHaveURL()' tests/
 # If ANY results → REJECT. These assertions always pass and provide zero verification.
 
-# 2. Check for page.route() usage in data-driven tests
+# 2. Confirm network observation in data-driven tests (read-only; do not require page.route())
 for file in tests/e2e/*.spec.ts tests/e2e/**/*.spec.ts; do
-  if grep -q 'page.goto\|page.navigate' "$file" && ! grep -q 'page.route' "$file"; then
-    echo "WARNING: $file navigates but does not intercept API calls via page.route()"
+  if grep -q 'page.goto\|page.navigate' "$file" && ! grep -q 'page.waitForResponse\|page.on.*response\|page.route' "$file"; then
+    echo "WARNING: $file navigates but does not observe real API responses (use page.waitForResponse)"
   fi
 done
-# If any warnings → REJECT. Data-driven tests must prove APIs were called.
+# If any warnings → REJECT. Data-driven tests must prove APIs were called against real data.
 
 # 3. Check for "button exists" without "button clicked" pattern
 grep -rn 'toBeVisible\|toBeEnabled' tests/ | grep -i 'button\|link\|submit' | grep -v 'click'
@@ -152,7 +152,7 @@ grep -rn 'toBeVisible\|toBeEnabled' tests/ | grep -i 'button\|link\|submit' | gr
 
 The script automates detection of:
 1. **Tautological assertions** — `expect(body).toBeVisible()`, `expect(html).toBeVisible()`, `expect(page).toHaveURL()` without expected URL
-2. **Missing API verification** — tests that navigate but don't use `page.route()`
+2. **Missing network observation** — tests that navigate but don't use `page.waitForResponse`, `page.on('response')`, or approved fault-injection `page.route()`
 3. **Button existence without click** — tests that check visibility without verifying action
 4. **Missing AC traceability** — tests without US-XXX/AC-YYY references
 5. **Missing data persistence** — CRUD tests without `page.reload()` verification

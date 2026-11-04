@@ -101,7 +101,9 @@ If this feature involves **UI components, user interactions, or multi-step workf
 - [ ] Response data mapping correctly renders in UI
 - [ ] API error handling displays user-friendly messages
 - [ ] Loading states during API calls
-- [ ] Network verification via Playwright `page.route()`
+- [ ] Network verification via read-only Playwright response observation (`page.waitForResponse` or `page.on('response')`)
+- [ ] **Live-data E2E observation**: Every data-driven test observes real API responses and asserts on response data and persisted outcomes; no interception or mock fulfillment of application data
+- [ ] **Fault injection exception**: `page.route()` only for explicitly-approved, documented fault-injection tests with `@fault-injection` tag and no application-data fulfillment
 
 ### UI Layout & Design
 - [ ] Responsive breakpoints: mobile (375px), tablet (768px), desktop (1024px+)
@@ -442,7 +444,8 @@ The script automates detection of prohibited patterns. Exit code `1` = violation
 #### E2E Test Quality Checklist
 - [ ] **E2E quality check script passed**: Zero violations from `e2e-quality-check.sh`
 - [ ] **API integration tests**: Verify request payloads, response data mapping, error handling, loading states
-- [ ] **`page.route()` API interception**: Every data-driven test intercepts and verifies API calls (MANDATORY — see PROHIBITED-PATTERNS.md §5)
+- [ ] **Read-only response observation**: Every data-driven test observes real API responses with `page.waitForResponse` / `page.on('response')` and verifies real response data and persistence (MANDATORY)
+- [ ] **`page.route()` exception**: Only explicitly-approved, documented fault-injection tests tagged `@fault-injection`; mock fulfillment of application data remains prohibited
 - [ ] **No tautological assertions**: Zero `expect(body).toBeVisible()`, `expect(html).toBeVisible()`, or `toHaveURL()` without expected URL
 - [ ] **Button-works verification**: Every interactive element tested by clicking AND verifying outcome (not just existence)
 - [ ] **Data persistence chain**: CRUD tests verify data survives `page.reload()` (proves backend persistence)

@@ -129,8 +129,9 @@ An issue is **Done** when ALL of the following are true. Only Emma may mark an i
 - [ ] **API error handling**: E2E tests verify API error responses display user-friendly error messages
 - [ ] **Loading states**: E2E tests verify loading indicators appear during API calls
 - [ ] **Retry logic**: E2E tests verify retry mechanism works on API failures
-- [ ] **Network verification**: E2E tests capture and validate actual network requests (Playwright `page.route()`)
-- [ ] **🚨 `page.route()` API interception MANDATORY**: Every data-driven test MUST intercept API calls via `page.route()` to prove the API was called (see PROHIBITED-PATTERNS.md §5)
+- [ ] **Network verification**: E2E tests observe actual network requests/responses using read-only Playwright response inspection (`page.waitForResponse` or `page.on('response')`)
+- [ ] **Live-data E2E observation MANDATORY**: Every data-driven test observes real API responses without intercepting or modifying requests; assert on real response status/data and persisted outcomes. Mock fulfillment of application data is prohibited.
+- [ ] **Fault injection exception**: `page.route()` is reserved for explicitly-approved fault-injection/error-simulation tests only, with documented purpose/criteria, a `@fault-injection` tag, and no fulfillment of application data
 
 #### UI Layout & Design Compliance
 - [ ] **Responsive breakpoints**: E2E tests verify layout at mobile (375px), tablet (768px), desktop (1024px+)

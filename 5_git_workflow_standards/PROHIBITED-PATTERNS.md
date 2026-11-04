@@ -523,7 +523,7 @@ test('user list loads and displays data from API', async ({ page }) => {
 
 **Detection**: Run `grep -rn 'expect.*body.*toBeVisible\|expect.*html.*toBeVisible\|expect.*\.toHaveURL()' tests/` in every web app. If ANY results found, the MR MUST be rejected. These assertions are always tautological and indicate the test is not verifying actual functionality.
 
-**❌ FORBIDDEN - Missing API Call Verification (page.route() Mandate):**
+**❌ FORBIDDEN - Missing Network Observation (page.waitForResponse Mandate):**
 ```typescript
 // ❌ FORBIDDEN: Does not verify the API was actually called
 test('user list fetches data', async ({ page }) => {
@@ -533,30 +533,32 @@ test('user list fetches data', async ({ page }) => {
   // or if the API call silently fails
 });
 
-// ✅ MANDATORY: Every data-driven test MUST intercept and verify API calls
+// ✅ MANDATORY: Every data-driven test observes real API responses read-only
+// (page.waitForResponse / page.on('response')). Do NOT intercept or fulfill
+// application data with page.route() — that violates the live-data E2E policy.
 test('[US-XXX/AC-YYY] user list fetches and displays real API data', async ({ page }) => {
-  const apiCalls: string[] = [];
-  await page.route('**/v1.0/users*', (route) => {
-    apiCalls.push(route.request().url());
-    route.continue();
-  });
-
+  const responsePromise = page.waitForResponse(
+    (response) => response.url().includes('/v1.0/users') && response.status() === 200
+  );
   await page.goto('/users');
-  await page.waitForLoadState('networkidle');
+  const response = await responsePromise;
 
-  // Verify API was called with correct endpoint
-  expect(apiCalls.length).toBeGreaterThan(0);
-  expect(apiCalls[0]).toContain('/v1.0/users');
+  // Verify real response status
+  expect(response.status()).toBe(200);
 
-  // Verify data from API actually renders in UI
-  const response = await page.request.get('/v1.0/users');
-  const responseData = await response.json();
+  // Verify real data renders in UI
   const rows = page.locator('table tbody tr');
+  await expect(rows).toHaveCount({ greaterThan: 0 });
+
+  // Verify data persists across refresh (real backend, no interception)
+  await page.reload();
   await expect(rows).toHaveCount({ greaterThan: 0 });
 });
 ```
 
-**Every E2E test for a data-driven page MUST include `page.route()` interception to prove the API call was made.** Tests that navigate to a page and check DOM structure without proving the API was called are REJECTED.
+**Every E2E test for a data-driven page MUST include read-only network observation (e.g. `page.waitForResponse`) to prove the API call was made against real data.** Tests that navigate to a page and check DOM structure without proving the API was called are REJECTED.
+
+**`page.route()` is reserved for explicitly-approved fault-injection tests only** — documented criteria/purpose, a `@fault-injection` tag, and no mock fulfillment of application data. Any other use of `page.route()` in live-data E2E tests is a review-reject violation.
 
 **❌ FORBIDDEN - Missing API Integration Tests:**
 
@@ -838,7 +840,8 @@ test('[US-XXX/AC-YYY] shipping method changes based on country and order value',
 - [ ] Do E2E tests verify complete user journeys (happy path, branching, error recovery, permission-based)?
 - [ ] Do E2E tests verify state management (cache invalidation, optimistic updates, stale data handling)?
 - [ ] **Do E2E tests contain tautological assertions like `expect(page.locator('body')).toBeVisible()`?** — If YES, REJECT and require removal
-- [ ] **Do E2E tests use `page.route()` to intercept and verify API calls were made?** — If NO for data-driven pages, REJECT
+- [ ] **Do E2E tests observe real API responses read-only (`page.waitForResponse` / `page.on('response')`)?** — If NO for data-driven pages, REJECT
+- [ ] **Is `page.route()` limited to explicitly-approved, documented `@fault-injection` tests without application-data fulfillment?** — If NO, REJECT
 - [ ] **Do E2E tests only check element existence without clicking and verifying action?** — If YES, REJECT and add action verification
 - [ ] **Do E2E tests verify data persists after page.refresh() or page.reload()?** — If NO for CRUD operations, REJECT
 - [ ] **Do E2E tests verify cross-field business logic (conditional requirements, derived values)?** — If NO for complex forms, REJECT

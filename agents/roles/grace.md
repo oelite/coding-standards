@@ -66,7 +66,7 @@ When reviewing MRs that include E2E tests, Grace MUST verify the tests meet qual
 
 **If the script reports violations:**
 - Tautological assertions → REJECT MR, require removal
-- Missing `page.route()` → REJECT MR, require API verification
+- Missing read-only network observation (`page.waitForResponse` / `page.on('response')`) → REJECT MR, require API verification (fault-injection `page.route()` only with documented approval)
 - Button existence without click → REJECT MR, require action verification
 - Missing data persistence → REJECT MR for CRUD tests
 

@@ -85,7 +85,7 @@ When reviewing MRs with E2E tests, Felix MUST run the automated quality check:
 
 **The script enforces:**
 - No tautological assertions (`expect(body).toBeVisible()` always passes)
-- `page.route()` API interception in data-driven tests
+- Read-only network observation (`page.waitForResponse` / `page.on('response')`) in data-driven tests; `page.route()` only for explicitly-approved, documented fault injection
 - Button-works verification (click + outcome, not just existence)
 - Data persistence chain for CRUD tests
 

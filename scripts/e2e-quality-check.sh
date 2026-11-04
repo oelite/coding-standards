@@ -139,22 +139,22 @@ if ! $TAUTOLOGY_FOUND; then
   print_ok "No tautological assertions found"
 fi
 
-# CHECK 2: page.route() Usage
-print_section "CHECK 2: API Call Verification (page.route() Mandate)"
-MISSING_ROUTE=false
+# CHECK 2: Network Observation (page.waitForResponse)
+print_section "CHECK 2: API Call Verification (Read-Only Network Observation)"
+MISSING_OBSERVATION=false
 
 while IFS= read -r test_file; do
   [[ -z "$test_file" ]] && continue
   if grep -q 'page\.goto\|page\.navigate' "$test_file" 2>/dev/null; then
-    if ! grep -q 'page\.route' "$test_file" 2>/dev/null; then
-      print_warning "$test_file navigates to pages but does not intercept API calls"
-      MISSING_ROUTE=true
+    if ! grep -q 'page\.waitForResponse\|page\.on.*response\|page\.route' "$test_file" 2>/dev/null; then
+      print_warning "$test_file navigates to pages but does not observe real API responses (use page.waitForResponse)"
+      MISSING_OBSERVATION=true
     fi
   fi
-done < <(find "$TARGET_DIR" -name '*.spec.ts' -o -name '*.spec.tsx' 2>/dev/null || true)
+done < <(find "$TARGET_DIR" \( -name '*.spec.ts' -o -name '*.spec.tsx' \) -print 2>/dev/null || true)
 
-if ! $MISSING_ROUTE; then
-  print_ok "All data-driven tests use page.route() API interception"
+if ! $MISSING_OBSERVATION; then
+  print_ok "All navigating tests observe network responses (page.waitForResponse/page.on('response'); page.route only for approved fault injection)"
 fi
 
 # CHECK 3: Button Works (Not Just Exists)

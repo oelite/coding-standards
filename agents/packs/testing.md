@@ -69,7 +69,7 @@ Every assertion must fall into one of these categories:
 | **Error handling** | Error state renders correctly | `expect(errorBanner).toContainText('Failed to load')` |
 | **Business logic** | Business rule is enforced | `expect(expressOption).not.toBeVisible()` when order < $50 |
 | **Persistence** | Data survives refresh | `await page.reload(); await expect(data).toBeVisible()` |
-| **API verification** | API was actually called | `expect(apiCalls.length).toBeGreaterThan(0)` via `page.route()` |
+| **API verification** | API was actually called with real data | status/data asserted via read-only `page.waitForResponse` on real traffic |
 
 #### Detection
 Reviewers MUST run: `grep -rn 'expect.*body.*toBeVisible\|expect.*html.*toBeVisible\|expect.*\.toHaveURL()' tests/`
@@ -106,7 +106,7 @@ coding-standards/scripts/e2e-quality-check.sh
 | Check | What It Detects | Action Required |
 |-------|-----------------|-----------------|
 | **Tautological assertions** | `expect(body).toBeVisible()`, `expect(html).toBeVisible()`, `expect(page).toHaveURL()` without expected URL | REMOVE — these always pass |
-| **API call verification** | Tests that navigate but don't use `page.route()` | ADD `page.route()` interception to prove API was called |
+| **API call verification** | Tests that navigate without network observation | ADD read-only `page.waitForResponse` observation of real API traffic (fault-injection `page.route()` only with documented approval) |
 | **Button-works verification** | Tests that check button existence without clicking | ADD click + outcome verification |
 | **AC traceability** | Tests without US-XXX/AC-YYY references | ADD acceptance criterion reference |
 | **Data persistence** | Tests without `page.reload()` verification for CRUD | ADD persistence chain |
@@ -132,21 +132,42 @@ Gate 7 Workflow:
 6. Verify all tests pass + coverage mapping
 ```
 
-### 🚨 API Call Verification Mandate (NEW — Hard Gate)
-Every E2E test for a data-driven page MUST use `page.route()` to intercept and verify API calls:
+### 🚨 API Call Verification — Passive Observation (Mandatory for Live-Data E2E)
+Every E2E test for a data-driven page MUST use read-only `page.waitForResponse` to observe real API responses, asserting on real responses and persisted outcomes. Mock fulfillment of application data is **prohibited**.
+
+#### Mandatory Pattern for Live-Data E2E (Read-Only Observation)
+Tests must capture the real network response after the UI triggers the API call, verify the response status/data, and assert that data persists across page reload — without intercepting or mutating the request.
 
 ```typescript
-// MANDATORY pattern for every data-driven test
-const apiCalls: string[] = [];
-await page.route('**/v1.0/users*', (route) => {
-  apiCalls.push(route.request().url());
-  route.continue();
-});
+// MANDATORY pattern for every data-driven test (live-data E2E)
+// Observe real response via waitForResponse — no route() interception
 await page.goto('/users');
 await page.waitForLoadState('networkidle');
-expect(apiCalls.length).toBeGreaterThan(0);
-expect(apiCalls[0]).toContain('/v1.0/users');
+// Click/trigger that causes the API call
+const responsePromise = page.waitForResponse(response => response.url().includes('/v1.0/users'));
+await page.click('[data-testid="load-users"]');
+const response = await responsePromise;
+// Verify the response is valid and contains data
+expect(response.status()).toBe(200);
+const data = await response.json();
+expect(data.data).toBeDefined();
+// Assert data rendered in UI
+await expect(page.locator('table tbody tr')).toHaveCount({ greaterThan: 0 });
+// Verify data persists across page refresh
+const refreshedResponsePromise = page.waitForResponse(response => response.url().includes('/v1.0/users'));
+await page.reload();
+const refreshed = await refreshedResponsePromise;
+expect(refreshed.status()).toBe(200);
+const refreshedData = await refreshed.json();
+expect(refreshedData.data.length).toBeGreaterThan(0);
 ```
+
+#### Reserve page.route() for Explicitly-Approved Fault-Injection Tests
+`page.route()` interception is **reserved exclusively** for fault-injection / error-simulation tests where we intentionally redirect or modify network behavior. Such usage MUST be documented with:
+- The fault-injection criteria and purpose (e.g., "simulate 503 backend error")
+- A scope-limited `route.abort()` or `route.fulfill()` that does NOT modify application data payloads
+- A separate test tag `@fault-injection` or equivalent label
+- All other data-driven tests MUST NOT use `page.route()` — they must use `page.waitForResponse` read-only observation
 
 ### 🚨 Button-Works-Not-Just-Exists Mandate (NEW — Hard Gate)
 Every interactive element test MUST:

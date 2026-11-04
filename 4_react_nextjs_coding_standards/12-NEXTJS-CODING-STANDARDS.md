@@ -3454,7 +3454,7 @@ E2E tests (Playwright) MUST follow these mandatory quality gates. Tests that fai
 ### Gate 2: Real Server, Real API (NO MOCK DATA)
 
 - All E2E tests MUST run against a **live running dev server** (`npm run dev`)
-- Tests MUST verify that API calls are actually made (use `page.route()` to log network requests)
+- Tests MUST verify that API calls are actually made using read-only response observation (`page.waitForResponse` or `page.on('response')`) and verify real response data / persisted outcomes
 - **No hardcoded data assertions**: Tests MUST NOT assert on hardcoded strings like "Premium Widget", "$49.99"
 - Data in the UI must come from the actual API response
 
