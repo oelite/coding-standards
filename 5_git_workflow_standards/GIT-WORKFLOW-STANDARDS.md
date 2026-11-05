@@ -22,11 +22,14 @@ The OElite team consists of 12 members (10 AI agents + human developers) who wor
 
 **This is a non-negotiable gate. No work begins until this step is completed.**
 
-Before ANY task begins — including research, exploration, planning, or code review — `origin/develop` MUST be refreshed from remote. Local `develop` is advanced only when not checked out anywhere and a fast-forward is safe; checked-out or divergent refs are preserved:
+Before ANY task begins — including research, exploration, planning, or code review — `origin/develop` MUST be refreshed from remote. Local `develop` is advanced only when not checked out anywhere and a fast-forward is safe; checked-out or divergent refs are preserved. Run the wrapper from inside the target repository. Its helper, environment, and resource paths are resolved relative to the wrapper, while repository operations use the current Git checkout, so invocation works from the repository checkout or an issue worktree regardless of caller CWD:
 
 ```bash
-# HARD GATE — execute before any task, including reading code or creating a worktree
-../../coding-standards/scripts/oelite-gitlab.sh worktree-sync
+# From the repository checkout
+scripts/oelite-gitlab.sh worktree-sync
+
+# From an issue worktree
+scripts/oelite-gitlab.sh worktree-sync
 ```
 
 ### Why This Exists

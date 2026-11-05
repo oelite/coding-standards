@@ -1255,16 +1255,26 @@ get_gitlab_project_path() {
 }
 
 main_repo_root() {
-  local gitrepo
-  gitrepo=$(git rev-parse --git-common-dir 2>/dev/null)
-  if [[ -z "$gitrepo" ]]; then
+  local worktree_root gitrepo
+
+  # Resolve the repository from the caller's current directory. The wrapper can
+  # be invoked through a path in another checkout, so SCRIPT_DIR is deliberately
+  # not used here: it identifies the helper scripts, not the target repository.
+  worktree_root=$(git rev-parse --show-toplevel 2>/dev/null) || {
     echo "[ERROR] Not inside a git repository" >&2
     return 1
-  fi
+  }
+
+  # --git-common-dir may be relative when called from a linked worktree. Anchor
+  # that relative path to Git's worktree root instead of the caller's CWD.
+  gitrepo=$(git -C "$worktree_root" rev-parse --git-common-dir 2>/dev/null) || {
+    echo "[ERROR] Could not resolve the git common directory" >&2
+    return 1
+  }
   if [[ "$gitrepo" != /* ]]; then
-    gitrepo="$(pwd)/$gitrepo"
+    gitrepo="$worktree_root/$gitrepo"
   fi
-  dirname "$gitrepo"
+  dirname "${gitrepo:A}"
 }
 
 get_mr_state_for_branch() {
