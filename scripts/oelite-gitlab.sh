@@ -2792,7 +2792,9 @@ cmd_mr_merge() {
   local data
   data=$(python3 -c "import json; print(json.dumps({'should_remove_source_branch': $( [[ "$delete_source_branch" == true ]] && echo True || echo False ), 'squash': False}))")
 
-  api_put "/projects/$encoded_path/merge_requests/$mr_iid/merge" "$pat" "$data"
+  # GitLab's MR merge endpoint accepts POST only. A PUT here returns
+  # HTTP 405 Method Not Allowed and silently blocks every mr-merge call.
+  api_post "/projects/$encoded_path/merge_requests/$mr_iid/merge" "$pat" "$data"
 
   if [[ "$_API_STATUS" == "200" ]] || [[ "$_API_STATUS" == "201" ]]; then
     local state merged_at source_branch
