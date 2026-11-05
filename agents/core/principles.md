@@ -118,7 +118,7 @@ Start empty, load from API, render explicit loading/empty/error states. If an AP
 
 ### E2E Browser Tests (Playwright)
 - **MANDATORY for all web apps** — unit tests alone insufficient
-- **Run headless in CI only at promotion gates, headed for debugging** (E2E tiering per `5_git_workflow_standards/CI-PIPELINE-EFFICIENCY-STANDARD.md` §2: no E2E in MR pipelines; CI E2E only in the `develop → uat` / `uat → main` promotion chain; no nightly schedules; developers run the full E2E suite locally before marking an MR Ready).
+- **Run locally ONLY — never in CI/CD, including promotion gates** (stakeholder directive, issue #116; amends `5_git_workflow_standards/CI-PIPELINE-EFFICIENCY-STANDARD.md` §2: no E2E in ANY pipeline — MR, protected-branch, or `develop → uat` / `uat → main` promotion; no nightly schedules; developers run the full E2E suite locally against the shared `oelite-stack` and record evidence in the MR before marking it Ready).
 - 12 Quality Gates (NON-NEGOTIABLE):
    1. **Min 3 assertions/test** — no no-op navigation tests
    2. **Real server + real API** — no mock data assertions
