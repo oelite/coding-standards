@@ -70,6 +70,33 @@ git -C "$TMPROOT" worktree add -q -b feature/wt-c "$TMPROOT/.worktrees/sophia-37
 #    production `set -euo pipefail` under which the SIGPIPE bug fired. ──
 source "$WRAPPER" help >/dev/null
 
+print "\nTEST 16 (#111): repository root resolution is independent of CWD"
+EXPECTED_ROOT="$(dirname "$(git -C "$SCRIPT_DIR" rev-parse --git-common-dir)")"
+ACTUAL_ROOT="$(cd "$EXPECTED_ROOT" && main_repo_root)"
+if [[ "$ACTUAL_ROOT" == "$EXPECTED_ROOT" ]]; then
+  pass "main repository root resolves from the repository checkout"
+else
+  fail "expected root $EXPECTED_ROOT, got $ACTUAL_ROOT"
+fi
+WORKTREE_ROOT="$(git -C "$SCRIPT_DIR" rev-parse --show-toplevel)"
+if [[ "$WORKTREE_ROOT" == */.worktrees/ethan-111 && -d "$WORKTREE_ROOT" ]]; then
+  ACTUAL_ROOT="$(cd "$WORKTREE_ROOT" && main_repo_root)"
+  if [[ "$ACTUAL_ROOT" == "$EXPECTED_ROOT" ]]; then
+    pass "main repository root resolves from an issue worktree"
+  else
+    fail "expected root $EXPECTED_ROOT from worktree, got $ACTUAL_ROOT"
+  fi
+else
+  fail "test must run from .worktrees/ethan-111 (found: $WORKTREE_ROOT)"
+fi
+RC=0
+OUT="$(cd "${TMPDIR:-/tmp}" && main_repo_root 2>&1)" || RC=$?
+if [[ $RC -ne 0 && "$OUT" == *"Not inside a git repository"* ]]; then
+  pass "unsupported directory fails with a clear diagnostic"
+else
+  fail "expected nonzero + not-in-repository diagnostic (rc=$RC, out=$OUT)"
+fi
+
 # Stub the MR-state lookup — no GitLab API calls from this harness.
 STUB_MR_STATE="opened"
 get_mr_state_for_branch() { print -r -- "$STUB_MR_STATE"; }
