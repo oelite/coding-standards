@@ -220,7 +220,7 @@ READY: true
 
 | Domain | Path | Key Files |
 |--------|------|-----------|
-| .NET / Backend | `coding-standards/1_dotNet_coding_standards/` | 01-15 |
+| .NET / Backend | `coding-standards/1_dotNet_coding_standards/` | 01-15, **19-M2M-INTEGRATION-STANDARD** |
 | Frontend (Next.js) | `coding-standards/4_react_nextjs_coding_standards/` | 12-NEXTJS-CODING-STANDARDS.md |
 | Frontend (Angular) | `coding-standards/3_angular_coding_standards/` | 11-ANGULAR-CODING-STANDARDS.md |
 | General Web | `coding-standards/2_general_web_coding_standards/` | README.md |
@@ -248,6 +248,10 @@ READY: true
 | Grace | `roles/grace.md` | Backend Code Review |
 | Felix | `roles/felix.md` | Frontend Code Review |
 | Isabella | `roles/isabella.md` | Business Analysis & Documentation |
+
+## Skills Loaded by Role (M2M Standard)
+
+Marcus loads `m2m-product-standard` by default for M2M architecture reviews (canonical doc 19). Daniel and Maya load it on M2M design/implementation tasks. All other roles load it on-demand via the trigger phrases listed in `agents/skills/m2m-product-standard/SKILL.md`.
 
 ---
 
@@ -441,6 +445,17 @@ MANDATORY: Read .oe-scope in your worktree to restore full task context after co
 | **Venus** | `obelisk/`, `sip/`, `stela/` |
 
 **Deprecated (do not touch)**: `pluto/`, `*-legacy`, `helios/sites`, `helios/app-config-server`, `jupiter/oes`, `jupiter/gemni-dev`, `jupiter/ec-std-03`, `mercury/runners/Legacy`, `mercury/workflows`, `uranus/restme-wildduck`, `venus/wildduck-*`, `venus/mail-quarantine`, `venus/runners`, `helios/kortex/web/kortex-dashboard-archived`
+
+### M2M-Ready Products
+
+The following OElite products are primary targets for M2M implementation under the standard defined in `1_dotNet_coding_standards/19-M2M-INTEGRATION-STANDARD.md` (coding-standards issue #112):
+
+| Product | GitLab Project Path | M2M Responsibilities |
+|---|---|---|
+| Origin Auth | `oelite/uranus/origin-auth` | Machine client registration, OAuth client auth, service accounts, public-key registration, token issuance/validation, scopes/roles, delegation, org access policies, IAM tenant & application provisioning, credential rotation/revocation. Reference Provisioning API v1 implementation. |
+| Apex Billing | `oelite/jupiter/apex` | Billing-account provisioning, subscription/quote, payment setup, merchant application, KYB, sanctions screening, settlement/bank ownership verification, payout eligibility, financial audit. Four separate decisions (subscription ≠ merchant approval ≠ payment-processing eligibility ≠ payout eligibility). |
+| Orion | `oelite/uranus/orion` | Workspace/project/environment provisioning, workflow namespaces, worker identities (scoped, non-inherited), execution permissions, monitoring/logging/metrics/tracing config, quotas, credential rotation, environment isolation. |
+| Kortex | `oelite/helios/kortex` | Edge proxy, WAF, rate limiting, bot mitigation, DDoS — same M2M auth/delegation/audit/API-security principles; does not own other products' commercial subscription or domain compliance. |
 
 ### GitLab Project Path Convention
 

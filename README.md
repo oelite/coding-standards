@@ -179,6 +179,7 @@ The OElite standards are automatically applied via `AGENTS.md` at the project ro
 | Date | Update |
 |------|--------|
 | Oct 2026 | Requirements-authority governance (issue #40): `REQUIREMENTS-AUTHORITY.md` standard, de-lifecycled requirements templates, `requirements-authority` skill, `scripts/check-requirements-authority.py` tripwire + regression tests + pre-commit/CI wiring |
+| Nov 2026 | Unified M2M Integration Standard (doc 19, issue #112): product-owned M2M identity, secure registration, delegation, onboarding/provisioning, entitlements, credentials, audit/webhooks; `m2m-product-standard` skill and XIP-1 boundary |
 | Jun 2026 | Extracted documentation templates to `6_documentation_standards/DOC-STANDARDS.md`; added `TASK-TEMPLATES.md` and `ISSUE-MR-TEMPLATES.md` for task/MR creation |
 | Nov 2025 | MongoDB-Free v2.1.0, No-Mock-Data Policy, Restme.Hosting |
 | Nov 2025 | Entity Collection Patterns standard |
