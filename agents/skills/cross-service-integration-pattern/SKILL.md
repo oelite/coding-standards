@@ -35,7 +35,7 @@ POST /v1.0/provision/billing-link        // link an external billing/account ID 
 POST /v1.0/provision/credentials/rotate  // re-issue credentials (secrets are never re-shown on replay)
 ```
 
-- **Idempotency is mandatory**: keyed by `(external_id, clientInstanceId)` or the pair's agreed equivalent. Replay returns the existing resource with `credentialsAlreadyIssued: true`; same key + **different** payload → `409 IdempotencyKeyConflict` + audit alarm (Stripe-style semantics; never overwrite).
+- **Idempotency is mandatory**: keyed by `(external_id, clientInstanceId)` or the pair's agreed equivalent. Replay returns the existing resource with `credentialsAlreadyIssued: true`; same key + **different** payload → `409` with wire-level error code `IDEMPOTENCY_KEY_CONFLICT` (canonical, per doc 19 §4.3) + audit alarm (Stripe-style semantics; never overwrite). Implementations MAY use an exception type such as `IdempotencyKeyConflictException` internally; the registry code is what appears on the wire.
 - Secrets are **returned once** and never logged or re-issued by replay; rotation goes through the rotate endpoint.
 
 ### 3. Cross-Reference ID Store

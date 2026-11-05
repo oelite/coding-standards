@@ -300,6 +300,7 @@ Anti-patterns to reject in code review:
 | 200 OK | Successful read or update with body |
 | 201 Created | Successful create -- Location header points to new resource |
 | 204 No Content | Successful delete or update with no body |
+| 202 Accepted | Asynchronous operation accepted -- body carries requestId/statusUrl (e.g. M2M provisioning, doc 19 §9.1) |
 | 400 Bad Request | Validation failure, malformed input |
 | 401 Unauthorized | No or invalid token |
 | 403 Forbidden | Token valid but lacks permission for this resource/tenant |

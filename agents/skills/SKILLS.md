@@ -115,7 +115,7 @@
 - **Location:** `coding-standards/agents/skills/security-design/SKILL.md`
 - **Status:** [x] active — see issue #22
 - **Owner:** Maya
-- **Related skills:** `architecture-design` (#19) — load together for security architecture reviews; complements `agents/packs/security.md`
+- **Related skills:** `architecture-design` (#19) — load together for security architecture reviews; complements `agents/packs/security.md`; `m2m-product-standard` — load together for M2M auth/token/delegation reviews
 
 ---
 
@@ -167,7 +167,21 @@
 - **Location:** `coding-standards/agents/skills/cross-service-integration-pattern/SKILL.md`
 - **Status:** [x] active — origin-auth issue #1693 (owner-approved 2026-11-02; reference implementation = Origin Auth Provisioning API v1)
 - **Owner:** Marcus (pattern authority), Isabella (documentation)
-- **Related skills:** `security-design` (#22) — load together for token-scope/anti-abuse review; `architecture-design` (#19) — for the pair's ADR
+- **Related skills:** `m2m-product-standard` — load together: XIP-1 is the pair-level integration pattern operating within the product-level M2M standard (doc 19); the pair's Provisioning Token is an approved M2M Scenario-A bootstrap mechanism. `security-design` (#22) — load together for token-scope/anti-abuse review; `architecture-design` (#19) — for the pair's ADR
+
+---
+
+### `m2m-product-standard` — Unified M2M Product Standard (OELITE-ENG-M2M-001)
+
+- **Purpose:** Mandatory cross-product standard for Machine-to-Machine capabilities — machine identity & registration, OAuth authentication (RFC 9700), delegation grants (incl. AI agents), programmatic onboarding, catalogue/plans/quotes, provisioning lifecycle, entitlement enforcement, credential lifecycle, audit, webhooks, compliance gating — with the OElite implementation mapping (BaseEntity/services/configs)
+- **Trigger phrases:** "M2M", "machine-to-machine", "machine identity", "machine client", "delegation grant", "agent delegation", "provisioning API", "entitlement enforcement", "machine onboarding", "spending limit", "capability catalogue", "M2M compliance"
+- **Default loaders:** Marcus, Daniel, Maya
+- **On-demand loaders:** Ethan, Grace, Olivia, Emma, Isabella
+- **Location:** `coding-standards/agents/skills/m2m-product-standard/SKILL.md`
+- **Canonical standard:** `coding-standards/1_dotNet_coding_standards/19-M2M-INTEGRATION-STANDARD.md`
+- **Status:** [x] active — see coding-standards issue #112
+- **Owner:** Marcus (architecture), Maya (security)
+- **Related skills:** `cross-service-integration-pattern` (XIP-1) — load together for service-pair provisioning; the pair's Provisioning Token is an approved M2M Scenario-A bootstrap mechanism. `security-design` (#22) — load together for token-scope/abuse review.
 
 ---
 

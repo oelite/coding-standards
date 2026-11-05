@@ -32,7 +32,8 @@ coding-standards/
 │   ├── 10-OELITE-RESTME-HOSTING-GUIDE.md  # IDistributedCache/IMemoryCache adapters
 │   ├── 11-OELITE-HOSTING-GUIDE.md         # One-line startup, auto-discovery
 │   ├── 12-ENTITY-COLLECTION-PATTERNS.md   # BaseEntityCollection<T>, DataCollection<T>
-│   └── 13-OELITE-RESTME-UNIFIED-GUIDE.md  # Unified data operations
+│   ├── 13-OELITE-RESTME-UNIFIED-GUIDE.md  # Unified data operations
+│   └── 19-M2M-INTEGRATION-STANDARD.md     # Unified M2M: machine identity, delegation, provisioning, entitlements
 │
 ├── 2_general_web_coding_standards/        # General web development standards
 │   └── README.md
@@ -124,6 +125,7 @@ The OElite standards are automatically applied via `AGENTS.md` at the project ro
 | Hosting | 11-OELITE-HOSTING-GUIDE.md | Auto-discovery, one-line startup |
 | Collections | 12-ENTITY-COLLECTION-PATTERNS.md | BaseEntityCollection<T>, DataCollection<T> |
 | Restme | 13-OELITE-RESTME-UNIFIED-GUIDE.md | Unified HTTP, caching, storage, messaging, database |
+| M2M | 19-M2M-INTEGRATION-STANDARD.md | Machine identity, delegation, provisioning, entitlements, credentials, audit (OELITE-ENG-M2M-001) |
 
 ### Frontend
 
@@ -179,6 +181,7 @@ The OElite standards are automatically applied via `AGENTS.md` at the project ro
 | Date | Update |
 |------|--------|
 | Oct 2026 | Requirements-authority governance (issue #40): `REQUIREMENTS-AUTHORITY.md` standard, de-lifecycled requirements templates, `requirements-authority` skill, `scripts/check-requirements-authority.py` tripwire + regression tests + pre-commit/CI wiring |
+| Nov 2026 | Unified M2M Integration Standard (doc 19, issue #112): product-owned M2M identity, secure registration, delegation, onboarding/provisioning, entitlements, credentials, audit/webhooks; `m2m-product-standard` skill and XIP-1 boundary |
 | Jun 2026 | Extracted documentation templates to `6_documentation_standards/DOC-STANDARDS.md`; added `TASK-TEMPLATES.md` and `ISSUE-MR-TEMPLATES.md` for task/MR creation |
 | Nov 2025 | MongoDB-Free v2.1.0, No-Mock-Data Policy, Restme.Hosting |
 | Nov 2025 | Entity Collection Patterns standard |
