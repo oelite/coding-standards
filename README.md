@@ -32,7 +32,8 @@ coding-standards/
 │   ├── 10-OELITE-RESTME-HOSTING-GUIDE.md  # IDistributedCache/IMemoryCache adapters
 │   ├── 11-OELITE-HOSTING-GUIDE.md         # One-line startup, auto-discovery
 │   ├── 12-ENTITY-COLLECTION-PATTERNS.md   # BaseEntityCollection<T>, DataCollection<T>
-│   └── 13-OELITE-RESTME-UNIFIED-GUIDE.md  # Unified data operations
+│   ├── 13-OELITE-RESTME-UNIFIED-GUIDE.md  # Unified data operations
+│   └── 19-M2M-INTEGRATION-STANDARD.md     # Unified M2M: machine identity, delegation, provisioning, entitlements
 │
 ├── 2_general_web_coding_standards/        # General web development standards
 │   └── README.md
@@ -124,6 +125,7 @@ The OElite standards are automatically applied via `AGENTS.md` at the project ro
 | Hosting | 11-OELITE-HOSTING-GUIDE.md | Auto-discovery, one-line startup |
 | Collections | 12-ENTITY-COLLECTION-PATTERNS.md | BaseEntityCollection<T>, DataCollection<T> |
 | Restme | 13-OELITE-RESTME-UNIFIED-GUIDE.md | Unified HTTP, caching, storage, messaging, database |
+| M2M | 19-M2M-INTEGRATION-STANDARD.md | Machine identity, delegation, provisioning, entitlements, credentials, audit (OELITE-ENG-M2M-001) |
 
 ### Frontend
 
