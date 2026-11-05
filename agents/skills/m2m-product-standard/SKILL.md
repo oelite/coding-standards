@@ -42,9 +42,12 @@ Full normative text is in doc 19. Non-negotiables to apply during design/impleme
 - [ ] Machine registration is bootstrap-protected; no open dynamic registration
 - [ ] Tokens audience/scope restricted; delegation cannot be exceeded or self-expanded (tests exist)
 - [ ] Tenant isolation enforced at the data layer for every M2M collection
-- [ ] Idempotency replay + 409-conflict semantics implemented and tested on all consequential mutations
-- [ ] Entitlements/quotas enforced server-side (proof: request exceeding quota rejected at API with stable error code)
+- [ ] Idempotent replay + 409-conflict semantics implemented and tested on all consequential mutations; credential creation/rotation replay does not return secret material
+- [ ] Delegated machine cannot create, modify, approve, or chain other delegation grants; delegation actor and grant ID are bound into the token and validated
+- [ ] Delegated tokens carry the delegation grant ID and `act` claim; actor chain is validated
+- [ ] Webhook signatures use constant-time comparison; signing secrets use SecretsService; stale timestamps are rejected
 - [ ] `m2m.*` audit events emitted with actor/delegation attribution; no secrets in logs
 - [ ] Provisioning async lifecycle with statusUrl, recoverable partial failure, reconciliation (never-delete)
+- [ ] Entitlements/quotas enforced server-side (proof: request exceeding quota rejected at API with stable error code)
 - [ ] OpenAPI document version-controlled and matches implementation; conformance tests pass
 - [ ] Marcus (architecture) + Maya (security) sign-off recorded on the product's M2M issue/MR

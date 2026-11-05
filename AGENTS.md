@@ -251,7 +251,7 @@ READY: true
 
 ## Skills Loaded by Role (M2M Standard)
 
-Marcus loads `m2m-product-standard` by default for M2M architecture reviews (canonical doc 19). Daniel and Maya load it on M2M design/implementation tasks. All other roles load it on-demand via the trigger phrases listed in `agents/skills/m2m-product-standard/SKILL.md`.
+Marcus, Daniel and Maya load `m2m-product-standard` by default for M2M architecture/implementation/security work (canonical doc 19). All other roles load it on-demand via the trigger phrases listed in `agents/skills/m2m-product-standard/SKILL.md`.
 
 ---
 

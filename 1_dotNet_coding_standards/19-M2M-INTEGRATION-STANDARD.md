@@ -83,6 +83,7 @@ A delegation grant (`dlg_…`) represents permission provided by an authorised p
 
 Hard rules:
 - An agent cannot grant itself permissions, change its spending limit, extend its own expiry, remove mandatory human approvals, transfer its delegation, or use one organisation's grant against another.
+- A delegation grant cannot be used to create, modify, or approve other delegation grants (no sub-delegation or lateral delegation); delegation management is reserved to human principals or explicitly privileged admin identities, and is always subject to separation of duties (§6).
 - Delegation is revocable independently of the machine client's registration.
 - Every consequential M2M action is attributable to (human principal where applicable, machine actor, delegation grant, organisation, product, operation, result) — never a bare `system`/`api`/`agent` attribution.
 
@@ -98,6 +99,8 @@ Hard rules:
 | **B — New organisation** | Programmatic initial registration → provisional org identity → verify contact/representative → terms → plan selection → approvals → resource creation → credentials. A hosted verification session MAY be used where human input is necessary. |
 | **C — Existing workload identity** | Federated OIDC / cloud / CI workload identity. Trust policies MUST explicitly declare trusted issuers, audiences and subject claims; never accept arbitrary issuer URLs or client-supplied claims as proof of ownership. |
 | **D — AI agent onboarding** | Agent operates via an existing machine identity + explicit delegation grant. Without one, the customer/administrator must establish identity+delegation through an approved bootstrap (e.g. Authorization Code + PKCE or Device Authorization Grant). |
+
+Approved bootstrap mechanisms using an existing credential require an explicit registration-scoped grant (e.g. `client.register`); low-privilege or read-only credentials are **not** bootstrap mechanisms.
 
 ### 3.2 Bootstrap security (hard gate)
 
@@ -179,6 +182,8 @@ When human intervention is required, the error MUST identify the action explicit
 
 Every request carries/generates Request ID, Correlation ID, Trace ID (distributed tracing), and an `Idempotency-Key` for consequential mutating operations. Keys are scoped to the authenticated client; same key + equivalent payload replays the original result; same key + different payload → `409 IDEMPOTENCY_KEY_CONFLICT` + audit alarm (Stripe-style semantics, aligned with XIP-1 §2). Records have a defined retention period.
 
+**Idempotent replay MUST NOT re-deliver secret material**: the replay cache stores credential-creation/rotation responses with the secret stripped (credential reference only). A replayed credential-creation request returns the existing `crd_…` metadata with no secret; the client must rotate to obtain a new secret.
+
 ---
 
 ## 5. Authentication and OAuth Security
@@ -187,7 +192,7 @@ Every request carries/generates Request ID, Correlation ID, Trace ID (distribute
 
 OAuth 2.0 with **RFC 9700** (Security BCP) as the baseline. Origin Auth (`uranus/origin-auth`) is the ecosystem's IAM/token authority (JWT RS256 issuance/validation/revocation per `principles.md` §Security); each product still validates tokens and enforces its own authorisation on every request.
 
-Supported methods (choose per deployment/risk model): **Private Key JWT** (RFC 7523), **mTLS** (RFC 8705), **DPoP** (RFC 9449), **federated workload identity**, **Client Credentials** for autonomous M2M. Client Credentials alone MUST NOT be used to imply a human's delegated authority — use Token Exchange (RFC 8693) so the final token accurately represents organisation/principal, machine actor, target product, permitted actions and delegation.
+Supported methods (choose per deployment/risk model): **Private Key JWT** (RFC 7523), **mTLS** (RFC 8705), **DPoP** (RFC 9449), **federated workload identity**, **Client Credentials** for autonomous M2M. Client Credentials alone MUST NOT be used to imply a human's delegated authority — use Token Exchange (RFC 8693) so the final token accurately represents organisation/principal, machine actor, target product, permitted actions and delegation. The ≤1h XIP-1 Provisioning Token TTL governs bootstrap tokens only; all M2M API access tokens remain ≤900 s (§5.2).
 
 Prohibited: ROPC grant, Implicit grant, permanent shared secrets in code, hardcoded production credentials, credentials in repositories, unrestricted API keys, credentials in URLs, agents collecting user passwords for onward submission, cross-product token acceptance without an explicit trust relationship.
 
@@ -195,6 +200,7 @@ Prohibited: ROPC grant, Implicit grant, permanent shared secrets in code, hardco
 
 - Access tokens: short-lived (~5–15 min; Origin Auth dynamic peer credential contract is ≤ 900 s — see doc 18), audience-restricted to the issuing product's API, scope-restricted, validated for issuer/signature/expiry/nbf/binding/revocation.
 - A token for one product is never accepted by another; cross-product access is explicitly authorised.
+- Delegated tokens MUST carry the delegation grant ID and an `act` claim identifying the machine actor; the target product validates both the delegated subject and the actor chain.
 - Scopes are specific (`organisation.read`, `subscription.create`, `provisioning.create`, `credential.rotate`, `workspace.execute`, `merchant.apply`, `payout.request`, …). Broad scopes (`admin`, `full_access`) are prohibited.
 
 ### 5.3 Credential lifecycle
@@ -263,7 +269,7 @@ Use `[DenormalizedField]` for display-only copies (e.g. org name on a subscripti
 - All data/queue/cache access via `IRestme`; background provisioning work via durable jobs (mercury Backplane / Restme queues) — never fire-and-forget for compensating workflows.
 - Edge protection may integrate Kortex (gateway, WAF, rate limiting) but never replaces product-level authz (Golden Rule 6).
 
-### 8.4 Internal consistency (§18 of source standard, OElite terms)
+### 8.4 Internal consistency (propagation of revocations and entitlement changes)
 
 Revocations, suspensions and entitlement changes propagate to all validating components: token validation, entitlement caches (`IRestmeCache` with TTL + invalidation on write), credential revocation, subscription suspension. A revoked financial or privileged capability MUST NOT remain usable via stale cached authorisation data.
 
@@ -301,7 +307,7 @@ Minimum attributes: event ID, timestamp, product, organisation, resource, human 
 
 ### 10.2 Webhooks
 
-Signed (HMAC-SHA256 or asymmetric), timestamped, unique `evt_…` ID, replay detection, secret rotation, minimal payload. Common envelope: `eventId`, `eventType`, `eventVersion`, `productId`, `organisationId`, `resourceId`, `occurredAt`, `correlationId`, `data`. At-least-once delivery — consumers are idempotent. SSRF protection: validate destination schemes/addresses; block loopback/private/link-local unless explicitly authorised; revalidate on resolution and delivery (DNS rebinding).
+Signed (HMAC-SHA256 or asymmetric), timestamped, unique `evt_…` ID, replay detection, secret rotation, minimal payload. Timestamps outside a ±5-minute acceptance window MUST be rejected. Verify signatures with constant-time comparison. Webhook signing secrets are stored via the platform SecretsService (never in config or database plaintext); rotation takes effect for newly signed events, with any overlap window explicitly bounded. Common envelope: `eventId`, `eventType`, `eventVersion`, `productId`, `organisationId`, `resourceId`, `occurredAt`, `correlationId`, `data`. At-least-once delivery — consumers are idempotent. SSRF protection: validate destination schemes/addresses; block loopback/private/link-local unless explicitly authorised; revalidate on resolution and delivery (DNS rebinding).
 
 ### 10.3 Monitoring
 
