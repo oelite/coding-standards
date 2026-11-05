@@ -79,7 +79,7 @@ else
   fail "expected root $EXPECTED_ROOT, got $ACTUAL_ROOT"
 fi
 WORKTREE_ROOT="$(git -C "$SCRIPT_DIR" rev-parse --show-toplevel)"
-if [[ "$WORKTREE_ROOT" == */.worktrees/ethan-111 && -d "$WORKTREE_ROOT" ]]; then
+if [[ "$WORKTREE_ROOT" == */.worktrees/* && -d "$WORKTREE_ROOT" ]]; then
   ACTUAL_ROOT="$(cd "$WORKTREE_ROOT" && main_repo_root)"
   if [[ "$ACTUAL_ROOT" == "$EXPECTED_ROOT" ]]; then
     pass "main repository root resolves from an issue worktree"
@@ -87,7 +87,7 @@ if [[ "$WORKTREE_ROOT" == */.worktrees/ethan-111 && -d "$WORKTREE_ROOT" ]]; then
     fail "expected root $EXPECTED_ROOT from worktree, got $ACTUAL_ROOT"
   fi
 else
-  fail "test must run from .worktrees/ethan-111 (found: $WORKTREE_ROOT)"
+  fail "test must run from an issue worktree under .worktrees (found: $WORKTREE_ROOT)"
 fi
 RC=0
 OUT="$(cd "${TMPDIR:-/tmp}" && main_repo_root 2>&1)" || RC=$?
