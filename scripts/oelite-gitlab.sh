@@ -2790,7 +2790,8 @@ cmd_mr_merge() {
   local pat
   pat=$(get_pat "$agent")
 
-  # Accept the MR via POST /merge_requests/:iid/merge.
+  # Accept the MR via PUT /merge_requests/:iid/merge (the verb supported by
+  # this GitLab instance, verified by a wrong-sha response of HTTP 409).
   # should_remove_source_branch is sent explicitly (caller's choice, default
   # true) rather than left to GitLab's project-level default, so the merge
   # payload is deterministic regardless of project settings.
@@ -2802,9 +2803,18 @@ cmd_mr_merge() {
   local data
   data=$(python3 -c "import json; print(json.dumps({'should_remove_source_branch': $( [[ "$delete_source_branch" == true ]] && echo True || echo False ), 'squash': False}))")
 
-  # GitLab's MR merge endpoint accepts POST only. A PUT here returns
-  # HTTP 405 Method Not Allowed and silently blocks every mr-merge call.
-  api_post "/projects/$encoded_path/merge_requests/$mr_iid/merge" "$pat" "$data"
+  # This GitLab instance exposes the merge action as PUT. A wrong-sha PUT
+  # returns 409 (route exists and merge is rejected), while POST returns 404.
+  api_put "/projects/$encoded_path/merge_requests/$mr_iid/merge" "$pat" "$data"
+
+  # BUG-123 safe diagnostics: a 404 from PUT /merge means the route is
+  # genuinely absent or blocked for this PAT — distinguish that from the
+  # upstream POST-only convention so operators can tell route-missing from
+  # permission failure. No secrets are printed (endpoint path + status only).
+  if [[ "$_API_STATUS" == "404" ]]; then
+    echo "[HINT] 404 from PUT .../merge: route absent or MR not visible to this PAT." >&2
+    echo "[HINT] This instance expects PUT for merge (POST yields 404). Verify MR IID and that the agent PAT has Developer+ access to $project_path." >&2
+  fi
 
   if [[ "$_API_STATUS" == "200" ]] || [[ "$_API_STATUS" == "201" ]]; then
     local state merged_at source_branch
@@ -2830,8 +2840,8 @@ cmd_mr_merge() {
       fi
     fi
   else
-    echo "[ERROR] Failed to merge MR !$mr_iid (HTTP $_API_STATUS)" >&2
-    echo "$_API_RESPONSE" >&2
+    echo "[ERROR] Failed to merge MR !$mr_iid via PUT $OELITE_GITLAB_API/projects/$encoded_path/merge_requests/$mr_iid/merge (HTTP $_API_STATUS)" >&2
+    echo "[ERROR] GitLab response: $_API_RESPONSE" >&2
     return 1
   fi
 }

@@ -421,6 +421,98 @@ else
 fi
 unset -f api_post
 
+# ────────────────────────────────────────────────────────────────────
+# BUG-123 (#114): mr-merge returns HTTP 404 on this GitLab instance even
+# for approved, mergeable MRs. Safe probes (wrong-sha PUT returns 409, no
+# merge performed) proved the /merge route is method-sensitive here: PUT
+# reaches the merge handler, POST 404s. The wrapper now issues PUT.
+# Regression tests below stub the api_* helpers — no real merges, no
+# network — and exercise the REAL shipped cmd_mr_merge.
+#   — TEST 16: cmd_mr_merge issues PUT (not POST) to .../merge
+#   — TEST 17: PUT 200 merged-state success path prints state + skips cleanup
+#   — TEST 18: PUT 409 (sha mismatch / not mergeable) fails with HTTP in error
+#   — TEST 19: endpoint construction encodes nested project paths correctly;
+#     404 diagnostics include safe endpoint/status/body context, never PATs.
+# ────────────────────────────────────────────────────────────────────
+
+print "\nTEST 16 (#114): cmd_mr_merge sends PUT (not POST) to /merge endpoint"
+# Restore REAL cmd_mr_merge in case earlier stubs lingered, then intercept
+# BOTH verbs and record which one the shipped code actually calls.
+set +e
+unset -f api_put api_post 2>/dev/null
+set -e
+source "$WRAPPER" help >/dev/null
+_merge_calls=""
+api_put()  { _merge_calls="$1|PUT"; _API_STATUS=200; _API_RESPONSE='{"state":"merged","merged_at":"2026-11-05T00:00:00Z","source_branch":"feature/x"}'; }
+api_post() { _merge_calls="$1|POST"; _API_STATUS=200; _API_RESPONSE='{"state":"merged","merged_at":"2026-11-05T00:00:00Z","source_branch":"feature/x"}'; }
+get_pat()  { print "testpat"; }
+export OELITE_HUMAN=1
+cmd_mr_merge oelite/coding-standards 999 emma >/dev/null 2>&1 || true
+ENDPOINT="${_merge_calls%%|*}"; VERB="${_merge_calls##*|}"
+if [[ "$VERB" == "PUT" && "$ENDPOINT" == "/projects/oelite%2Fcoding-standards/merge_requests/999/merge" ]]; then
+  pass "cmd_mr_merge issues PUT to /projects/<enc>/merge_requests/<iid>/merge"
+else
+  fail "wrong verb/endpoint: verb=$VERB endpoint=$ENDPOINT"
+fi
+if [[ "$ENDPOINT" == *"%2F"* && "$ENDPOINT" != *"/oelite/"* ]]; then
+  pass "nested project path URL-encoded (%2F), no raw slashes in path segment"
+else
+  fail "project path not URL-encoded: $ENDPOINT"
+fi
+_merge_calls=""
+cmd_mr_merge oelite/helios/nexus 93 emma >/dev/null 2>&1 || true
+if [[ "$_merge_calls" == "/projects/oelite%2Fhelios%2Fnexus/merge_requests/93/merge|PUT" ]]; then
+  pass "multi-segment namespace oelite/helios/nexus encoded and IID preserved"
+else
+  fail "Nexus endpoint/IID construction wrong: $_merge_calls"
+fi
+
+print "\nTEST 17 (#114): cmd_mr_merge success path reports merged state"
+# Re-stub with a recording PUT; success branch must print State: merged and
+# must NOT attempt any further verb fallback.
+_merge_calls=""
+api_put()  { _merge_calls="$_merge_calls PUT:$1"; _API_STATUS=200; _API_RESPONSE='{"state":"merged","merged_at":"2026-11-05T00:00:00Z","source_branch":"feature/x"}'; }
+# Call directly (NOT inside $(...)): command substitution runs in a subshell,
+# so mutations to _merge_calls would not propagate to this shell.
+OUT_FILE=$(mktemp)
+cmd_mr_merge oelite/helios/nexus 999 emma >"$OUT_FILE" 2>&1 || true
+OUT="$(<"$OUT_FILE")"; rm -f "$OUT_FILE"
+PUT_COUNT=$(print -r -- "$_merge_calls" | wc -w | tr -d ' ')
+if [[ "$OUT" == *"State:      merged"* && "$OUT" == *"[OK] MR !999 merged by emma"* ]]; then
+  pass "success output shows [OK] merged + State: merged"
+else
+  fail "success output wrong: $OUT"
+fi
+if [[ "$PUT_COUNT" -eq 1 ]]; then
+  pass "exactly one merge request issued (no redundant fallback on 200)"
+else
+  fail "expected 1 PUT, got $PUT_COUNT ($_merge_calls)"
+fi
+
+print "\nTEST 18 (#114): cmd_mr_merge surfaces precise error on 409 (non-mergeable)"
+api_put()  { _API_STATUS=409; _API_RESPONSE='{"message":"SHA does not match HEAD of source branch: abc123"}'; }
+RC=0
+OUT="$(cmd_mr_merge oelite/coding-standards 999 emma 2>&1)" || RC=$?
+if [[ $RC -eq 1 && "$OUT" == *"HTTP 409"* && "$OUT" == *"SHA does not match"* ]]; then
+  pass "409 fails with exit 1 and body context (no silent success, no issue side-effects)"
+else
+  fail "409 handling wrong (rc=$RC, out=$OUT)"
+fi
+
+print "\nTEST 19 (#114): merge error diagnostics never expose PAT material"
+# The error path prints HTTP status + response body only. Assert no token-
+# shaped secret appears in output for a failing call.
+api_put()  { _API_STATUS=404; _API_RESPONSE='{"error":"404 Not Found"}'; }
+RC=0
+OUT="$(cmd_mr_merge oelite/coding-standards 999 emma 2>&1)" || RC=$?
+if [[ $RC -eq 1 && "$OUT" == *"HTTP 404"* ]] && ! print -r -- "$OUT" | grep -qE 'glpat-|PRIVATE-TOKEN|testpat'; then
+  pass "404 error includes endpoint context/status without any token leak"
+else
+  fail "404 diagnostics wrong or token leaked (rc=$RC, out=$OUT)"
+fi
+unset -f api_put api_post get_pat 2>/dev/null || true
+unset OELITE_HUMAN 2>/dev/null || true
+
 print ""
 print "════════════════════════════════════"
 print "Results: $PASS passed, $FAIL failed"
