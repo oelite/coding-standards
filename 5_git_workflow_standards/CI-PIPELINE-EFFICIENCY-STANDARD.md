@@ -4,8 +4,8 @@
 > **Scope**: ALL OElite sub-repositories (normative for every `.gitlab-ci.yml`)
 > **Maintained by**: Ethan (DevOps & Reliability)
 > **Status**: Active
-> **Version**: 1.1.0
-> **Issues**: TASK-102 (#102), TASK-104 (#104) — v1.1.0 amends per owner decision: nightly E2E schedules DROPPED
+> **Version**: 1.2.0
+> **Issues**: TASK-102 (#102), TASK-104 (#104), #116 — v1.2.0 amends per stakeholder directive: E2E is developer-local only; all CI/CD E2E execution is prohibited
 
 ---
 
@@ -16,7 +16,7 @@ This standard defines **when pipelines run**, **which test tiers run at each tri
 **Decisions recorded by the business owner (2026-11-03):**
 
 1. Pipelines trigger on **MR events and protected branches only** — no push pipelines on `feature/*` or `fix/*` branches.
-2. **No E2E suites in MR pipelines.** Developers run the full E2E suite **locally** (against the shared `oelite-stack` infrastructure) and record evidence in the MR before requesting review. CI runs E2E only as part of the promotion chain (§2.3) per `GIT-WORKFLOW-STANDARDS.md` §2.1.2. **No nightly/scheduled E2E pipelines** (owner decision, TASK-104).
+2. **No E2E suites in any CI/CD pipeline.** Developers run the full E2E suite **locally** (against the shared `oelite-stack` infrastructure) and record evidence in the MR before requesting review. This prohibition includes MR pipelines, protected-branch pipelines, and the `develop → uat` / `uat → main` promotion chain. **No nightly/scheduled E2E pipelines** (owner decision, TASK-104; stakeholder directive, #116).
 
 ---
 
@@ -29,7 +29,7 @@ workflow:
   rules:
     # MR pipelines — the merge gate (build + unit + lint; NO E2E)
     - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
-    # Protected branches — full pipeline including integration/E2E tiers
+    # Protected branches — full pipeline including integration tier (NO E2E)
     - if: '$CI_COMMIT_BRANCH == "develop"'
     - if: '$CI_COMMIT_BRANCH == "uat"'
     - if: '$CI_COMMIT_BRANCH == "main" || $CI_COMMIT_BRANCH == "master"'
@@ -42,7 +42,7 @@ workflow:
 | Tier | Trigger | Jobs allowed | Rationale |
 |------|---------|--------------|-----------|
 | **MR pipeline** | `merge_request_event` | Build, lint, unit tests, static analysis | The merge-eligibility gate. Fast feedback; no E2E. |
-| **Protected-branch pipeline** | push to `develop` / `uat` / `main`/`master` | Full pipeline: build, unit, integration (ephemeral `services:` where available). E2E only where §2.3 assigns it to that branch (promotion gates) — NOT on ordinary `develop` pushes. | Validates the integration point; feeds deployment gates. |
+| **Protected-branch pipeline** | push to `develop` / `uat` / `main`/`master` | Full pipeline: build, unit, integration (ephemeral `services:` where available); no E2E. | Validates the integration point; feeds deployment gates. |
 | **Promotion MR** | MR `uat` ← `develop`, `main` ← `uat` | Per §2.1.2 promotion gates | UAT soak + production gates unchanged. |
 | **Feature/fix branch push** | plain push, no MR | **No pipeline** | Intermediate commits prove nothing; the MR pipeline validates the final state. |
 
@@ -70,15 +70,11 @@ For every user-facing change, the implementing developer (human or agent) MUST, 
 
 Reviewers MUST reject an MR for a user-facing change whose description lacks local E2E evidence. "Unit tests pass" is NOT sufficient (see `ISSUE-MR-TEMPLATES.md` MR template checklist).
 
-### 2.3 CI E2E — promotion gates only
+### 2.3 CI/CD E2E prohibition — all branches and promotion gates
 
-| Branch / gate | E2E execution | Blocking? |
-|---------------|---------------|-----------|
-| `develop` | No automatic E2E on ordinary pushes; developer local E2E evidence remains the MR gate (§2.2). | N/A |
-| `uat` | Full E2E as part of the develop → uat promotion soak | Blocking per §2.1.2 |
-| `main`/`master` | Full E2E post-deploy verification (or as part of uat → main promotion MR evidence) | Per §2.1.2 + `DEPLOYMENT-OBSERVABILITY-STANDARD.md` |
+E2E browser suites MUST NOT execute in any CI/CD pipeline, including ordinary protected-branch pipelines and the `develop → uat` / `uat → main` promotion chain. Promotion deploy, soak, health, and release gates remain unchanged; their E2E evidence comes from the developer's completed local run recorded in the MR.
 
-No nightly/scheduled E2E pipelines are configured. Ethan preserves the existing promotion-gate sequence and verifies E2E evidence per release issue.
+If a repository contains an E2E CI job, it MUST be removed or disabled with a comment citing this policy. No nightly or scheduled E2E pipelines may be configured.
 
 ### 2.4 Data-layer integration tests
 
@@ -106,8 +102,8 @@ Every job MUST declare an explicit `timeout:` bounded to its tier (GitLab defaul
 |-----------|-------------|
 | Build / lint / unit | 15m |
 | Integration (ephemeral services) | 30m |
-| E2E smoke / post-deploy checks | 30m |
-| Full E2E (promotion) | 90m |
+| E2E smoke / post-deploy checks | N/A — E2E is developer-local only |
+| Full E2E (promotion) | N/A — E2E is developer-local only |
 
 ### 3.3 Interruptible jobs
 
@@ -144,7 +140,7 @@ Projects MUST keep **Settings → Merge requests → "Pipelines must succeed"** 
 
 - [ ] `workflow:` block present; no push pipelines on unprotected branches
 - [ ] MR pipeline jobs: `interruptible: true`, explicit `timeout:`, no E2E jobs
-- [ ] Promotion-gate E2E evidence present per §2.3; no nightly E2E schedule configured
+- [ ] No E2E jobs in any CI/CD pipeline, including promotion chains; local E2E evidence required in the MR; no nightly E2E schedule configured
 - [ ] Fail-fast configured in test runner config (`maxFailures` for Playwright / `--bail` for Jest-Vitest / bounded .NET strategy per §3.1)
 - [ ] "Auto-cancel redundant pipelines" + "Pipelines must succeed" enabled
 - [ ] Caching configured for package managers

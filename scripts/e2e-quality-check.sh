@@ -15,7 +15,9 @@
 # ============================================================================
 
 set -euo pipefail
-SCRIPT_DIR="${0:A:h}"
+# Portable script-directory resolution — works under both bash and zsh
+# (the zsh-only `${0:A:h}` form fails under bash; see issue #115).
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)"
 
 DOCUMENT_BODY_PATTERN="expect\\(.*locator\\([\"'](body|html)[\"']\\)\\).*toBeVisible"
 TAUTOLOGICAL_PATTERNS=(
