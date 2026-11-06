@@ -1,5 +1,5 @@
 # =============================================================================
-# OElite Peer Service Registry — v1 (TASK-97, issue #97)
+# OElite Peer Service Registry — v2 (TASK-97, issue #97)
 # =============================================================================
 # Single source of truth for peer OElite platform service endpoints used by
 # local development integration profiles. Owned by Ethan (DevOps); changes
@@ -9,6 +9,9 @@
 #   There is NO prod endpoint field in this schema. Production deploys read
 #   peer endpoints from CI variables, never from this registry. Consumers must
 #   only ever resolve `mock-peers`, `local-peers`, or `uat-peers` profiles.
+#   Registry entries represent currently-active peers; new peer bring-ups that
+#   are not yet ready for integration should NOT be listed until their UAT
+#   endpoints, contract versions, and credentials are provisioned.
 #
 # Credential rule (AC-003 / BR-DEV-005): credentials are NEVER committed.
 # `credentials.source` names a per-machine Keychain service (or gitignored
@@ -27,10 +30,14 @@
 #   Local dev FAILS FAST when a required peer is down (no degraded fallback).
 #   `critical: true` peers hard-fail; others fail with a clear error naming
 #   the peer + the health-check command to run.
+#   All registry entries must have uat endpoint matching *.uat.phanes.ltd.
+#
+# NOTE: A `status` field (enum: active | onboarding | deprecated) is reserved
+# for future use to track peer lifecycle. Currently all peers default to `active`.
 # =============================================================================
 
 schemaVersion: 1
-registryVersion: 1
+registryVersion: 2
 
 profiles:
   mock-peers:

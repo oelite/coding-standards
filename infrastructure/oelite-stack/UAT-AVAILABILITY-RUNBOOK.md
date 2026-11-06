@@ -35,7 +35,7 @@ covers peer availability, not app deployment observability.
   `versionEndpoint`) and flags `versionDrift: true` when
   `live < minVersion`.
 - When a peer reports drift:
-  1. Ethan notifies the owning repo's team (see escalation table) to deploy or
+  1. Ethan notifies the owning repo's team (see § 3) to deploy or
      roll back UAT.
   2. If the drift is intentional (breaking change), the owner raises an MR to
      bump `contractVersion`/`minVersion` in the registry **before** consumers
@@ -53,39 +53,37 @@ any down) · `2` config error. When you get `1`:
 | 1 | Run `peers-health --profile uat-peers --verbose` and capture which peers are down | immediate |
 | 2 | Check Orion UAT dashboards/alerts for the peer (`orion` repo, monitoring stack) | immediate |
 | 3 | If a deploy is in flight, wait and re-run `peers-health` | ≤ 30 min |
-| 4 | Otherwise, raise a GitLab issue on the peer's owning repo (table below), tagged `Priority::High`, and link it on issue #97 | — |
-| 5 | Owning team **acknowledges** | **4 h ack** |
-| 6 | Owning team restores the peer | **1 business-day recovery** |
+| 4 | Otherwise, raise a GitLab issue on the peer's `repository` from the registry, tagged `Priority::High`, and link it on issue #97 | — |
+| 5 | The owning team acknowledges | **4 h ack** |
+| 6 | The owning team restores the peer | **1 business-day recovery** |
 
-### Peer ownership & escalation contacts
+The registry is authoritative for the peer name, owning repository, UAT/local
+endpoints, health/version paths, `critical` flag, contract versions, and
+credential scopes. Do not add a peer to this runbook. If the registry does not
+contain the peer, treat that as a registry/configuration defect and raise it to
+Ethan; do not guess an endpoint or owner.
 
-| Peer | Owning repo | Escalation owner |
-|------|-------------|------------------|
-| origin-auth | `oelite/uranus/origin-auth` | Daniel |
-| kortex | `oelite/helios/kortex` | Sophia |
-| nexus | `oelite/helios/nexus` | Daniel |
-| oesterling | `oelite/helios/oesterling` | Daniel |
-| apex | `oelite/jupiter/apex` | Daniel |
-| synapse | `oelite/mercury/synapse` | Daniel |
-| obelisk | `oelite/venus/obelisk` | Daniel |
-| hermes | `oelite/uranus/hermes` | Daniel |
-| orion | `oelite/uranus/orion` | Ethan |
-
-`critical: true` peers (currently **origin-auth**) block all peer-integration
-work when down — escalate immediately per the table; do not attempt a mock
-fallback (BR-DEV-006 forbids silent degradation; fail fast with the peer named
-in the error).
+`critical: true` peers block all peer-integration work when down — escalate
+immediately; do not attempt a mock fallback (BR-DEV-006 forbids silent
+degradation; fail fast with the peer named in the error).
 
 ## 4. Reset Policy Execution
 
 Each registry entry declares `testTenantId` (the reserved UAT tenant for dev
-writes, BR-DEV-005) and `resetPolicy`:
+writes, BR-DEV-005) and `resetPolicy`. The registry is the only peer list to
+maintain; apply the policy to every entry with the matching value:
 
-| resetPolicy | Peers | Execution |
-|-------------|-------|-----------|
-| `weekly` | origin-auth, kortex, nexus, oesterling, synapse, obelisk | Ethan (or peer owner) purges records carrying the `dev-<username>-` prefix from `testTenantId` **every Monday**; scripted purge preferred over manual SQL |
-| `monthly` | apex | First business day of the month, same `dev-*` purge scope (billing test data is kept longer for statement verification) |
-| `manual` | hermes, orion | Read-only peers — reset only on request via GitLab issue |
+- `weekly`: Ethan (or the peer owner) purges records carrying the
+  `dev-<username>-` prefix from `testTenantId` every Monday; scripted purge is
+  preferred over manual SQL.
+- `monthly`: purge on the first business day of the month, using the same
+  `dev-*` scope. Billing test data is kept longer for statement verification.
+- `manual`: read-only peers are reset only on request via a GitLab issue.
+
+Before executing a reset, confirm the peer's current `resetPolicy`,
+`testTenantId`, and `mutability` in `config/peer-registry.yml`. A new peer's
+reset behavior is therefore covered by its registry entry without a runbook
+edit.
 
 Conventions (Emma stakeholder decision 3, #97 note 58415):
 - All dev-written UAT records carry a `dev-<username>-` identifier prefix so
@@ -168,3 +166,26 @@ This pattern ensures zero long-lived secrets in CI, per-job attribution, and
 Reminder: credentials live in **per-machine Keychain** (`oelite-uat-<peer>`
 services, account `oelite`) — never committed, rotated per
 `SECURITY-PATTERNS.md` (90-day rotation SLA).
+
+## 8. Peer Onboarding Workflow
+
+A repo is registered as a peer only when it exposes a UAT-facing service that
+other repos integrate against through the `uat-peers` profile. Consumer-only
+repos (apps that call peers but are not themselves called) do **not** register
+and require no change to this runbook or to `peer-registry.yml` — they opt into
+peers per `1_dotNet_coding_standards/17-LOCAL-DEV-PEER-INTEGRATION.md`.
+
+When a repo (e.g. `venus/aveniq`) becomes a peer, follow this checklist:
+
+| Step | Action | Owner |
+|------|--------|-------|
+| 1 | Decide peer name (kebab-case), repository path, UAT endpoint `https://<peer>.uat.phanes.ltd`, local endpoint `http://localhost:<canonical port>`, and contract URL | Team |
+| 2 | Register `healthEndpoint`/`versionEndpoint` (`/health`, `/version`) on the service; confirm they return HTTP 200 on UAT | Team |
+| 3 | Declare `mutability`, `testTenantId`, `resetPolicy` (`weekly|monthly|manual`), `contractVersion`/`minVersion`, `channel: stable`, `critical` (true only for hard-fail peers such as origin-auth) | Team |
+| 4 | Declare least-privilege `credentials.scopes` and `credentials.mode` (`static` default) | Team + Maya |
+| 5 | Open an MR to `peer-registry.yml` (registryVersion bumped as needed). Changes require Marcus architecture review; CI `validate-peer-registry` runs jsonschema validation fail-closed. | Ethan |
+| 6 | Provision the per-machine Keychain entry or V2 minting client (`dev-<username>-local` IAM client) for local developers and CI | Ethan |
+| 7 | Verify with `peers-health --profile uat-peers --strict --verbose --peer <peer>` before any consumer opts into `uat-peers` for that peer | Team |
+
+The runbook requires **no** edit for a newly registered peer: ownership, reset policy, criticality, and contacts live in the registry.
+

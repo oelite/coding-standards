@@ -167,7 +167,7 @@ Result: Origin Auth resolves to `https://origin-auth.uat.phanes.ltd` from the re
 ## Migration / Backward Compatibility
 
 - Existing repos with hardcoded localhost peer URLs keep working: `mock-peers`/`local-peers` resolve to the same endpoints. Adoption is opt-in via the `integrationProfile` block.
-- Adding a repo's peer to the registry = MR to `peer-registry.yml` + `peers-health` registration check. No code change in consuming apps.
+- Adding a repo's peer to the registry = MR to `peer-registry.yml` + `peers-health` registration check. No code change in consuming apps. Register a peer only once it exposes a UAT-facing service other repos consume; consumer-only repos never register (see the UAT-AVAILABILITY-RUNBOOK § 8 onboarding checklist).
 - Deprecation: hardcoded peer URLs in appsettings produce a startup warning during a deprecation window, then become validation errors (same fail-fast path).
 
 ## CI / Testing Boundary (AC-004)
