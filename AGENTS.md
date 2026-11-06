@@ -277,7 +277,7 @@ Marcus, Daniel and Maya load `m2m-product-standard` by default for M2M architect
 
 ## 🤖 SUBAGENT DELEGATION RULE
 
-When a request names a specific role and the context matches their responsibility, you MAY spawn that role as a subagent using the `Agent` tool. Include in the prompt:
+When a request names a specific role and the context matches their responsibility, you MUST continue the workflow by dispatching that role through an available subagent/session tool, unless the user explicitly asks for a single-agent session or the requested work has no successor in the workflow chain. Include in the prompt:
 
 ```markdown
 # SUBAGENT BOOTSTRAP REQUIREMENTS
@@ -296,7 +296,7 @@ You MUST complete the Universal Agent Bootstrap (Steps 1-4) before ANY work.
 Your first output MUST be the bootstrap verification block (including SCOPE verified).
 ```
 
-**Note**: Subagent spawning is optional. The primary workflow is a single-agent session that outputs a structured handoff for the next role. Use subagents only when the user explicitly requests multi-agent orchestration or names a specific role.
+**Note**: Subagent spawning is the default for any named role. A single-agent session that only emits a structured handoff is a fallback, not the normal path, and is allowed only when spawning is unavailable, explicitly declined by the user, or the work is genuinely complete/blocked. Even in fallback mode, the current agent must either invoke the next owner or record an explicit stop reason, exact next action, and required human decision. A summary without a dispatched next owner or stop reason is incomplete.
 
 ---
 

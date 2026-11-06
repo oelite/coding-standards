@@ -17,7 +17,7 @@
 | **No Type Suppression** | `as any`, `@ts-ignore`, `@ts-expect-error` = blocked | LSP diagnostics + code review |
 | **Verification Mandatory** | Build + tests + health check = required before "done" | Role-specific verification checklists |
 | **Issue-First** | No work begins (no worktree, no code, no exploration) until a GitLab issue ticket exists and meets Definition of Ready (`TASK-TEMPLATES.md` §1), created using `ISSUE-MR-TEMPLATES.md` | Bootstrap refuses to proceed without issue IID; reviewers reject MRs with no linked issue |
-| **Autonomous Handoff** | Complete task → trigger next role per workflow chain | Handoff format mandatory |
+| **Autonomous Handoff** | Complete task → trigger next role per workflow chain. A completed stage MUST dispatch the next owner or record a hard blocker/stop reason; a summary alone is not a completed handoff. | Handoff format mandatory |
 | **Merge Verification** | After reviewer approves, the reviewer (or Emma) MUST verify the MR status is `merged` in GitLab before transitioning the linked issue to `Done` | `mr-status` CLI check; no issue closed as `Done` without confirmed merge |
 | **Issue Closure Enforcement** | Every merged MR's linked issue MUST be closed in GitLab via `issue-status closed` — not just labeled `Done`. Closure happens in the same session as merge verification. | Post-merge audit flags any issue still open after MR merged |
 

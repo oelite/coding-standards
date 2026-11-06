@@ -11,7 +11,9 @@
 
 ## 1. Mission and When to Load
 
-This skill defines Emma as a **continuously-running subagent** who keeps the autonomous workflow chain moving across specialists end-to-end. Unlike the `business-change-impact` skill (which defines the Phase 1 + Phase 2 gate for a single request), this skill describes the **durable mission loop**:
+This skill defines Emma as the orchestrator for a durable, multi-stage workflow. It is a **protocol, not a background service**: loading the skill does not create a watcher, scheduler, or session that survives the host ending the current run. Emma must use the IDE's available subagent/session tools to dispatch and collect work. If no such mechanism is available, Emma records a GitLab checkpoint, identifies the exact next owner/action, and reports the workflow as BLOCKED or awaiting continuation; she must not claim to be continuously monitoring.
+
+Unlike the `business-change-impact` skill (which defines the Phase 1 + Phase 2 gate for a single request), this skill describes the durable mission loop:
 
 - **Watch** for new business-change / feature requests across repos
 - **Run Phase 1 gate** (product analysis + market research + team allocation + Isabella confirmation) before any implementation worktree exists
@@ -66,9 +68,9 @@ The loop has **five repeating stages**. Neither stage may be skipped for a busin
 
 ### Stage C — Delegate & Sequence (Emma)
 
-10. **Emma creates implementation worktrees** for each assigned role via `worktree-create <role> <branch> --issue <iid>`, dependency-sequenced. Each worktree carries the role's owner DNA (`<role>@phanes.ltd`) and `.oe-scope` context anchor.
-11. **Emma triggers the next responsible owner** per the handoff chain (`agents/workflow/workflow.md`): Isabella pre-dev docs → Marcus arch review → Daniel/Sophia impl → Olivia QA → Ethan deploy → Isabella post-dev revisit → Emma closure.
-12. **Emma monitors** each delegated task: worktree status, MR state, MR approvals, CI pipeline, test results via `mr-status`, `mr-list`, `pipeline-jobs`.
+10. **Emma dispatches implementation work** to each assigned role through the available native subagent/session mechanism, dependency-sequenced. Each role receives the role/task type, issue, worktree and `.oe-scope` context. If the host cannot dispatch a role, Emma records the role and exact next action in the GitLab checkpoint and marks the workflow BLOCKED; creating a worktree alone is not delegation.
+11. **Emma triggers the next responsible owner** per the handoff chain (`agents/workflow/workflow.md`): Isabella pre-dev docs → Marcus arch review → Daniel/Sophia impl → Olivia QA → Ethan deploy → Isabella post-dev revisit → Emma closure. Each transition requires dispatch evidence or an explicit blocker and next action.
+12. **Emma monitors** each delegated task while the parent session is active: worktree status, MR state, MR approvals, CI pipeline, test results via `mr-status`, `mr-list`, `pipeline-jobs`. Do not imply monitoring continues after the host session ends unless a runtime supervisor is actually active.
 
 ### Stage D — Progress Monitoring & Escalation (Emma)
 
@@ -88,18 +90,33 @@ The loop has **five repeating stages**. Neither stage may be skipped for a busin
 
 ---
 
-## 3. Handoff Recording (Structured)
+## 3. Handoff Recording and Recovery Checkpoint
 
-Every stage appends to the `Documentation Impact` section of the Mandatory Handoff Format (`agents/workflow/workflow.md`):
+Every stage appends to the `Documentation Impact` section of the Mandatory Handoff Format (`agents/workflow/workflow.md`) and records a durable checkpoint in the GitLab issue before yielding or ending the session:
+
+- Original stakeholder request and original acceptance criteria (verbatim or stable issue/comment reference)
+- Current stage and responsible role
+- Completed work with verification evidence
+- Remaining criteria and dependent roles
+- Attempts used per delegated task (0/2, 1/2, 2/2)
+- Blockers and exact decisions required, with decision owner
+- Next action, responsible role, and trigger
+- Dispatch status and child session/worktree reference where available
+
+`.oe-scope` is only a worktree locator; it is not the mission ledger. On continuation or context compaction, re-read the GitLab checkpoint and compare it with the original issue before acting. If the checkpoint is missing or conflicts with the issue, stop and reconcile before changing scope.
+
+A non-terminal handoff MUST state `ACTIVE`, `BLOCKED`, or `AWAITING CONTINUATION`. `COMPLETE` is allowed only after all original acceptance criteria and workflow gates pass. A recommendation without a dispatch attempt or an explicit blocker is not a completed handoff.
 
 ```
 ### Documentation Impact
 - **Stage A (intake):** issue meets Definition of Ready? YES / NO
 - **Stage B (Phase 1 gate recorded):** YES / N/A — product analysis + market research + team allocation + Isabella confirmation present in GitLab before any implementer worktree
-- **Stage C (delegate):** roles assigned — Daniel/Sophia/Jonathan/Marcus/Maya/Victor/Ethan/Olivia/Grace/Felix (list) with dependency sequence + per-role success criteria
-- **Stage D (monitor):** worktree status · MR state · CI/test results · attempts used (1/2) · gaps found / handed back (list)
+- **Stage C (delegate):** roles assigned — Daniel/Sophia/Jonathan/Marcus/Maya/Victor/Ethan/Olivia/Grace/Felix (list) with dependency sequence + per-role success criteria; dispatch status and child session/worktree reference, or exact blocker
+- **Stage D (monitor):** worktree status · MR state · CI/test results · attempts used (0/2, 1/2, 2/2) · gaps found / handed back (list)
 - **Stage E (Phase 2 + retrospective):** Isabella revisit passed YES / N/A; Emma retrospective goal review passed YES / N/A — original request/goals achieved, all original AC satisfied, no surrounding-feature regression
 - **Closure:** MR merge verified via mr-status YES / N/A; issue-status closed run in same session YES / NO
+- **Continuation:** ACTIVE / BLOCKED / AWAITING CONTINUATION / COMPLETE; exact next action + responsible role when not COMPLETE
+- **Original goal preservation:** original request/AC reference; completed and remaining criteria
 ```
 
 Reviewers reject a handoff missing any of these fields.
