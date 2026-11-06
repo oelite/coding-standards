@@ -3618,7 +3618,7 @@ cmd_checkpoint() {
 
   local original_request="" acceptance_criteria="" completed_work="" remaining_work=""
   local attempts="" blockers_json='[]' next_action="" dispatch_status=""
-  local task_type="" session_type="" child_session_ref=""
+  local task_type="" session_type="" child_session_ref="" task_key="" role="" task_status=""
   local blocker
   local -a blockers
   while [[ $# -gt 0 ]]; do
@@ -3634,9 +3634,13 @@ cmd_checkpoint() {
       --task-type)         task_type="${2:-}"; shift 2 ;;
       --session-type)      session_type="${2:-}"; shift 2 ;;
       --child-session)     child_session_ref="${2:-}"; shift 2 ;;
+      --task-key)          task_key="${2:-}"; shift 2 ;;
+      --role)              role="${2:-}"; shift 2 ;;
+      --task-status)       task_status="${2:-}"; shift 2 ;;
       *) echo "[ERROR] Unknown checkpoint option: $1" >&2; return 1 ;;
     esac
   done
+  [[ -z "$task_status" ]] && task_status="$dispatch_status"
 
   local root branch wt_path scope_file scope_issue scope_task_type
   root=$(repo_root)
@@ -3650,6 +3654,8 @@ cmd_checkpoint() {
   scope_issue=$(sed -n 's/^ISSUE=//p' "$scope_file")
   scope_task_type=$(sed -n 's/^TASK_TYPE=//p' "$scope_file")
   [[ -z "$task_type" ]] && task_type="$scope_task_type"
+  [[ -z "$role" ]] && role="$agent"
+  [[ -z "$task_key" ]] && task_key=$(python3 -c 'import hashlib,sys; print(hashlib.sha256("\\x1f".join(sys.argv[1:]).encode()).hexdigest()[:24])' "$iid" "$role" "$task_type" "$stage")
   if [[ "$scope_issue" != "$iid" ]]; then
     echo "[ERROR] checkpoint issue conflict: .oe-scope ISSUE=$scope_issue, requested IID=$iid" >&2
     return 1
@@ -3676,6 +3682,10 @@ cmd_checkpoint() {
   case "$session_type" in primary|subagent|continued) ;;
     *) echo "[ERROR] invalid session_type '$session_type' (use primary, subagent, or continued)" >&2; return 1 ;;
   esac
+  [[ -z "$task_status" ]] && task_status="$dispatch_status"
+  case "$task_status" in planned|worktree_ready|dispatched|running|succeeded|failed|blocked|awaiting_continuation|escalated) ;;
+    *) echo "[ERROR] invalid task_status '$task_status'" >&2; return 1 ;;
+  esac
   [[ "$attempts" == <-> ]] || { echo "[ERROR] attempts must be a non-negative integer" >&2; return 1; }
   [[ ${#blockers} -gt 0 ]] && blockers_json=$(printf '%s\n' "${blockers[@]}" | python3 -c 'import json,sys; print(json.dumps([x.rstrip("\\n") for x in sys.stdin]))')
 
@@ -3700,12 +3710,13 @@ cmd_checkpoint() {
   local now key payload marker existing_json existing_key existing_payload
   now=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
   key=$(python3 -c 'import hashlib,sys; print(hashlib.sha256("\\x1f".join(sys.argv[1:]).encode()).hexdigest()[:24])' "$iid" "$task_type" "$stage" "$attempts")
-  payload=$(python3 - "$iid" "$title" "$owner_email" "$task_type" "$session_type" "$branch" "$wt_path" "$stage" "$original_request" "$acceptance_criteria" "$completed_work" "$remaining_work" "$attempts" "$blockers_json" "$next_action" "$dispatch_status" "$child_session_ref" "$now" "$key" <<'PY'
+  payload=$(python3 - "$iid" "$title" "$owner_email" "$task_type" "$session_type" "$branch" "$wt_path" "$stage" "$original_request" "$acceptance_criteria" "$completed_work" "$remaining_work" "$attempts" "$blockers_json" "$next_action" "$dispatch_status" "$child_session_ref" "$now" "$key" "$task_key" "$role" "$task_status" <<'PY'
 import json, sys
-(iid,title,owner,task_type,session_type,branch,worktree,stage,request,ac,completed,remaining,attempts,blockers,next_action,dispatch,child,now,key) = sys.argv[1:]
+(iid,title,owner,task_type,session_type,branch,worktree,stage,request,ac,completed,remaining,attempts,blockers,next_action,dispatch,child,now,key,task_key,role,task_status) = sys.argv[1:]
 record = {
   "checkpoint_version": "1.0.0", "issue_iid": int(iid), "title": title,
   "owner": owner, "task_type": task_type, "session_type": session_type,
+  "task_key": task_key, "role": role, "task_status": task_status,
   "branch": branch, "worktree_path": worktree, "stage": stage,
   "original_request": request, "acceptance_criteria": ac,
   "completed_work": completed, "remaining_work": remaining,
