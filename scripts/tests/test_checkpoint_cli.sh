@@ -84,12 +84,36 @@ RC=0
 cmd_checkpoint oelite/coding-standards 126 emma implementation \
   --task "build checkpoint schema" --ac "schema validates" --completed "drafted" \
   --remaining "wire CLI" --attempt 1 --next "run tests" --dispatch pending \
-  --task-type infrastructure --session-type primary >/tmp/oe-t1.out 2>&1 || RC=$?
+  --task-type infrastructure --session-type primary --task-key "task-fixture-125" --role "daniel" --task-status "awaiting_continuation" >/tmp/oe-t1.out 2>&1 || RC=$?
 OUT="$(</tmp/oe-t1.out)"
-if [[ $RC -eq 0 && "$OUT" == *"[OK] Checkpoint recorded"* ]]; then
-  pass "all fields accepted, checkpoint recorded"
+if [[ $RC -eq 0 && "$OUT" == *"[OK] Checkpoint recorded"* && "$posted_payload" == *'"task_key":"task-fixture-125"'* && "$posted_payload" == *'"role":"daniel"'* && "$posted_payload" == *'"task_status":"awaiting_continuation"'* ]]; then
+  pass "checkpoint accepts and serializes stable task identity and status"
 else
   fail "expected [OK] recorded (rc=$RC): $OUT"
+fi
+
+print "\nTEST 2: task_status must not exceed accepted lifecycle values"
+RC=0
+cmd_checkpoint oelite/coding-standards 126 emma implementation \
+  --task "x" --ac "y" --completed "c" --remaining "r" --attempt 1 --next "n" --dispatch blocked \
+  --task-type infrastructure --session-type primary --task-status "phantom" >/tmp/oe-t2b.out 2>&1 || RC=$?
+OUT="$(</tmp/oe-t2b.out)"
+if [[ $RC -eq 1 && "$OUT" == *"invalid task_status"* ]]; then
+  pass "invalid task_status rejected"
+else
+  fail "invalid task_status not rejected (rc=$RC): $OUT"
+fi
+
+print "\nTEST 3: attempts must not exceed 2"
+RC=0
+cmd_checkpoint oelite/coding-standards 126 emma implementation \
+  --task "x" --ac "y" --completed "c" --remaining "r" --attempt 3 --next "n" --dispatch blocked \
+  --task-type infrastructure --session-type primary >/tmp/oe-t3b.out 2>&1 || RC=$?
+OUT="$(</tmp/oe-t3b.out)"
+if [[ $RC -eq 1 && "$OUT" == *"attempts must not exceed 2"* ]]; then
+  pass "attempt cap enforced"
+else
+  fail "attempt cap not enforced (rc=$RC): $OUT"
 fi
 
 print "\nTEST 2: missing --ac fails closed"
@@ -201,12 +225,14 @@ page1=()
 for i in $(seq 1 100); do page1+=( "filler note $i" ); done
 API_NOTES="$(printf '%s\n' "${page1[@]}" | python3 -c 'import json,sys; print(json.dumps([{"body": x.rstrip()} for x in sys.stdin]))')"
 API_NOTES_PAGE2="$(python3 - "$KEY_A" "$(git rev-parse --show-toplevel)" <<'PY'
-import json, sys
+import hashlib, json, sys
 key = sys.argv[1]
 worktree = sys.argv[2]
 record = {
     "checkpoint_version": "1.0.0", "issue_iid": 126,
     "title": "[TASK-126] Mission checkpoint", "owner": "emma@phanes.ltd",
+    "task_key": hashlib.sha256("\\x1f".join(["126", "emma", "infrastructure", "implementation"]).encode()).hexdigest()[:24],
+    "role": "emma", "task_status": "planned",
     "task_type": "infrastructure", "session_type": "primary",
     "branch": "feature/task-126-checkpoint", "stage": "implementation",
     "original_request": "build checkpoint schema", "acceptance_criteria": "schema validates",

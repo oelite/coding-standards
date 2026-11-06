@@ -3640,7 +3640,14 @@ cmd_checkpoint() {
       *) echo "[ERROR] Unknown checkpoint option: $1" >&2; return 1 ;;
     esac
   done
-  [[ -z "$task_status" ]] && task_status="$dispatch_status"
+  if [[ -z "$task_status" ]]; then
+    case "$dispatch_status" in
+      pending) task_status="planned" ;;
+      dispatched) task_status="dispatched" ;;
+      blocked) task_status="blocked" ;;
+      complete) task_status="succeeded" ;;
+    esac
+  fi
 
   local root branch wt_path scope_file scope_issue scope_task_type
   root=$(repo_root)
@@ -3687,6 +3694,7 @@ cmd_checkpoint() {
     *) echo "[ERROR] invalid task_status '$task_status'" >&2; return 1 ;;
   esac
   [[ "$attempts" == <-> ]] || { echo "[ERROR] attempts must be a non-negative integer" >&2; return 1; }
+  (( attempts <= 2 )) || { echo "[ERROR] attempts must not exceed 2" >&2; return 1; }
   [[ ${#blockers} -gt 0 ]] && blockers_json=$(printf '%s\n' "${blockers[@]}" | python3 -c 'import json,sys; print(json.dumps([x.rstrip("\\n") for x in sys.stdin]))')
 
   local encoded_path pat issue_json notes_json title assignee_username owner_email page page_notes
@@ -3757,9 +3765,9 @@ for note in page_notes:
 print(json.dumps({"found": found, "count": len(page_notes)}))
 ' "$key")
     local lookup_found lookup_count
-    lookup_found=$(printf '%s' "$page_notes" | python3 -c 'import json,sys; print(json.loads(sys.stdin.read())["found"])')
+    lookup_found=$(printf '%s' "$page_notes" | python3 -c 'import json,sys; value=json.loads(sys.stdin.read())["found"]; print(value if value is not None else "")')
     lookup_count=$(printf '%s' "$page_notes" | python3 -c 'import json,sys; print(json.loads(sys.stdin.read())["count"])')
-    if [[ -n "$lookup_found" && "$lookup_found" != "None" ]]; then
+    if [[ -n "$lookup_found" ]]; then
       if [[ -n "$existing_json" && "$existing_json" != "$lookup_found" ]]; then
         existing_conflict="yes"
       fi

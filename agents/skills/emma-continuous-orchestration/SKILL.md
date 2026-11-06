@@ -68,9 +68,19 @@ The loop has **five repeating stages**. Neither stage may be skipped for a busin
 
 ### Stage C — Delegate & Sequence (Emma)
 
-10. **Emma dispatches implementation work** to each assigned role through the available native subagent/session mechanism, dependency-sequenced. Each role receives the role/task type, issue, worktree and `.oe-scope` context. If the host cannot dispatch a role, Emma records the role and exact next action in the GitLab checkpoint and marks the workflow BLOCKED; creating a worktree alone is not delegation.
-11. **Emma triggers the next responsible owner** per the handoff chain (`agents/workflow/workflow.md`): Isabella pre-dev docs → Marcus arch review → Daniel/Sophia impl → Olivia QA → Ethan deploy → Isabella post-dev revisit → Emma closure. Each transition requires dispatch evidence or an explicit blocker and next action.
-12. **Emma monitors** each delegated task while the parent session is active: worktree status, MR state, MR approvals, CI pipeline, test results via `mr-status`, `mr-list`, `pipeline-jobs`. Do not imply monitoring continues after the host session ends unless a runtime supervisor is actually active.
+10. **Emma dispatches role work only after the assigned worktree is prepared.** Worktree creation is `worktree_ready` setup, not dispatch. Dispatch is recorded only after the native host confirms a child session was created and prompted, with its session ID saved to the GitLab checkpoint. The stable task record includes task key, role, task type, issue IID, worktree, child session ID, attempt (0–2), status, and exact next action.
+11. **Use the GitLab checkpoint helper as the authoritative ledger:** `scripts/oelite-gitlab.sh checkpoint ...`; do not create a local task/checkpoint file. Checkpoint writes are best-effort idempotent append/reconcile, not atomic or exactly-once. Any observed same-key payload conflict blocks further work pending reconciliation.
+12. **Dispatch capability is host-specific.** Generated Claude agent definitions only make roles discoverable; they do not establish OpenCode runtime support. The OpenCode package must have a pinned, type-checked API contract before native session calls are enabled. Without one, report `BLOCKED` or `AWAITING_CONTINUATION`, preserve the next action and any known child ID, and do not consume an attempt.
+13. **Recover interruptions by reconciling the recorded child ID.** Unsupported lookup or unknown outcome remains `AWAITING_CONTINUATION`; it is not a classified failure and does not consume a retry. Checkpoint conflicts also block dispatch rather than selecting one version silently.
+14. **Attempts are per stable task key.** Initial dispatch is attempt 1; at most one retry follows a classified failure. The second classified failure becomes `ESCALATED` with evidence and a human next action. Never dispatch a third attempt.
+15. Emma triggers the next responsible owner per the handoff chain (`agents/workflow/workflow.md`): Isabella pre-dev docs → Marcus arch review → Daniel/Sophia impl → Olivia QA → Ethan deploy → Isabella post-dev revisit → Emma closure. Each transition requires dispatch evidence or an explicit blocker and next action.
+16. **Emma monitors** each in-flight task while the parent session is active: worktree status, MR state, approvals, CI and tests via GitLab wrapper commands. Do not imply monitoring continues after the host session ends unless a runtime supervisor is actually active.
+
+### Task State
+
+`planned -> worktree_ready -> dispatched -> running -> succeeded | failed | blocked | awaiting_continuation | escalated`
+
+Only a classified child failure may transition `failed` to a retry, and only while attempt is below 2. Parent interruption, unsupported dispatch/lookup, or a checkpoint conflict must not be converted to success or failure without evidence.
 
 ### Stage D — Progress Monitoring & Escalation (Emma)
 
