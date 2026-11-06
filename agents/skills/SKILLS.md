@@ -160,7 +160,7 @@
 
 ### `emma-continuous-orchestration` — Emma Continuous Orchestration Subagent
 
-- **Purpose:** Emma as a continuously-running subagent: watches for new business-change/feature requests, runs the Emma→Isabella impact-analysis gate (Phase 1 + Phase 2) end-to-end for each request, delegates implementation to best-fit roles, tracks progress, runs retrospective goal review, and closes only after MR merge verified + issue closed in same session
+- **Purpose:** Emma as the orchestrator for multi-stage business changes: runs the Emma→Isabella impact-analysis gate (Phase 1 + Phase 2), delegates to best-fit roles, tracks progress while the host session is active, preserves checkpoint state, performs retrospective goal review, and closes only after MR merge verified + issue closed in same session. This is a protocol, not a background watcher.
 - **Trigger phrases:** "emma continuous", "emma orchestration", "run emma as subagent", "continuous orchestration", "durable mission", "mission loop", "keep monitoring", "keep progressing", "full completion of original goals", "delegate to roles", "assign best-fit roles", "sequence dependencies", "monitor worktree", "monitor MR", "track progress to done", "retrospective goal review", "original request achieved", "mission state", "mission ledger", "orchestration state"
 - **Default loaders:** Emma
 - **On-demand loaders:** Marcus, Jonathan, Daniel, Sophia, Olivia, Ethan, Maya, Victor, Grace, Felix, Isabella (when the continuous loop hands off to them or reports mission state)

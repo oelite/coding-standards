@@ -23,7 +23,7 @@ Unlike the `business-change-impact` skill (which defines the Phase 1 + Phase 2 g
 - **Close** only after MR merge verified via `mr-status` and `issue-status closed` run in the same session
 - **Escalate** business decisions (new objective, scope, new rule, priority) to the human/stakeholder — Emma does not invent business facts
 
-The loop returns to "watch" after each issue closes, so the original request/goals are driven to full completion without the user having to re-trigger Emma for every hand-off.
+The loop returns to intake for another issue only while the orchestration session is active or after an explicit continuation. No polling or monitoring occurs between host sessions unless a runtime supervisor is active.
 
 **Load this skill when the request contains any of these trigger phrases:**
 
