@@ -560,6 +560,7 @@ cmd_issue_notes() {
   local project_path="${1:-}"
   local iid="${2:-}"
   local agent="${3:-emma}"
+  local page="${4:-1}"
 
   [[ -z "$project_path" ]] && { echo "[ERROR] Project path required" >&2; return 1; }
   [[ -z "$iid" ]] && { echo "[ERROR] Issue IID required" >&2; return 1; }
@@ -570,7 +571,7 @@ cmd_issue_notes() {
 
   local pat
   pat=$(get_pat "$agent")
-  api_get "/projects/$encoded_path/issues/$iid/notes?per_page=100&sort=asc&order_by=created_at" "$pat"
+  api_get "/projects/$encoded_path/issues/$iid/notes?per_page=100&sort=asc&order_by=created_at&page=${page}" "$pat"
 
   if [[ "$_API_STATUS" != "200" ]]; then
     echo "[ERROR] Failed to fetch notes for issue #$iid (HTTP $_API_STATUS)" >&2
