@@ -3597,6 +3597,182 @@ if approver_groups:
 ' "$project_path"
 }
 
+cmd_checkpoint() {
+  local project_path="${1:-}"
+  local iid="${2:-}"
+  local agent="${3:-}"
+  shift 3 || true
+
+  [[ -z "$project_path" || -z "$iid" || -z "$agent" ]] && {
+    echo "[ERROR] checkpoint requires <project-path> <iid> <agent> [options]" >&2
+    return 1
+  }
+  validate_agent "$agent" || return 1
+
+  local stage="${1:-}"
+  [[ -z "$stage" || "$stage" == --* ]] && {
+    echo "[ERROR] checkpoint requires a non-empty <stage>" >&2
+    return 1
+  }
+  shift
+
+  local original_request="" acceptance_criteria="" completed_work="" remaining_work=""
+  local attempts="" blockers_json='[]' next_action="" dispatch_status=""
+  local task_type="" session_type="" child_session_ref=""
+  local blocker
+  local -a blockers
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --task)              original_request="${2:-}"; shift 2 ;;
+      --ac)                acceptance_criteria="${2:-}"; shift 2 ;;
+      --completed)         completed_work="${2:-}"; shift 2 ;;
+      --remaining)         remaining_work="${2:-}"; shift 2 ;;
+      --attempt)           attempts="${2:-}"; shift 2 ;;
+      --blocker)           blockers+=("${2:-}"); shift 2 ;;
+      --next)              next_action="${2:-}"; shift 2 ;;
+      --dispatch)          dispatch_status="${2:-}"; shift 2 ;;
+      --task-type)         task_type="${2:-}"; shift 2 ;;
+      --session-type)      session_type="${2:-}"; shift 2 ;;
+      --child-session)     child_session_ref="${2:-}"; shift 2 ;;
+      *) echo "[ERROR] Unknown checkpoint option: $1" >&2; return 1 ;;
+    esac
+  done
+
+  local root branch wt_path scope_file scope_issue scope_task_type
+  root=$(repo_root)
+  wt_path=$(git rev-parse --show-toplevel)
+  branch=$(git -C "$wt_path" branch --show-current)
+  scope_file="$wt_path/.oe-scope"
+  if [[ ! -f "$scope_file" ]]; then
+    echo "[ERROR] checkpoint requires an active worktree with .oe-scope: $scope_file" >&2
+    return 1
+  fi
+  scope_issue=$(sed -n 's/^ISSUE=//p' "$scope_file")
+  scope_task_type=$(sed -n 's/^TASK_TYPE=//p' "$scope_file")
+  [[ -z "$task_type" ]] && task_type="$scope_task_type"
+  if [[ "$scope_issue" != "$iid" ]]; then
+    echo "[ERROR] checkpoint issue conflict: .oe-scope ISSUE=$scope_issue, requested IID=$iid" >&2
+    return 1
+  fi
+
+  local missing=""
+  [[ -z "$original_request" ]] && missing+=" original_request"
+  [[ -z "$acceptance_criteria" ]] && missing+=" acceptance_criteria"
+  [[ -z "$completed_work" ]] && missing+=" completed_work"
+  [[ -z "$remaining_work" ]] && missing+=" remaining_work"
+  [[ -z "$attempts" ]] && missing+=" attempts"
+  [[ -z "$next_action" ]] && missing+=" next_action"
+  [[ -z "$dispatch_status" ]] && missing+=" dispatch_status"
+  [[ -z "$task_type" ]] && missing+=" task_type"
+  [[ -z "$session_type" ]] && missing+=" session_type"
+  if [[ -n "$missing" ]]; then
+    echo "[ERROR] checkpoint missing required fields:$missing" >&2
+    return 1
+  fi
+
+  case "$dispatch_status" in pending|dispatched|blocked|complete) ;;
+    *) echo "[ERROR] invalid dispatch_status '$dispatch_status' (use pending, dispatched, blocked, or complete)" >&2; return 1 ;;
+  esac
+  case "$session_type" in primary|subagent|continued) ;;
+    *) echo "[ERROR] invalid session_type '$session_type' (use primary, subagent, or continued)" >&2; return 1 ;;
+  esac
+  [[ "$attempts" == <-> ]] || { echo "[ERROR] attempts must be a non-negative integer" >&2; return 1; }
+  [[ ${#blockers} -gt 0 ]] && blockers_json=$(printf '%s\n' "${blockers[@]}" | python3 -c 'import json,sys; print(json.dumps([x.rstrip("\\n") for x in sys.stdin]))')
+
+  local encoded_path pat issue_json notes_json title assignee_username owner_email
+  encoded_path=$(url_encode_path "$project_path")
+  pat=$(get_pat "$agent")
+  api_get "/projects/$encoded_path/issues/$iid" "$pat"
+  if [[ "$_API_STATUS" != "200" ]]; then
+    echo "[ERROR] Failed to fetch issue #$iid for checkpoint (HTTP $_API_STATUS)" >&2
+    api_error_hint "$_API_STATUS" "$project_path"
+    return 1
+  fi
+  issue_json="$_API_RESPONSE"
+  title=$(printf '%s' "$issue_json" | json_get title "")
+  assignee_username=$(printf '%s' "$issue_json" | python3 -c 'import json,sys; d=json.load(sys.stdin); print((d.get("assignee") or {}).get("username", ""))')
+  owner_email=$(get_agent_email "$agent")
+  if [[ -z "$title" || "$assignee_username" != "${AGENT_USERNAMES[$agent]}" ]]; then
+    echo "[ERROR] checkpoint conflict with authoritative issue: title/owner mismatch (issue assignee=$assignee_username, expected=${AGENT_USERNAMES[$agent]})" >&2
+    return 1
+  fi
+
+  local now key payload marker existing_json existing_key existing_payload
+  now=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+  key=$(python3 -c 'import hashlib,sys; print(hashlib.sha256("\\x1f".join(sys.argv[1:]).encode()).hexdigest()[:24])' "$iid" "$task_type" "$stage" "$attempts")
+  payload=$(python3 - "$iid" "$title" "$owner_email" "$task_type" "$session_type" "$branch" "$wt_path" "$stage" "$original_request" "$acceptance_criteria" "$completed_work" "$remaining_work" "$attempts" "$blockers_json" "$next_action" "$dispatch_status" "$child_session_ref" "$now" "$key" <<'PY'
+import json, sys
+(iid,title,owner,task_type,session_type,branch,worktree,stage,request,ac,completed,remaining,attempts,blockers,next_action,dispatch,child,now,key) = sys.argv[1:]
+record = {
+  "checkpoint_version": "1.0.0", "issue_iid": int(iid), "title": title,
+  "owner": owner, "task_type": task_type, "session_type": session_type,
+  "branch": branch, "worktree_path": worktree, "stage": stage,
+  "original_request": request, "acceptance_criteria": ac,
+  "completed_work": completed, "remaining_work": remaining,
+  "attempts": int(attempts), "blockers": json.loads(blockers),
+  "next_action": next_action, "dispatch_status": dispatch,
+  "child_session_ref": child, "created_at": now, "updated_at": now,
+  "idempotency_key": key
+}
+print(json.dumps(record, sort_keys=True, separators=(",", ":")))
+PY
+)
+  marker="<!-- oelite-checkpoint:v1 key=$key -->"
+
+  api_get "/projects/$encoded_path/issues/$iid/notes?per_page=100&sort=asc&order_by=created_at" "$pat"
+  if [[ "$_API_STATUS" != "200" ]]; then
+    echo "[ERROR] Failed to read checkpoint notes for issue #$iid (HTTP $_API_STATUS)" >&2
+    return 1
+  fi
+  notes_json="$_API_RESPONSE"
+  existing_json=$(printf '%s' "$notes_json" | python3 -c '
+import json, re, sys
+key = sys.argv[1]
+try: notes = json.load(sys.stdin)
+except Exception: notes = []
+for note in notes if isinstance(notes, list) else []:
+    body = note.get("body", "")
+    match = re.search(r"<!-- oelite-checkpoint:v1 key=([^ ]+) -->\s*```json\s*(\{.*?\})\s*```", body, re.S)
+    if match and match.group(1) == key:
+        print(match.group(2)); break
+' "$key")
+  if [[ -n "$existing_json" ]]; then
+    local equivalent
+    equivalent=$(python3 - "$existing_json" "$payload" <<'PY'
+import json, sys
+try:
+    left = json.loads(sys.argv[1])
+    right = json.loads(sys.argv[2])
+    for record in (left, right):
+        record.pop("created_at", None)
+        record.pop("updated_at", None)
+    print("yes" if left == right else "no")
+except (ValueError, TypeError, IndexError):
+    print("no")
+PY
+)
+    if [[ "$equivalent" == "yes" ]]; then
+      echo "[OK] Checkpoint already recorded (idempotency_key=$key)"
+      return 0
+    fi
+    echo "[ERROR] conflicting checkpoint for idempotency_key=$key; reconcile GitLab issue notes before changing scope" >&2
+    return 1
+  fi
+
+  local message
+  message=$(printf '%s\n```json\n%s\n```' "$marker" "$payload")
+  local data
+  data=$(python3 -c 'import json,sys; print(json.dumps({"body": sys.argv[1]}))' "$message")
+  api_post "/projects/$encoded_path/issues/$iid/notes" "$pat" "$data"
+  if [[ "$_API_STATUS" == "201" ]]; then
+    echo "[OK] Checkpoint recorded on issue #$iid (idempotency_key=$key)"
+  else
+    echo "[ERROR] Failed to record checkpoint (HTTP $_API_STATUS)" >&2
+    api_error_hint "$_API_STATUS" "$project_path"
+    return 1
+  fi
+}
+
 cmd_oe_scope() {
   local wt_id="$1"
   shift
@@ -3821,6 +3997,17 @@ COMMANDS:
     defaults to emma's PAT.
     Example: oelite-gitlab.sh issue-notes oelite/helios/kortex 207 olivia
 
+  checkpoint <project-path> <iid> <agent> <stage> [options]
+    Validate and append a GitLab-backed mission checkpoint to issue notes.
+    Required options: --task, --ac, --completed, --remaining, --attempt,
+    --next, --dispatch, --task-type, --session-type.
+    Repeat writes with the same task/stage/attempt are idempotent; conflicts
+    fail closed. No local issue/checkpoint files are created.
+    Example: oelite-gitlab.sh checkpoint oelite/coding-standards 126 emma \\
+      implementation --task "..." --ac "..." --completed "..." \\
+      --remaining "..." --attempt 1 --next "..." --dispatch dispatched \\
+      --task-type infrastructure --session-type primary
+
    pipeline-list <project-path> <agent> [<ref>]
       List pipeline id, status, SHA, and source, optionally filtered by ref.
 
@@ -3967,6 +4154,7 @@ case "$command" in
   issues)         cmd_issues "$@" ;;
   issue-show)     cmd_issue_show "$@" ;;
   issue-notes)    cmd_issue_notes "$@" ;;
+  checkpoint)     cmd_checkpoint "$@" ;;
   issue-create)   cmd_issue_create "$@" ;;
   issue-assign)   cmd_issue_assign "$@" ;;
   issue-comment)  cmd_issue_comment "$@" ;;
