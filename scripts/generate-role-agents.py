@@ -31,19 +31,16 @@ def role_files(source_root: Path) -> list[Path]:
     if not roles_dir.is_dir():
         raise FileNotFoundError(f"Canonical roles directory not found: {roles_dir}")
     files = sorted(path for path in roles_dir.glob("*.md") if path.is_file())
-    if not files:
-        raise FileNotFoundError(f"No canonical role markdown files found in {roles_dir}")
-    if roles_dir.resolve() == (Path(__file__).resolve().parent.parent / "agents" / "roles").resolve():
-        actual = {path.name for path in files}
-        missing = CANONICAL_ROLE_FILENAMES - actual
-        unexpected = actual - CANONICAL_ROLE_FILENAMES
-        if missing or unexpected:
-            details = []
-            if missing:
-                details.append(f"missing roles: {', '.join(sorted(missing))}")
-            if unexpected:
-                details.append(f"unexpected roles: {', '.join(sorted(unexpected))}")
-            raise ValueError(f"Canonical role coverage is incomplete in {roles_dir}: {'; '.join(details)}")
+    actual = {path.name for path in files}
+    missing = CANONICAL_ROLE_FILENAMES - actual
+    unexpected = actual - CANONICAL_ROLE_FILENAMES
+    if missing or unexpected:
+        details = []
+        if missing:
+            details.append(f"missing roles: {', '.join(sorted(missing))}")
+        if unexpected:
+            details.append(f"unexpected roles: {', '.join(sorted(unexpected))}")
+        raise ValueError(f"Canonical role coverage is incomplete in {roles_dir}: {'; '.join(details)}")
     return files
 
 
