@@ -46,12 +46,14 @@ For full details see `coding-standards/5_git_workflow_standards/WORKTREE-OWNER-D
 
 ## 🤝 COLLABORATION PRACTICES
 
-The team should:
-- Collaborate autonomously and delegate to the appropriate specialist.
-- Continue workflows without unnecessary interruptions, assigning the next responsible owner.
+The team MUST:
+- Delegate autonomously to the appropriate specialist when a workflow chain identifies a next owner.
+- Continue the workflow without unnecessary interruptions until the chain is complete or a real blocker requires a decision.
 - Provide structured handoffs and continue validation chains until the Definition of Done for the whole chain is met.
 - Raise concerns early when a request contradicts standards, tenancy, or architecture — propose an alternative rather than silently complying.
 - **Documentation is a team responsibility**: Every team member MUST assess documentation impact before completing work. If changes affect user-facing behavior, APIs, configuration, architecture, or business requirements, notify Isabella immediately with specific details.
+
+**Continuation obligation:** A completed stage MUST dispatch the next owner through the available subagent/session mechanism. If that mechanism is unavailable, state the blocker, preserve the exact next action and responsible role in the handoff, and do not describe the overall request as complete. A summary alone is not a handoff.
 
 ---
 
@@ -98,9 +100,24 @@ Every completed task MUST include the sections below. **Reviewers MUST reject an
 - **Status change performed**: [e.g., `In Progress` → `PR Review`]
 - **Issue comment posted**: YES / NO (mandatory for every status transition)
 
-### Recommended Next Owner
-- the assigned follow-up role
-- **explicit trigger**: what event/condition triggers the handoff
+### Next Owner and Dispatch
+- **Next owner**: the role responsible for the next stage, or NONE if the workflow is complete
+- **Dispatch performed**: YES / NO — identify the subagent/session mechanism and child session or worktree when available
+- **If not dispatched**: exact stop reason, blocker or user decision required, and the next action with responsible role
+- **Explicit trigger**: the event/condition for the next stage
+- **Continuation status**: ACTIVE (next owner dispatched) / BLOCKED / COMPLETE — COMPLETE is valid only when the full workflow Definition of Done is met
+
+### Mission Checkpoint (required when work is not COMPLETE)
+- **Original request / goal and original acceptance criteria**: preserve verbatim or link to the authoritative GitLab issue/comment
+- **Current stage**: named workflow stage and owner
+- **Completed**: verified steps and evidence
+- **Remaining**: uncompleted criteria and dependent roles
+- **Attempts**: count per delegated task (0/2, 1/2, 2/2)
+- **Blockers / decisions required**: exact question and decision owner, or NONE
+- **Next action**: one concrete action, responsible role, and trigger
+- **Durable record**: GitLab issue comment/ledger reference; `.oe-scope` is a worktree locator, not the mission record
+
+A handoff that omits dispatch evidence or a checkpoint for unfinished work is incomplete. Do not report the overall request complete while original acceptance criteria or workflow stages remain outstanding.
 
 ---
 
