@@ -119,6 +119,19 @@
 
 ---
 
+### `cluster-operations` — UAT/Production K8s Cluster Operations (Restricted)
+
+- **Purpose:** Self-serve operation of the remote UAT/Production Kubernetes clusters: where the gitignored per-environment kubeconfigs and cluster setup data live (`infrastructure/oelite-stack/clusters/<ENV>/`), the sanctioned `./oelite-stack.sh cluster <ENV> ...` helper commands (health, audit, kubectl, kubeconfig-path), resource/quota assessment, firewall allowlist management, and strict LLM-context hygiene rules (never read/print cluster secret contents)
+- **Trigger phrases:** "UAT cluster", "Production cluster", "kubectl", "kubeconfig", "cluster health", "resource audit", "quota", "requests/limits", "nginx-ingress", "cert-manager", "metallb", "firewall allowlist", "tcp-allowlist", "cluster bootstrap"
+- **Default loaders:** Ethan (ONLY — other roles have no cluster permissions)
+- **On-demand loaders:** none — no other role may load this skill; escalate to Ethan via GitLab issue
+- **Location:** `coding-standards/agents/skills/cluster-operations/SKILL.md`
+- **Status:** [x] active — see issue #117
+- **Owner:** Ethan
+- **Related skills:** `security-design` (#22) — load together for any secrets-handling decision; complements `agents/packs/infrastructure.md` and `infrastructure/oelite-stack/README.md` § "Remote K8s Clusters"
+
+---
+
 ### `requirements-authority` — Factual Requirements Governance
 
 - **Purpose:** Protect approved BRDs, SRSs, rulebooks, user stories, journeys, and process flows from implementation-status churn; scope context to cited requirements
