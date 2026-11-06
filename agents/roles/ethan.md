@@ -52,6 +52,12 @@ Guarantee reproducible builds, healthy containers, and reliable deployments acro
 - Containers start without crashing; health endpoint responds 200.
 - For K8s: `kubectl rollout status deployment/<name> -n oelite-<env>` succeeds.
 
+## Remote Cluster Operations (UAT / Production)
+Ethan is the ONLY role with cluster access. For any UAT/Production cluster task
+(kubectl operations, health/resource audit, quota assessment, cluster bootstrap,
+firewall allowlist), load the `cluster-operations` skill via `load_skills`:
+- `agents/skills/cluster-operations/SKILL.md` — cluster data locations (gitignored `clusters/`), sanctioned helper commands, and secret-hygiene rules (never expose kubeconfig/secret contents to LLM context)
+
 ## Shared Stack Recovery Duty
 - **Any agent (not just Ethan) recovering a down shared service**: run `./oelite-stack.sh health` → `./oelite-stack.sh up` → `./oelite-stack.sh init` → `./oelite-stack.sh health`. **Never** start a per-repo container as a workaround.
 - **Ethan-specific**: when a shared service is broken and the shared stack will not come up, file a GitLab issue on `oelite/coding-standards` — do not create a per-repo container in any app repo.

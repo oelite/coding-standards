@@ -42,6 +42,7 @@ Ethan (primary), Marcus (architecture review)
 - Observability wiring
 - **Deployment observability** — post-deploy health checks, rollout failure detection, alerting paths, environment/deploy-board cadence: see `5_git_workflow_standards/DEPLOYMENT-OBSERVABILITY-STANDARD.md`
 - **Shared local development infrastructure** (`infrastructure/oelite-stack/`) — machine-wide singleton, NOT per-repo
+- **Remote UAT/Production clusters** — Ethan-only: load the `cluster-operations` skill (gitignored `clusters/` locations, `./oelite-stack.sh cluster <ENV> ...` helper commands, secret-hygiene rules). Other roles must NOT access `clusters/`; they escalate to Ethan via GitLab issue
 
 ## Docker Compose Standards
 - Standardized versions (verified 2026-06-20, applied to the shared stack):
