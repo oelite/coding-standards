@@ -3679,7 +3679,7 @@ cmd_checkpoint() {
   [[ "$attempts" == <-> ]] || { echo "[ERROR] attempts must be a non-negative integer" >&2; return 1; }
   [[ ${#blockers} -gt 0 ]] && blockers_json=$(printf '%s\n' "${blockers[@]}" | python3 -c 'import json,sys; print(json.dumps([x.rstrip("\\n") for x in sys.stdin]))')
 
-  local encoded_path pat issue_json notes_json title assignee_username owner_email
+  local encoded_path pat issue_json notes_json title assignee_username owner_email page page_notes
   encoded_path=$(url_encode_path "$project_path")
   pat=$(get_pat "$agent")
   api_get "/projects/$encoded_path/issues/$iid" "$pat"
@@ -3719,24 +3719,55 @@ PY
 )
   marker="<!-- oelite-checkpoint:v1 key=$key -->"
 
-  api_get "/projects/$encoded_path/issues/$iid/notes?per_page=100&sort=asc&order_by=created_at" "$pat"
-  if [[ "$_API_STATUS" != "200" ]]; then
-    echo "[ERROR] Failed to read checkpoint notes for issue #$iid (HTTP $_API_STATUS)" >&2
-    return 1
-  fi
-  notes_json="$_API_RESPONSE"
-  existing_json=$(printf '%s' "$notes_json" | python3 -c '
+  # The idempotency key makes retries best-effort: notes creation has no atomic
+  # compare-and-set, so concurrent writers can both append. Re-read all pages
+  # after a successful POST and fail closed if an observed same-key payload differs.
+  page=1
+  local found_existing="no" existing_conflict="no"
+  while :; do
+    page_notes=""
+    api_get "/projects/$encoded_path/issues/$iid/notes?per_page=100&sort=asc&order_by=created_at&page=$page" "$pat"
+    if [[ "$_API_STATUS" != "200" ]]; then
+      echo "[ERROR] Failed to read checkpoint notes for issue #$iid page $page (HTTP $_API_STATUS)" >&2
+      return 1
+    fi
+    page_notes=$(printf '%s' "$_API_RESPONSE" | python3 -c '
 import json, re, sys
 key = sys.argv[1]
 try: notes = json.load(sys.stdin)
 except Exception: notes = []
-for note in notes if isinstance(notes, list) else []:
+page_notes = notes if isinstance(notes, list) else []
+found = None
+for note in page_notes:
     body = note.get("body", "")
     match = re.search(r"<!-- oelite-checkpoint:v1 key=([^ ]+) -->\s*```json\s*(\{.*?\})\s*```", body, re.S)
     if match and match.group(1) == key:
-        print(match.group(2)); break
+        found = match.group(2); break
+print(json.dumps({"found": found, "count": len(page_notes)}))
 ' "$key")
-  if [[ -n "$existing_json" ]]; then
+    local lookup_found lookup_count
+    lookup_found=$(printf '%s' "$page_notes" | python3 -c 'import json,sys; print(json.loads(sys.stdin.read())["found"])')
+    lookup_count=$(printf '%s' "$page_notes" | python3 -c 'import json,sys; print(json.loads(sys.stdin.read())["count"])')
+    if [[ -n "$lookup_found" && "$lookup_found" != "None" ]]; then
+      if [[ -n "$existing_json" && "$existing_json" != "$lookup_found" ]]; then
+        existing_conflict="yes"
+      fi
+      found_existing="yes"
+      existing_json="$lookup_found"
+      # Do not break here: scan every page so a conflicting same-key note on
+      # any later page is also observed before we fail closed.
+    fi
+    if [[ "$lookup_count" -lt 100 ]]; then
+      break
+    fi
+    page=$((page + 1))
+  done
+
+  if [[ "$existing_conflict" == "yes" ]]; then
+    echo "[ERROR] conflicting checkpoint for idempotency_key=$key; reconcile GitLab issue notes before changing scope" >&2
+    return 1
+  fi
+  if [[ "$found_existing" == "yes" ]]; then
     local equivalent
     equivalent=$(python3 - "$existing_json" "$payload" <<'PY'
 import json, sys
@@ -3765,6 +3796,52 @@ PY
   data=$(python3 -c 'import json,sys; print(json.dumps({"body": sys.argv[1]}))' "$message")
   api_post "/projects/$encoded_path/issues/$iid/notes" "$pat" "$data"
   if [[ "$_API_STATUS" == "201" ]]; then
+    # Re-read after writing so a racing invocation cannot silently leave a
+    # conflicting same-key checkpoint. Identical duplicate notes are tolerated
+    # as equivalent; differing payloads fail closed for explicit reconciliation.
+    page=1
+    local reconcile_result="none"
+    while :; do
+      api_get "/projects/$encoded_path/issues/$iid/notes?per_page=100&sort=asc&order_by=created_at&page=$page" "$pat"
+      if [[ "$_API_STATUS" != "200" ]]; then
+        echo "[ERROR] Failed to reconcile checkpoint notes for issue #$iid page $page (HTTP $_API_STATUS)" >&2
+        return 1
+      fi
+      reconcile_result=$(printf '%s' "$_API_RESPONSE" | python3 -c '
+import json, re, sys
+key, expected = sys.argv[1:]
+try: notes = json.load(sys.stdin)
+except Exception: notes = []
+notes = notes if isinstance(notes, list) else []
+def normalized(raw):
+    try:
+        record = json.loads(raw)
+        record.pop("created_at", None); record.pop("updated_at", None)
+        return json.dumps(record, sort_keys=True)
+    except Exception:
+        return None
+expected_value = normalized(expected)
+found = False
+conflict = False
+for note in notes:
+    match = re.search(r"<!-- oelite-checkpoint:v1 key=([^ ]+) -->\s*```json\s*(\{.*?\})\s*```", note.get("body", ""), re.S)
+    if match and match.group(1) == key:
+        found = True
+        if normalized(match.group(2)) != expected_value: conflict = True
+print(json.dumps({"found": found, "conflict": conflict, "count": len(notes)}))
+' "$key" "$payload")
+      local reconcile_found reconcile_conflict reconcile_count
+      reconcile_found=$(printf '%s' "$reconcile_result" | python3 -c 'import json,sys; print(json.loads(sys.stdin.read())["found"])')
+      reconcile_conflict=$(printf '%s' "$reconcile_result" | python3 -c 'import json,sys; print(json.loads(sys.stdin.read())["conflict"])')
+      reconcile_count=$(printf '%s' "$reconcile_result" | python3 -c 'import json,sys; print(json.loads(sys.stdin.read())["count"])')
+      if [[ "$reconcile_conflict" == "True" ]]; then
+        echo "[ERROR] conflicting checkpoint for idempotency_key=$key after concurrent write; reconcile GitLab issue notes before changing scope" >&2
+        return 1
+      fi
+      [[ "$reconcile_found" == "True" ]] && reconcile_result="found"
+      [[ "$reconcile_count" -lt 100 ]] && break
+      page=$((page + 1))
+    done
     echo "[OK] Checkpoint recorded on issue #$iid (idempotency_key=$key)"
   else
     echo "[ERROR] Failed to record checkpoint (HTTP $_API_STATUS)" >&2
@@ -4001,8 +4078,9 @@ COMMANDS:
     Validate and append a GitLab-backed mission checkpoint to issue notes.
     Required options: --task, --ac, --completed, --remaining, --attempt,
     --next, --dispatch, --task-type, --session-type.
-    Repeat writes with the same task/stage/attempt are idempotent; conflicts
-    fail closed. No local issue/checkpoint files are created.
+    GitLab issue notes provide best-effort idempotency, not atomic exactly-once
+    concurrent creation; observed same-key conflicts fail closed for reconciliation.
+    No local issue/checkpoint files are created.
     Example: oelite-gitlab.sh checkpoint oelite/coding-standards 126 emma \\
       implementation --task "..." --ac "..." --completed "..." \\
       --remaining "..." --attempt 1 --next "..." --dispatch dispatched \\

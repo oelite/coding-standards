@@ -34,18 +34,45 @@ AGENT_USERNAMES[emma]="emma"
 
 BASE_ISSUE='{"iid": 126, "assignee": {"username": "emma"}, "title": "[TASK-126] Mission checkpoint"}'
 API_NOTES='[]'
+API_NOTES_PAGE2='[]'
 API_CALLS=""
+POST_INJECT_CONFLICT="no"
 
 api_get() {
   API_CALLS="$API_CALLS GET:$1"
   _API_STATUS=200
-  if [[ "$1" == *"/notes?"* ]]; then _API_RESPONSE="$API_NOTES"; else _API_RESPONSE="$BASE_ISSUE"; fi
+  if [[ "$1" == *"/notes?"* ]]; then
+    if [[ "$1" == *"page=2"* ]]; then _API_RESPONSE="$API_NOTES_PAGE2"; else _API_RESPONSE="$API_NOTES"; fi
+  else
+    _API_RESPONSE="$BASE_ISSUE"
+  fi
 }
 api_post() {
   API_CALLS="$API_CALLS POST:$1"
   _API_STATUS=201
   _API_RESPONSE='{"id":1,"body":"note"}'
-  API_NOTES="$(printf '%s' "$2" | python3 -c 'import json,sys; p=json.loads(sys.stdin.read()); print(json.dumps([{"body": p["body"]}]))')"
+  posted_body="$(printf '%s' "$3" | python3 -c 'import json,sys; print(json.load(sys.stdin)["body"])')"
+  posted_payload="$(printf '%s' "$posted_body" | python3 -c 'import json,re,sys; m=re.search(r"```json\s*(\{.*?\})\s*```", sys.stdin.read(), re.S); print(json.dumps(json.loads(m.group(1)), sort_keys=True, separators=(",", ":")))')"
+  API_NOTES="$(python3 - "$posted_body" <<'PYNOTE'
+import json, sys
+print(json.dumps([{"body": sys.argv[1]}]))
+PYNOTE
+)"
+  if [[ "$POST_INJECT_CONFLICT" == "yes" ]]; then
+    conflict_payload="$(printf '%s' "$posted_payload" | python3 -c 'import json,sys; d=json.load(sys.stdin); d["completed_work"]="concurrent different work"; print(json.dumps(d, sort_keys=True, separators=(",", ":")))')"
+    API_NOTES="$(python3 - "$posted_body" <<'PYNOTE'
+import json, sys
+print(json.dumps([{"body": sys.argv[1]}] + [{"body": f"filler note {i}"} for i in range(1, 100)]))
+PYNOTE
+)"
+    API_NOTES_PAGE2="$(python3 - "$conflict_payload" <<'PYNOTE'
+import json, sys
+record = json.loads(sys.argv[1])
+conflict = f'<!-- oelite-checkpoint:v1 key={record["idempotency_key"]} -->\n```json\n{json.dumps(record, sort_keys=True, separators=(",", ":"))}\n```'
+print(json.dumps([{"body": conflict}]))
+PYNOTE
+)"
+  fi
 }
 api_put() { API_CALLS="$API_CALLS PUT:$1"; _API_STATUS=200; _API_RESPONSE='{}'; }
 get_pat() { print "testpat"; }
@@ -126,8 +153,8 @@ else
 fi
 
 print "\nTEST 7: idempotency key is stable for task/stage/attempt"
-KEY_A=$(python3 -c 'import hashlib; print(hashlib.sha256("\x1f".join(["126","infrastructure","implementation","1"]).encode()).hexdigest()[:24])')
-KEY_B=$(python3 -c 'import hashlib; print(hashlib.sha256("\x1f".join(["126","infrastructure","implementation","1"]).encode()).hexdigest()[:24])')
+KEY_A=$(python3 -c 'import hashlib; print(hashlib.sha256("\\x1f".join(["126","infrastructure","implementation","1"]).encode()).hexdigest()[:24])')
+KEY_B=$(python3 -c 'import hashlib; print(hashlib.sha256("\\x1f".join(["126","infrastructure","implementation","1"]).encode()).hexdigest()[:24])')
 if [[ "$KEY_A" == "$KEY_B" && -n "$KEY_A" ]]; then
   pass "same task/stage/attempt produces stable idempotency key"
 else
@@ -169,8 +196,76 @@ for st in pending dispatched blocked complete; do
 done
 pass "all dispatch enum values accepted"
 
+print "\nTEST 11: >100 notes traversal finds checkpoint on page 2"
+page1=()
+for i in $(seq 1 100); do page1+=( "filler note $i" ); done
+API_NOTES="$(printf '%s\n' "${page1[@]}" | python3 -c 'import json,sys; print(json.dumps([{"body": x.rstrip()} for x in sys.stdin]))')"
+API_NOTES_PAGE2="$(python3 - "$KEY_A" "$(git rev-parse --show-toplevel)" <<'PY'
+import json, sys
+key = sys.argv[1]
+worktree = sys.argv[2]
+record = {
+    "checkpoint_version": "1.0.0", "issue_iid": 126,
+    "title": "[TASK-126] Mission checkpoint", "owner": "emma@phanes.ltd",
+    "task_type": "infrastructure", "session_type": "primary",
+    "branch": "feature/task-126-checkpoint", "stage": "implementation",
+    "original_request": "build checkpoint schema", "acceptance_criteria": "schema validates",
+    "completed_work": "drafted", "remaining_work": "wire CLI", "attempts": 1,
+    "blockers": [], "next_action": "run tests", "dispatch_status": "pending",
+    "child_session_ref": "", "created_at": "2026-01-01T00:00:00Z",
+    "updated_at": "2026-01-01T00:00:00Z", "idempotency_key": key,
+    "worktree_path": worktree
+}
+body = f'<!-- oelite-checkpoint:v1 key={key} -->\n```json\n{json.dumps(record, sort_keys=True, separators=(",", ":"))}\n```'
+print(json.dumps([{"body": body}]))
+PY
+)"
+RC=0
+cmd_checkpoint oelite/coding-standards 126 emma implementation \
+  --task "build checkpoint schema" --ac "schema validates" --completed "drafted" \
+  --remaining "wire CLI" --attempt 1 --next "run tests" --dispatch pending \
+  --task-type infrastructure --session-type primary >/tmp/oe-t11.out 2>&1 || RC=$?
+OUT="$(</tmp/oe-t11.out)"
+if [[ $RC -eq 0 && "$OUT" == *"[OK] Checkpoint already recorded"* ]]; then
+  pass "checkpoint beyond page 1 detected via pagination traversal"
+else
+  fail "checkpoint beyond page 1 not detected (rc=$RC): $OUT"
+fi
+
+print "\nTEST 12: conflicting same-key note detected after concurrent write"
+API_NOTES='[]'
+API_NOTES_PAGE2='[]'
+POST_INJECT_CONFLICT="yes"
+RC=0
+cmd_checkpoint oelite/coding-standards 126 emma implementation \
+  --task "build checkpoint schema" --ac "schema validates" --completed "drafted" \
+  --remaining "wire CLI" --attempt 1 --next "run tests" --dispatch pending \
+  --task-type infrastructure --session-type primary >/tmp/oe-t12.out 2>&1 || RC=$?
+OUT="$(</tmp/oe-t12.out)"
+POST_INJECT_CONFLICT="no"
+if [[ $RC -eq 1 && "$OUT" == *"conflicting checkpoint"* ]]; then
+  pass "concurrent conflicting write detected and failed closed"
+else
+  fail "concurrent conflicting write not rejected (rc=$RC): $OUT; calls=$API_CALLS"
+fi
+
+print "\nTEST 13: equivalent duplicate note tolerated"
+API_NOTES='[]'
+API_NOTES_PAGE2='[]'
+RC=0
+cmd_checkpoint oelite/coding-standards 126 emma implementation \
+  --task "build checkpoint schema" --ac "schema validates" --completed "drafted" \
+  --remaining "wire CLI" --attempt 1 --next "run tests" --dispatch pending \
+  --task-type infrastructure --session-type primary >/tmp/oe-t13.out 2>&1 || RC=$?
+OUT="$(</tmp/oe-t13.out)"
+if [[ $RC -eq 0 && "$OUT" == *"[OK] Checkpoint recorded"* ]]; then
+  pass "equivalent duplicate note tolerated"
+else
+  fail "equivalent duplicate not tolerated (rc=$RC): $OUT"
+fi
+
 print ""
-print "═══════════════════════════════════════════════════════════"
+print "══════════════════════════════════════════════════════════"
 print "Results: $PASS passed, $FAIL failed"
 if [[ $FAIL -gt 0 ]]; then exit 1; fi
 print "ALL CHECKPOINT TESTS PASSED"
