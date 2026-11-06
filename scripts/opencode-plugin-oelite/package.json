@@ -6,6 +6,7 @@
   "main": "./index.js",
   "scripts": {
     "build": "tsc",
+    "test": "npm run build && node --test dist/supervisor.test.js",
     "prepare": "npm run build"
   },
   "devDependencies": {
