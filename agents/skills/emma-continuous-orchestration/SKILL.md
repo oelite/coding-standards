@@ -17,7 +17,7 @@ Unlike the `business-change-impact` skill (which defines the Phase 1 + Phase 2 g
 
 - **Watch** for new business-change / feature requests across repos
 - **Run Phase 1 gate** (product analysis + market research + team allocation + Isabella confirmation) before any implementation worktree exists
-- **Delegate** each deliverable to the best-fit role via `worktree-create <role> --issue <iid>`, dependency-sequenced with per-role success criteria
+- **Delegate** each deliverable to the best-fit role through an available native subagent/session mechanism, dependency-sequenced with per-role success criteria; create the role worktree as a separate preparation step
 - **Monitor** worktree status, MR state, test/CI results; hand back with specific gaps if goals are not met (max 2 attempts, then escalate to human)
 - **Run Phase 2** (Isabella post-development documentation revisit + Emma retrospective goal review) after team development completes
 - **Close** only after MR merge verified via `mr-status` and `issue-status closed` run in the same session
@@ -128,7 +128,7 @@ Reviewers reject a handoff missing any of these fields.
 ### Emma (continuous orchestrator)
 - Runs the continuous loop: watch → Phase 1 → delegate → monitor → Phase 2 → close → repeat
 - **Phase 1 execution:** product analysis, market research as product manager, team allocation analysis (best-fit roles, dependency sequence, per-role success criteria)
-- **Delegation:** creates implementation worktrees via `worktree-create`, assigns next responsible owner per handoff chain
+- **Delegation:** dispatches implementation work through the available native subagent/session mechanism, assigns next responsible owner per handoff chain, and prepares each role worktree with owner DNA and `.oe-scope` context anchor. Worktree creation alone is not delegation.
 - **Monitoring:** tracks worktree/MR/CI progress; max 2 attempts per task, then escalates to human
 - **Retrospective goal review:** confirms original request/goals achieved, all original AC satisfied, no surrounding-feature regression
 - **Closure:** verifies MR merge via `mr-status`; runs `issue-status closed` in same session as merge verification
@@ -148,7 +148,7 @@ Reviewers reject a handoff missing any of these fields.
 ## 5. Verification
 
 - **Phase 1 evidence:** product analysis + market research + team allocation + Isabella confirmation present in issue record (GitLab) before any implementer worktree exists
-- **Delegation evidence:** each implementer worktree created via `worktree-create <role> --issue <iid>` with owner DNA and `.oe-scope` context anchor
+- **Delegation evidence:** dispatch attempted or blocker recorded for each implementer role; role worktree created via `worktree-create <role> --issue <iid>` with owner DNA and `.oe-scope` context anchor. Worktree creation alone is not dispatch evidence.
 - **Monitoring evidence:** worktree/MR/CI status checked; gaps recorded as GitLab comments; max-2-attempt limit enforced
 - **Phase 2 evidence:** Isabella revisit + Playwright screenshots + descriptive doc updates present before Emma labels `Done`
 - **Retrospective evidence:** original request/goals confirmed achieved, all original AC satisfied, surrounding-feature regression check present in issue record before closure
