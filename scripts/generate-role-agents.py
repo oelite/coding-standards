@@ -18,6 +18,12 @@ HOST_DIRECTORIES = {
     "opencode": (".opencode", "agents"),
     "claude": (".claude", "agents"),
 }
+CANONICAL_ROLE_FILENAMES = frozenset(
+    {
+        "daniel.md", "emma.md", "ethan.md", "felix.md", "grace.md", "isabella.md",
+        "jonathan.md", "marcus.md", "maya.md", "olivia.md", "sophia.md", "victor.md",
+    }
+)
 
 
 def role_files(source_root: Path) -> list[Path]:
@@ -27,6 +33,17 @@ def role_files(source_root: Path) -> list[Path]:
     files = sorted(path for path in roles_dir.glob("*.md") if path.is_file())
     if not files:
         raise FileNotFoundError(f"No canonical role markdown files found in {roles_dir}")
+    if roles_dir.resolve() == (Path(__file__).resolve().parent.parent / "agents" / "roles").resolve():
+        actual = {path.name for path in files}
+        missing = CANONICAL_ROLE_FILENAMES - actual
+        unexpected = actual - CANONICAL_ROLE_FILENAMES
+        if missing or unexpected:
+            details = []
+            if missing:
+                details.append(f"missing roles: {', '.join(sorted(missing))}")
+            if unexpected:
+                details.append(f"unexpected roles: {', '.join(sorted(unexpected))}")
+            raise ValueError(f"Canonical role coverage is incomplete in {roles_dir}: {'; '.join(details)}")
     return files
 
 
@@ -62,6 +79,22 @@ def generated_files(source_root: Path) -> dict[Path, str]:
         for host, parts in HOST_DIRECTORIES.items():
             outputs[Path(*parts, f"{role_file.stem}.md")] = render(role_file, source_root, host)
     return outputs
+
+
+def validate_destinations(target_root: Path, outputs: dict[Path, str]) -> None:
+    if target_root.is_symlink():
+        raise ValueError(f"Refusing symlinked target root: {target_root}")
+    resolved_root = target_root.resolve()
+    for relative_path in outputs:
+        destination = target_root / relative_path
+        current = target_root
+        for part in relative_path.parts:
+            current = current / part
+            if current.is_symlink():
+                raise ValueError(f"Refusing symlinked output path: {current}")
+        resolved_destination = destination.resolve()
+        if not resolved_destination.is_relative_to(resolved_root):
+            raise ValueError(f"Output destination escapes target root: {destination}")
 
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
@@ -113,9 +146,10 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
 def main(argv: list[str] | None = None) -> int:
     args = parse_args(argv)
     source_root = args.source_root.resolve()
-    target_root = args.target_root.resolve()
+    target_root = args.target_root.absolute()
     try:
         outputs = generated_files(source_root)
+        validate_destinations(target_root, outputs)
     except (OSError, ValueError) as error:
         print(f"error: {error}", file=sys.stderr)
         return 2

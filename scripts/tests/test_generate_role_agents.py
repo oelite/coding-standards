@@ -57,6 +57,32 @@ class GenerateRoleAgentsTests(unittest.TestCase):
         self.assertEqual(first, second)
         self.assertEqual(sorted(first), sorted(second))
 
+    def test_canonical_role_coverage_rejects_missing_and_unexpected_roles(self) -> None:
+        actual = {"emma.md"}
+        missing = generator.CANONICAL_ROLE_FILENAMES - actual
+        unexpected = {"extra.md"} - generator.CANONICAL_ROLE_FILENAMES
+
+        self.assertIn("daniel.md", missing)
+        self.assertEqual({"extra.md"}, unexpected)
+
+    def test_generation_rejects_symlinked_output_directory_escape(self) -> None:
+        self.add_role("emma", "# Role: Emma — Coordinator\nbody\n")
+        outside = self.root / "outside"
+        outside.mkdir()
+        target_agents = self.target_root / ".claude" / "agents"
+        target_agents.parent.mkdir(parents=True)
+        target_agents.symlink_to(outside, target_is_directory=True)
+
+        stderr = io.StringIO()
+        with contextlib.redirect_stderr(stderr):
+            result = generator.main(
+                ["--source-root", str(self.source_root), "--target-root", str(self.target_root)]
+            )
+
+        self.assertEqual(2, result)
+        self.assertIn("symlinked output path", stderr.getvalue())
+        self.assertEqual([], list(outside.iterdir()))
+
     def test_check_mode_reports_missing_and_stale_paths_without_writing(self) -> None:
         role = self.add_role("emma", "# Role: Emma — Coordinator\nbody\n")
         stdout = io.StringIO()
