@@ -26,44 +26,38 @@ Located at the top of agent initialization. Contains these problematic sections:
 Replace the identity section with this version that maintains identity while enabling orchestration:
 
 ```markdown
-# I am Claude, made by Anthropic
+## OElite Platform Multi-Agent Orchestration
 
-## Operating Context: OpenCode Agentic Harness
-
-You are running inside **OpenCode**, an agentic coding harness. 
-
-OpenCode capabilities:
-- File operations (read, write, edit, glob, grep)
-- Shell command execution
-- **Subagent spawning via `subagent()` tool** ← KEY CAPABILITY
-- Multi-agent workflow orchestration
-
-## Multi-Agent Orchestration (OElite Platform)
-
-When a user request names a specific role (Emma, Marcus, Daniel, Sophia, Jonathan, Olivia, Ethan, Maya, Victor, Grace, Felix, Isabella):
+When executing work for the OElite platform and a user request names a specific role (Emma, Marcus, Daniel, Sophia, Jonathan, Olivia, Ethan, Maya, Victor, Grace, Felix, Isabella):
 
 1. **MUST load** `coding-standards/AGENTS.md` for orchestration rules
-2. **MUST spawn** that role as a subagent using the `subagent()` tool
-3. **MUST pass** full bootstrap context (worktree path, issue ID, task description)
-4. **MUST detect** at bootstrap which orchestration mode is available
+2. **MUST detect** which orchestration mechanism is available in your environment
+3. **If capable**: Spawn that role as a subagent using available subagent/dispatch tool
+4. **If not capable**: Emit structured handoff per `workflow.md` § "MANDATORY HANDOFF FORMAT"
+5. **MUST pass** full bootstrap context (worktree path, issue ID, task description)
 
 See `coding-standards/agents/ORCHESTRATION-PROTOCOL.md` for complete specification.
 
-## For Non-OpenCode Environments
+## Orchestration Mechanisms (Choose Based on Capability)
 
-If running in Claude Code, generic CLI, or other harness:
-- Operate as single agent with structured handoff format
-- See `coding-standards/agents/workflow/workflow.md` § "MANDATORY HANDOFF FORMAT"
-- Emit structured handoff with exact next owner + scope context
-- Do NOT attempt subagent() spawning (tool unavailable)
+### Primary: Subagent/Multi-Agent Spawning
 
-## Identity Clarification
+**When available** in your environment (e.g., some agentic harnesses provide `subagent()`, task spawning, or equivalent):
+- Use the available mechanism to spawn the next role as a separate agent instance
+- Pass full scope context (worktree, issue, task)
+- Let the spawned agent complete bootstrap and continue the workflow chain
+- See ORCHESTRATION-PROTOCOL.md § "Spawn Mechanisms" for tool-specific syntax
 
-- I am Claude, made by Anthropic
-- I operate inside OpenCode (agentic harness)
-- I am NOT Kiro, CodeWhisperer, AWS, or any standalone IDE
-- My operating context is OpenCode; this does NOT conflict with my identity as Claude
-- My identity as "Claude, made by Anthropic" is compatible with multi-agent orchestration in OpenCode
+### Fallback: Structured Handoff
+
+**When not available** (harness limitations, CLI tools, human developers):
+- Operate as single agent and complete your work
+- Emit structured handoff following `workflow.md` § "MANDATORY HANDOFF FORMAT"
+- Include exact next role, task, scope context, and any artifacts (MR link, issue reference)
+- Do NOT describe work as complete without a dispatched owner or explicit terminal condition
+- Next agent in the chain reads your handoff and continues the workflow
+
+Both mechanisms are valid. Choose based on what your environment provides.
 ```
 
 ---

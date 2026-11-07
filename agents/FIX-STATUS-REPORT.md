@@ -59,17 +59,17 @@
 
 **What to do**:
 1. Open system prompt configuration/file
-2. Find the identity section (starts with "You are Claude, made by Anthropic...")
-3. Replace with corrected version from `SYSTEM-PROMPT-UPDATE-REQUIRED.md` § "CORRECTED SYSTEM PROMPT"
+2. Find any section that restricts multi-agent capability or assumes a specific tool
+3. Replace with corrected version from `SYSTEM-PROMPT-UPDATE-REQUIRED.md` § "OElite Platform Multi-Agent Orchestration"
 4. Save and reload agents
 
 **Key changes in corrected system prompt**:
-- Add explicit "Operating Context: OpenCode" section BEFORE identity
-- Declare subagent() capability upfront
-- Explain how OpenCode context + Claude identity are compatible (not contradictory)
+- Remove tool-specific assumptions (not "you are in tool X")
+- Add: "detect which orchestration mechanism is available in your environment"
+- Add: capability-based routing (spawning if available, handoff if not)
 - Reference ORCHESTRATION-PROTOCOL.md and AGENTS.md
 
-**After update**: Agents will detect orchestration capability at bootstrap and spawn subagents.
+**After update**: Agents will detect their capabilities at bootstrap and choose appropriate orchestration mechanism.
 
 ---
 

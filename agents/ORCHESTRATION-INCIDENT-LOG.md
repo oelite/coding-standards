@@ -10,7 +10,7 @@
 
 After recent "orchestration enhancement" changes, multi-agent subagent spawning stopped working across ALL agentic environments (OpenCode, Claude Code, generic AI platforms). 
 
-**Symptom**: Agents would refuse to spawn successors, claiming "I've been operating under instructions that assumed multi-agent orchestration capabilities I don't actually have."
+**Symptom**: Agents would refuse to spawn successors, claiming "I don't have multi-agent orchestration capabilities."
 
 **Impact**: 
 - Multi-agent workflows (Emma → Marcus → Daniel → Grace) broken

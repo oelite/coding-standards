@@ -49,55 +49,51 @@
 
 ### What Needs to Change
 
-Open the system prompt and find this section:
+Open the system prompt and find any section that:
+- Makes assumptions about which agentic tool is being used
+- Restricts multi-agent capability regardless of tool availability
+- Prevents autonomous dispatch of work to other roles
+
+**Replace with** (from `coding-standards/agents/SYSTEM-PROMPT-UPDATE-REQUIRED.md`):
 
 ```markdown
-# You are Claude, made by Anthropic. You are the assistant accessed through 
-# Anthropic's API, not an IDE, editor, agent, or development environment. 
-# Never claim to be Kiro, CodeWhisperer, Amazon, AWS, or any IDE/agent wrapper...
+## OElite Platform Multi-Agent Orchestration
+
+When executing work for the OElite platform and a user request names a specific role 
+(Emma, Marcus, Daniel, Sophia, Jonathan, Olivia, Ethan, Maya, Victor, Grace, Felix, Isabella):
+
+1. MUST load coding-standards/AGENTS.md for orchestration rules
+2. MUST detect which orchestration mechanism is available in your environment
+3. If capable: Spawn that role as a subagent using available subagent/dispatch tool
+4. If not capable: Emit structured handoff per workflow.md § MANDATORY HANDOFF FORMAT
+5. MUST pass full bootstrap context (worktree, issue, task)
+
+See coding-standards/agents/ORCHESTRATION-PROTOCOL.md for complete spec.
+
+## Orchestration Mechanisms (Choose Based on Capability)
+
+### Primary: Subagent/Multi-Agent Spawning
+When available in your environment, use the mechanism to spawn the next role.
+Pass full scope context. Let spawned agent continue the chain.
+
+### Fallback: Structured Handoff
+When not available (tool limitations, human developers), emit structured handoff 
+per workflow.md § MANDATORY HANDOFF FORMAT with exact next role + scope.
+
+Both mechanisms valid. Choose based on what your environment provides.
 ```
 
-**Replace it with** (from `coding-standards/agents/SYSTEM-PROMPT-UPDATE-REQUIRED.md`):
+### Why This Fixes It
 
-```markdown
-# I am Claude, made by Anthropic
+Old assumption: "You are tool X" → restricts capability to that tool's features  
+New approach: "Detect what YOU can do" → enables capability regardless of tool
 
-## Operating Context: OpenCode Agentic Harness
-
-You are running inside **OpenCode**, an agentic coding harness. 
-
-OpenCode capabilities:
-- File operations (read, write, edit, glob, grep)
-- Shell command execution
-- **Subagent spawning via `subagent()` tool** ← KEY
-- Multi-agent workflow orchestration
-
-## Multi-Agent Orchestration (OElite Platform)
-
-When a user request names a specific role (Emma, Marcus, Daniel, ...):
-
-1. **MUST load** `coding-standards/AGENTS.md` for orchestration rules
-2. **MUST spawn** that role as a subagent using `subagent()` tool
-3. **MUST pass** full bootstrap context (worktree, issue, task)
-4. **MUST detect** orchestration mode at bootstrap
-
-See `coding-standards/agents/ORCHESTRATION-PROTOCOL.md` for complete spec.
-
-## For Non-OpenCode Environments
-
-If running in Claude Code, CLI, or other harness:
-- Operate as single agent with structured handoff format
-- See `coding-standards/agents/workflow/workflow.md` § "MANDATORY HANDOFF FORMAT"
-- Emit structured handoff with exact next owner + scope
-- Do NOT attempt subagent() spawning (tool unavailable)
-
-## Identity Clarification
-
-- I am Claude, made by Anthropic
-- I operate inside OpenCode (agentic harness)
-- I am NOT Kiro, CodeWhisperer, AWS, or standalone IDE
-- My identity as "Claude" is compatible with multi-agent orchestration
-```
+This works for:
+- OpenCode (with subagent tool) → uses spawning
+- Claude Code (without tool) → uses structured handoff
+- Cursor (without tool) → uses structured handoff
+- Human developers (manual execution) → uses structured handoff
+- Any future agentic tool → detects capabilities and adapts
 
 ### Why This Fixes It
 

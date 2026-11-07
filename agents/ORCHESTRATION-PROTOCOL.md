@@ -62,67 +62,84 @@ Emma (release planning)
 
 ---
 
-## Spawn Mechanisms (Per Harness)
+## Spawn Mechanisms (Capability-Based Detection)
 
-### ✅ OpenCode: Use `subagent()` Tool
+The OElite orchestration protocol supports multiple dispatch mechanisms. Your agent should:
 
-**Signature**:
-```typescript
+1. **Detect** what orchestration capabilities are available in your environment
+2. **Choose** the appropriate mechanism based on capability
+3. **Dispatch** the next role using that mechanism
+4. **Continue** the workflow chain
+
+### Mechanism 1: Subagent/Multi-Agent Spawning
+
+**When available**: Your environment provides a subagent or multi-agent dispatch tool/capability
+(e.g., `subagent()`, task spawning, agent dispatch function, etc.)
+
+**How to use**:
+- Call the available subagent/dispatch mechanism
+- Pass the role identity (Emma, Marcus, Daniel, etc.)
+- Include full bootstrap context (worktree, issue, task)
+- Let the spawned agent complete bootstrap and continue the chain
+
+**Example** (syntax varies by tool):
+```
 subagent({
-  agent: "general" | "explore",
-  description: "<3-5 word task label>",
-  prompt: `<full bootstrap + task prompt>`,
-  sessionID?: string,         // Continue previous session
-  background?: boolean,       // Run async (don't wait)
-  model?: string             // Override model (rare)
+  role: "daniel",
+  task: "backend-impl",
+  context: { worktree, issue, task_description }
 })
 ```
 
-**Example**:
-```typescript
-subagent({
-  agent: "general",
-  description: "Backend implementation: auth flow",
-  prompt: `
-# SUBAGENT BOOTSTRAP REQUIREMENTS
-YOUR_ROLE: daniel
-YOUR_TASK_TYPE: backend-impl
-YOUR_SESSION_TYPE: subagent
+**Result**: Multi-agent autonomous workflow. Next role executes as separate agent instance.
 
-# SCOPE CONTEXT
-WORKING_DIR: /oelite/uranus/origin-auth/.worktrees/daniel-1257
-GIT_ROOT: /oelite/uranus/origin-auth
-ISSUE: #1257 — [US-042] OAuth 2.0 device authorization grant implementation
-TASK: Implement device auth endpoint, token issuance, verification, state machine
+### Mechanism 2: Structured Handoff
 
-# MANDATORY
-You MUST complete Universal Agent Bootstrap (Steps 1-4) before ANY work.
-Your first output MUST be the bootstrap verification block.
-Load: coding-standards/agents/core/principles.md, ..., uranus/origin-auth/AGENTS.md
+**When not available**: Your environment does not provide subagent/dispatch capability
+(tool limitations, CLI tools, human developers, etc.)
 
-Do not attempt to create files or commits outside:
-  /oelite/uranus/origin-auth/.worktrees/daniel-1257/
+**How to use**:
+- Complete your work in the current agent instance
+- Emit structured handoff per `workflow.md` § "MANDATORY HANDOFF FORMAT"
+- Include: exact next role, task description, scope context, artifacts
+- Next agent in the chain reads your handoff and continues work
 
-Use oelite-gitlab.sh for all GitLab operations (never raw curl).
-`
-})
+**Example handoff structure**:
+```markdown
+## Next Owner Dispatched
+ROLE: grace
+MECHANISM: structured-handoff
+CONTEXT_PASSED: worktree path, issue #1257, code review task
+ARTIFACTS: MR link, test results
+ACTION: Grace, please review the code at [MR link]
 ```
 
-**Return Handling**:
-```typescript
-// After subagent completes, handle the output:
-// - If output contains "=== BOOTSTRAP COMPLETE ===" → successful spawn
-// - If output contains "READY: true" → agent fully initialized
-// - If output contains work summary → agent completed task
-// - Capture next owner from "Next Owner Dispatched" section
-// - Continue the chain OR emit final summary if terminal
-```
+**Result**: Single-agent sequential workflow. Next role manually continues from your handoff.
 
 ---
 
-### ⚠️ Claude Code / Non-OpenCode: Structured Handoff Fallback
+## Capability Detection at Bootstrap
 
-**When to use**: No `subagent()` tool available (Claude Code, generic CLI, other harnesses)
+When any agent starts work for OElite:
+
+```
+1. Load coding-standards/AGENTS.md
+2. Check: "What dispatch mechanisms are available to me?"
+   ├─ Subagent/dispatch tool available? → Use Mechanism 1 (spawning)
+   └─ Not available? → Use Mechanism 2 (structured handoff)
+3. Declare at bootstrap: "ORCHESTRATION_MODE: [mechanism in use]"
+4. When role is named: Dispatch via detected mechanism
+5. Continue workflow chain
+```
+
+**Both mechanisms are valid OElite orchestration patterns.**
+Choose based on what your environment provides, not on tool preference.
+
+---
+
+### ⚠️ Without Multi-Agent Capability: Structured Handoff Fallback
+
+**When to use**: Your environment does not provide subagent/dispatch capability
 
 **Mechanism**: Emit structured handoff following `workflow.md` "MANDATORY HANDOFF FORMAT"
 
@@ -207,11 +224,11 @@ Every subagent dispatch **MUST** include:
 **Step 3.5 Addition** (in bootstrap process):
 
 ```bash
-# Detect which orchestration mode is available
-if [[ -n "$SUBAGENT_TOOL_AVAILABLE" ]] || \
-   grep -q "subagent(" <<< "$(env | grep -i opencode)"; then
-  ORCHESTRATION_MODE="multi-agent (subagent spawn via OpenCode)"
-  DISPATCH_METHOD="subagent()"
+# Detect which orchestration mechanisms are available
+if [[ -z "$NO_SUBAGENT" ]] && \
+   grep -q "subagent\|dispatch\|spawn" <<< "$(declare -p | head -20)"; then
+  ORCHESTRATION_MODE="multi-agent (subagent/dispatch capability available)"
+  DISPATCH_METHOD="subagent"
 else
   ORCHESTRATION_MODE="single-agent (structured handoff fallback)"
   DISPATCH_METHOD="structured-handoff"
@@ -229,40 +246,43 @@ SESSION: subagent
 TASK: backend-impl
 ISSUE: #1257 — [US-042] OAuth device authorization
 ...
-ORCHESTRATION_MODE: multi-agent (subagent spawn via OpenCode)
-DISPATCH_MECHANISM: subagent()
+ORCHESTRATION_MODE: multi-agent (subagent/dispatch capability available)
+DISPATCH_MECHANISM: capability-based routing
 READY: true
 ===
 ```
 
-**Why**: Agents know at startup whether they can spawn. No ambiguity → no "I don't have multi-agent capabilities" errors.
+**Why**: Agents know at startup what mechanisms are available. Enables capability-based routing → no "I don't have multi-agent capabilities" errors.
 
 ---
 
 ## Error Detection & Recovery
 
-### Error: "I Don't Have Subagent Capability"
+### Error: "I Don't Have Multi-Agent Capability"
 
 **Root Cause**: System prompt either:
-1. Doesn't include `subagent` tool in tool list
-2. Contains conflicting identity disclaimers ("you are Claude, not an environment")
+1. Doesn't declare orchestration mechanism detection
+2. Contains restrictions preventing multi-agent dispatch regardless of capability
 3. Is missing the orchestration protocol reference
 
 **Recovery**:
 ```markdown
 1. Check system prompt for:
-   - Presence of "subagent" in available tools list
-   - Absence of "never spawn", "no multi-agent", or "not an environment" statements
+   - Explicit instruction to detect available orchestration mechanisms
+   - Absence of blanket "never spawn agents", "no multi-agent" statements
    - Explicit reference to AGENTS.md "SUBAGENT DELEGATION RULE"
+   - Reference to ORCHESTRATION-PROTOCOL.md
 
 2. If system prompt is broken:
    - Reload from canonical source: `coding-standards/AGENTS.md`
-   - Strip conflicting identity statements
-   - Ensure orchestration mode is detected at bootstrap
+   - Remove capability-blocking restrictions
+   - Ensure orchestration detection is enabled at bootstrap
+   - Test: Does ORCHESTRATION_MODE get declared?
 
 3. If still failing:
-   - Fall back to structured handoff (document the limitation)
-   - Emit an issue explaining the orchestration failure
+   - Fall back to structured handoff (Mechanism 2)
+   - Verify structured handoff format in workflow.md
+   - Emit detailed handoff with next role + scope
 ```
 
 ### Error: Agent Spawns But Subagent Doesn't Load Context
