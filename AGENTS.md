@@ -277,26 +277,74 @@ Marcus, Daniel and Maya load `m2m-product-standard` by default for M2M architect
 
 ## 🤖 SUBAGENT DELEGATION RULE
 
-When a request names a specific role and the context matches their responsibility, you MUST continue the workflow by dispatching that role through an available subagent/session tool, unless the user explicitly asks for a single-agent session or the requested work has no successor in the workflow chain. Include in the prompt:
+When a request names a specific role and the context matches their responsibility, you MUST continue the workflow by dispatching that role using the available orchestration mechanism for your harness:
 
-```markdown
+### For OpenCode (Primary Multi-Agent Path)
+
+**Tool**: Use `subagent()` with role identity and bootstrap context.
+
+**Syntax**:
+```typescript
+subagent({
+  agent: "general",
+  description: "<3-5 word task label>",
+  prompt: `
 # SUBAGENT BOOTSTRAP REQUIREMENTS
 YOUR_ROLE: <role-name>
 YOUR_TASK_TYPE: <task-type>
 YOUR_SESSION_TYPE: subagent
 
 # SCOPE CONTEXT (MANDATORY — prevents worktree drift after compaction)
-WORKING_DIR: <full path to worktree, e.g., /oelite/helios/core/.worktrees/daniel>
+WORKING_DIR: <full path to worktree, e.g., /oelite/helios/core/.worktrees/daniel-1257>
 GIT_ROOT: <verified via git rev-parse --show-toplevel>
 ISSUE: #<iid> — <issue title>
 TASK: <brief description>
 FORBIDDEN: Creating files outside the git repo root above.
 
+# BOOTSTRAP EXECUTION
 You MUST complete the Universal Agent Bootstrap (Steps 1-4) before ANY work.
 Your first output MUST be the bootstrap verification block (including SCOPE verified).
+Load in order:
+  - coding-standards/agents/core/principles.md
+  - coding-standards/agents/workflow/workflow.md
+  - coding-standards/agents/roles/{YOUR_ROLE}.md
+  - coding-standards/agents/packs/{YOUR_TASK_TYPE}.md
+  - <repo>/AGENTS.md
+  - <repo>/.ai/standards/*.md (if repo deviates from OElite patterns)
+
+See AGENTS.md § "UNIVERSAL BOOTSTRAP" for full procedure.
+`
+})
+```
+
+### For Non-OpenCode Harnesses (Claude Code, Generic CLI)
+
+**Mechanism**: Use structured handoff (fallback).
+
+When spawning unavailable or explicitly not requested, complete your work and emit structured handoff per `workflow.md` "MANDATORY HANDOFF FORMAT" (§60–105) with exact next role, task, scope context, and MR/issue link. Do NOT describe work as complete without a dispatched owner or explicit stop reason.
+
+### Decision Tree
+
+```
+Does this harness provide a subagent() tool?
+├─ YES (OpenCode) → Use subagent() dispatch above
+│                    Spawn next role with full bootstrap context
+├─ NO (Claude Code, CLI, other) → Use structured handoff
+                                   Emit formatted handoff with exact next owner
+```
+
+### Mandatory Capability Declaration
+
+Every agent MUST declare at bootstrap which mode is active. Add to BOOTSTRAP OUTPUT (Step 4):
+
+```
+ORCHESTRATION_MODE: <multi-agent (subagent tool available) | single-agent (structured handoff)>
+DISPATCH_MECHANISM: <subagent() | structured-handoff>
 ```
 
 **Note**: Subagent spawning is the default for any named role. A single-agent session that only emits a structured handoff is a fallback, not the normal path, and is allowed only when spawning is unavailable, explicitly declined by the user, or the work is genuinely complete/blocked. Even in fallback mode, the current agent must either invoke the next owner or record an explicit stop reason, exact next action, and required human decision. A summary without a dispatched next owner or stop reason is incomplete.
+
+For full orchestration protocol details, error recovery, and workflow chains, see `coding-standards/agents/ORCHESTRATION-PROTOCOL.md`.
 
 ---
 
