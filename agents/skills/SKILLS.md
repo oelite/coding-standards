@@ -198,6 +198,19 @@
 
 ---
 
+### `multi-agent-orchestration` — Multi-Agent Workflow Orchestration
+
+- **Purpose:** Platform-agnostic orchestration protocol for autonomous multi-agent workflows — capability detection (subagent spawning vs. structured handoff), bootstrap requirements (scope context, issue tracking), role dispatch mechanisms, and error recovery. Enables workflow chains (Emma → Marcus → Daniel → Grace → Isabella) across all agentic environments (OpenCode, Claude Code, Cursor, CLI, human).
+- **Trigger phrases:** "multi-agent", "orchestration", "spawn subagent", "dispatch role", "workflow chain", "autonomous workflow", "Emma to Marcus", "role handoff", "structured handoff", "ORCHESTRATION_MODE", "subagent dispatch"
+- **Default loaders:** All roles (mandatory for OElite platform)
+- **On-demand loaders:** N/A (always loaded at bootstrap)
+- **Location:** `coding-standards/agents/skills/multi-agent-orchestration/SKILL.md`
+- **Status:** [x] active — Nov 7, 2026 (orchestration protocol fix)
+- **Owner:** Emma (orchestration), Marcus (architecture)
+- **Related skills:** `emma-continuous-orchestration` (#165) — uses this protocol as dispatcher; `business-change-impact` (#150) — gates orchestrated via this protocol
+
+---
+
 ## 🔧 Built-in OpenCode Skills (Available via `skill` Tool)
 
 These skills are built into the OpenCode CLI and accessible via the `skill` tool or
