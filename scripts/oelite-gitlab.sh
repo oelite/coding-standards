@@ -1937,11 +1937,10 @@ if t:
     payload['title'] = t
 if desc:
     payload['description'] = desc
-tb = '''$target_branch'''.strip()
-if tb:
-    payload['target_branch'] = tb
+if sys.argv[1]:
+    payload['target_branch'] = sys.argv[1]
 print(json.dumps(payload))
-")
+" "$target_branch")
 
   local pat
   pat=$(get_pat "$agent")
@@ -4134,8 +4133,9 @@ COMMANDS:
     Example: oelite-gitlab.sh mr-merge uranus/origin-auth 15 emma --keep-source-branch
 
   mr-update <project-path> <mr-iid> <agent> <title> [description] [target-branch]
-    Update MR title and description. Pass empty quotes for title to keep current title.
+    Update MR title, description, or target branch. Empty arguments preserve existing fields.
     Example: oelite-gitlab.sh mr-update uranus/origin-auth 420 isabella "fix: new title" "New description"
+    Example: oelite-gitlab.sh mr-update oelite/uranus/orion 124 ethan "" "" develop
 
   mr-reviewer <project-path> <mr-iid> <agent> <reviewer>...
     Add one or more reviewers to an MR (reviewer agents resolved via registry).
