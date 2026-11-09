@@ -269,6 +269,55 @@ repo_root() {
   echo "$root"
 }
 
+verify_worktree_upstream() {
+  local wt_path="$1"
+  local branch="${2:-$(git -C "$wt_path" symbolic-ref --quiet --short HEAD 2>/dev/null || true)}"
+  local merge_ref remote
+
+  if [[ -z "$branch" ]]; then
+    echo "[ERROR] Cannot verify upstream: $wt_path is not on a local branch" >&2
+    return 1
+  fi
+
+  merge_ref=$(git -C "$wt_path" config --get "branch.$branch.merge" 2>/dev/null || true)
+  remote=$(git -C "$wt_path" config --get "branch.$branch.remote" 2>/dev/null || true)
+  if [[ "$merge_ref" == refs/heads/develop || "$merge_ref" == refs/heads/main || "$merge_ref" == refs/heads/master ]]; then
+    echo "[ERROR] Refusing protected upstream for $branch: $remote/$merge_ref" >&2
+    git -C "$wt_path" config --unset "branch.$branch.remote" 2>/dev/null || true
+    git -C "$wt_path" config --unset "branch.$branch.merge" 2>/dev/null || true
+  fi
+
+  if git -C "$wt_path" show-ref --verify --quiet "refs/remotes/origin/$branch"; then
+    git -C "$wt_path" branch --set-upstream-to="origin/$branch" "$branch" >/dev/null
+  else
+    git -C "$wt_path" config --unset "branch.$branch.remote" 2>/dev/null || true
+    git -C "$wt_path" config --unset "branch.$branch.merge" 2>/dev/null || true
+  fi
+}
+
+cmd_push_check() {
+  local wt_path="${1:-.}"
+  local branch merge_ref remote
+
+  if [[ ! -d "$wt_path" ]]; then
+    echo "[ERROR] Worktree path does not exist: $wt_path" >&2
+    return 1
+  fi
+  branch=$(git -C "$wt_path" symbolic-ref --quiet --short HEAD 2>/dev/null || true)
+  merge_ref=$(git -C "$wt_path" config --get "branch.$branch.merge" 2>/dev/null || true)
+  remote=$(git -C "$wt_path" config --get "branch.$branch.remote" 2>/dev/null || true)
+  if [[ -z "$branch" || "$branch" == develop || "$branch" == main || "$branch" == master || "$remote" != origin || "$merge_ref" != "refs/heads/$branch" ]]; then
+    echo "[ERROR] Push blocked: $branch must track origin/$branch (remote='$remote', merge='$merge_ref')" >&2
+    echo "       Set the feature upstream explicitly after its remote branch exists; never push to develop/main/master." >&2
+    return 1
+  fi
+  if ! git -C "$wt_path" show-ref --verify --quiet "refs/remotes/origin/$branch"; then
+    echo "[ERROR] Push blocked: origin/$branch does not exist locally; establish the feature remote explicitly first" >&2
+    return 1
+  fi
+  echo "[OK] Push upstream verified: $branch -> origin/$branch"
+}
+
 worktree_path() {
   local agent="$1"
   local issue="${2:-}"
@@ -1008,6 +1057,12 @@ cmd_worktree_create() {
 
   echo "Creating worktree at $wt_path..."
   git worktree add "$wt_path" "$branch"
+
+  # ── Fail-closed upstream safety (#1809) ──
+  # `git branch <feature> origin/develop` makes git auto-track origin/develop,
+  # so a bare `git push` would target the protected branch. Normalize to
+  # origin/<feature> when it exists, else remove the upstream entirely.
+  verify_worktree_upstream "$wt_path" "$branch"
 
   git config extensions.worktreeConfig true
 
@@ -4030,6 +4085,12 @@ COMMANDS:
      Example: oelite-gitlab.sh oe-scope daniel-42
      Example: oelite-gitlab.sh oe-scope daniel-42 --task-type backend-impl --desc "Implement JWT refresh"
 
+   push-check [worktree-path]
+     Fail-closed pre-push verification (#1809). Blocks the push unless the
+     worktree's checked-out branch tracks origin/<same-branch> and the remote
+     ref exists. Refuses develop/main/master upstreams and detached HEADs.
+     Example: oelite-gitlab.sh push-check .worktrees/daniel-42
+
    mr-create <project-path> <agent> <source> <target> <title> [description]
      Create a merge request using the agent's PAT.
      Push your feature branch first, then run this to create MR.
@@ -4263,6 +4324,7 @@ case "$command" in
   worktree-remove) cmd_worktree_remove "$@" ;;
   worktree-cleanup) cmd_worktree_cleanup "$@" ;;
   worktree-check-stale) cmd_worktree_check_stale "$@" ;;
+  push-check)     cmd_push_check "$@" ;;
   mr-create)      cmd_mr_create "$@" ;;
   mr-list)        cmd_mr_list "$@" ;;
   mr-comment)     cmd_mr_comment "$@" ;;

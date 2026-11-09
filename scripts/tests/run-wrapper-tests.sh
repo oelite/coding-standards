@@ -510,6 +510,36 @@ if [[ $RC -eq 1 && "$OUT" == *"HTTP 404"* ]] && ! print -r -- "$OUT" | grep -qE 
 else
   fail "404 diagnostics wrong or token leaked (rc=$RC, out=$OUT)"
 fi
+print "\nTEST 20 (#1809): upstream verification removes protected tracking"
+git -C "$TMPROOT" worktree add -q -b feature/upstream-unsafe "$TMPROOT/.worktrees/unsafe-1809"
+git -C "$TMPROOT" config branch.feature/upstream-unsafe.remote origin
+git -C "$TMPROOT" config branch.feature/upstream-unsafe.merge refs/heads/develop
+verify_worktree_upstream "$TMPROOT/.worktrees/unsafe-1809" feature/upstream-unsafe
+if [[ -z "$(git -C "$TMPROOT" config --get branch.feature/upstream-unsafe.merge || true)" ]]; then
+  pass "protected upstream is removed during worktree verification"
+else
+  fail "protected upstream remains configured"
+fi
+
+print "\nTEST 21 (#1809): push-check fails closed without a same-branch upstream"
+RC=0
+OUT="$(cmd_push_check "$TMPROOT/.worktrees/unsafe-1809" 2>&1)" || RC=$?
+if [[ $RC -eq 1 && "$OUT" == *"Push blocked"* ]]; then
+  pass "missing upstream blocks push with actionable diagnostic"
+else
+  fail "missing upstream did not fail closed (rc=$RC, out=$OUT)"
+fi
+
+git -C "$TMPROOT" worktree add -q -b feature/upstream-safe "$TMPROOT/.worktrees/safe-1809"
+git -C "$TMPROOT" update-ref refs/remotes/origin/feature/upstream-safe HEAD
+git -C "$TMPROOT" config branch.feature/upstream-safe.remote origin
+git -C "$TMPROOT" config branch.feature/upstream-safe.merge refs/heads/feature/upstream-safe
+if cmd_push_check "$TMPROOT/.worktrees/safe-1809" >/dev/null 2>&1; then
+  pass "same-branch origin upstream passes push verification"
+else
+  fail "same-branch origin upstream was rejected"
+fi
+
 unset -f api_put api_post get_pat 2>/dev/null || true
 unset OELITE_HUMAN 2>/dev/null || true
 
