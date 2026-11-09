@@ -2774,6 +2774,66 @@ print("  Web URL:   {}".format(job.get("web_url", "")))
 '
 }
 
+# #107: create detached MR evidence only after independent Git/API head agreement.
+# This is NOT a repair operation for stale server-side MR refs.
+cmd_mr_pipeline_create() {
+  local project_path="${1:-}" mr_iid="${2:-}" agent="${3:-}"
+  [[ -n "$project_path" && "$mr_iid" == <-> && -n "$agent" && $# -eq 3 ]] || {
+    echo "[ERROR] Usage: mr-pipeline-create <project> <mr-iid> <agent>" >&2; return 1
+  }
+  validate_agent "$agent" || return 1
+  local encoded_path pat mr_json project_json remote_refs expected_sha created_json
+  encoded_path=$(url_encode_path "$project_path")
+  pat=$(get_pat "$agent")
+  api_get "/projects/$encoded_path" "$pat"
+  [[ "$_API_STATUS" == "200" ]] || {
+    echo "[ERROR] Project lookup failed (HTTP $_API_STATUS)" >&2; return 1
+  }
+  project_json="$_API_RESPONSE"
+  local repository_url
+  repository_url=$(json_scalar "ssh_url_to_repo" "" <<< "$project_json")
+  # Never execute Git against a credential-bearing URL or an unrelated server.
+  [[ "$repository_url" == "git@code.phanes.ltd:${project_path}.git" ]] || {
+    echo "[ERROR] Project SSH URL does not match requested trusted repository" >&2; return 1
+  }
+  api_get "/projects/$encoded_path/merge_requests/$mr_iid" "$pat"
+  [[ "$_API_STATUS" == "200" ]] || {
+    echo "[ERROR] MR lookup failed (HTTP $_API_STATUS)" >&2; return 1
+  }
+  mr_json="$_API_RESPONSE"
+  # --heads cannot be used: it would omit the independently advertised MR ref.
+  remote_refs=$(GIT_TERMINAL_PROMPT=0 git ls-remote "$repository_url") || {
+    echo "[ERROR] Cannot read remote Git refs; no pipeline created" >&2; return 1
+  }
+  expected_sha=$(printf '%s\n' "$remote_refs" | python3 "$SCRIPT_DIR/lib/mr_pipeline_guard.py" \
+    "$mr_json" "$project_json" "$mr_iid") || return 1
+  echo "[OK] Source ref / MR ref / API SHA / diff head agree: $expected_sha"
+  api_post "/projects/$encoded_path/merge_requests/$mr_iid/pipelines" "$pat" ""
+  if [[ "$_API_STATUS" != "201" && "$_API_STATUS" != "200" ]]; then
+    echo "[ERROR] MR pipeline creation failed (HTTP $_API_STATUS)" >&2
+    api_error_hint "$_API_STATUS" "$project_path"
+    echo "$_API_RESPONSE" >&2
+    return 1
+  fi
+  created_json="$_API_RESPONSE"
+  printf '%s\n' "$created_json" | python3 "$SCRIPT_DIR/lib/mr_pipeline_guard.py" \
+    --pipeline "$expected_sha" "$mr_iid" || return 1
+  # Creation is not atomic with a concurrent push. Recheck and never claim stale evidence.
+  api_get "/projects/$encoded_path/merge_requests/$mr_iid" "$pat"
+  [[ "$_API_STATUS" == "200" ]] || {
+    echo "[ERROR] Pipeline created but post-create MR verification unavailable" >&2; return 1
+  }
+  mr_json="$_API_RESPONSE"
+  remote_refs=$(GIT_TERMINAL_PROMPT=0 git ls-remote "$repository_url") || return 1
+  local actual_sha
+  actual_sha=$(printf '%s\n' "$remote_refs" | python3 "$SCRIPT_DIR/lib/mr_pipeline_guard.py" \
+    "$mr_json" "$project_json" "$mr_iid") || return 1
+  [[ "$actual_sha" == "$expected_sha" ]] || {
+    echo "[ERROR] Head changed during creation; pipeline is not current-head evidence" >&2; return 1
+  }
+  echo "[OK] MR pipeline created and head reverified; CI success is not implied"
+}
+
 cmd_pipeline_run() {
   local project_path="${1:-}"
   local ref="${2:-}"
@@ -4250,6 +4310,12 @@ COMMANDS:
       <agent> (default emma). Preserves the reviewed head SHA.
       Example: oelite-gitlab.sh pipeline-retry oelite/helios/kortex 84400 ethan
 
+  mr-pipeline-create <project-path> <mr-iid> <agent>
+      Create detached MR pipeline after source Git ref, MR Git ref, API SHA and diff head agree.
+      Same-project MRs only; SSH read access required. Does NOT repair stale MR refs.
+      Reports pipeline ID/SHA/source/status, rejects mismatched or merged-results evidence.
+      Rechecks head after creation; never retries or changes approvals/CI configuration.
+
   pipeline-run <project-path> <ref> [<agent>]
       Create and run a new pipeline on <ref>, attributed to <agent> (default emma).
       Example: oelite-gitlab.sh pipeline-run oelite/helios/kortex develop ethan
@@ -4356,6 +4422,7 @@ case "$command" in
   pipelines) cmd_pipelines "$@" ;;
   pipeline-cancel) cmd_pipeline_cancel "$@" ;;
   pipeline-retry) cmd_pipeline_retry "$@" ;;
+  mr-pipeline-create) cmd_mr_pipeline_create "$@" ;;
   pipeline-run) cmd_pipeline_run "$@" ;;
   mr-merge)       cmd_mr_merge "$@" ;;
   mr-close)       cmd_mr_close "$@" ;;
