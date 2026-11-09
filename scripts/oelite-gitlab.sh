@@ -1917,6 +1917,7 @@ cmd_mr_update() {
   local agent="$3"
   local title="$4"
   local description="${5:-}"
+  local target_branch="${6:-}"
 
   validate_agent "$agent" || return 1
 
@@ -1936,6 +1937,9 @@ if t:
     payload['title'] = t
 if desc:
     payload['description'] = desc
+tb = '''$target_branch'''.strip()
+if tb:
+    payload['target_branch'] = tb
 print(json.dumps(payload))
 ")
 
@@ -1945,6 +1949,9 @@ print(json.dumps(payload))
 
   if [[ "$_API_STATUS" == "200" ]]; then
     echo "[OK] MR !$mr_iid updated by $agent"
+    if [[ -n "$target_branch" ]]; then
+      echo "  Target branch: $target_branch"
+    fi
   else
     echo "[ERROR] Failed to update MR !$mr_iid (HTTP $_API_STATUS)" >&2
     api_error_hint "$_API_STATUS" "$project_path"
@@ -4126,7 +4133,7 @@ COMMANDS:
     Example: oelite-gitlab.sh mr-merge uranus/origin-auth 15 grace
     Example: oelite-gitlab.sh mr-merge uranus/origin-auth 15 emma --keep-source-branch
 
-  mr-update <project-path> <mr-iid> <agent> <title> [description]
+  mr-update <project-path> <mr-iid> <agent> <title> [description] [target-branch]
     Update MR title and description. Pass empty quotes for title to keep current title.
     Example: oelite-gitlab.sh mr-update uranus/origin-auth 420 isabella "fix: new title" "New description"
 
